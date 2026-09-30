@@ -1,0 +1,7 @@
+{
+    "private":  true,
+    "main":  "src/index.ts",
+    "name":  "@kingworld/database",
+    "version":  "1.0.0",
+    "type":  "module"
+}

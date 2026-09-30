@@ -1,0 +1,32 @@
+export {
+  TASK_TRANSITIONS,
+  TERMINAL_TASK_STATUSES,
+  ACTIVE_TASK_STATUSES,
+  ASSIGNABLE_TASK_STATUSES,
+  ALL_TASK_STATUSES,
+  isTerminal,
+  canTransition,
+  allowedTransitions,
+  assertTransition,
+} from "./state-machine.js";
+
+export {
+  createTask,
+  updateTask,
+  addDependencies,
+  removeDependency,
+  unmetDependencies,
+  areDependenciesSatisfied,
+  listTasks,
+  countTasks,
+  getTaskDetail,
+  getNextAvailableTask,
+  getActiveTask,
+  requireTask,
+  assertTaskNotTerminal,
+  type TaskActorContext,
+  type CreateTaskInput,
+  type UpdateTaskInput,
+  type ListTasksQuery,
+  type TaskDetail,
+} from "./task.service.js";

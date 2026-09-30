@@ -1,0 +1,16 @@
+export {
+  storeMemory,
+  retrieveMemories,
+  listMemories,
+  forgetMemory,
+  pruneExpiredMemories,
+  getMemoryStats,
+  formatMemoriesForPrompt,
+  scoreMemory,
+  recencyScore,
+  importanceScore,
+  type StoreMemoryInput,
+  type RetrieveQuery,
+  type RetrievedMemory,
+  type MemoryContext,
+} from "./memory.service.js";

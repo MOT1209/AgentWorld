@@ -1,0 +1,25 @@
+node_modules/
+dist/
+build/
+coverage/
+.vitest/
+*.tsbuildinfo
+
+# local database + logs
+database/*.db
+database/*.db-journal
+database/*.db-wal
+database/*.db-shm
+*.log
+logs/
+
+# secrets — never commit
+.env
+.env.*
+!.env.example
+
+# editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

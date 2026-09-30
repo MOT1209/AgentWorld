@@ -1,0 +1,64 @@
+{
+  "name": "king-world",
+  "version": "1.0.0",
+  "private": true,
+  "description": "King World -- AI Agent Company simulation. Phase 1: core engine foundation.",
+  "type": "module",
+  "engines": {
+    "node": ">=20.11.0"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "tsx watch apps/api/src/main.ts",
+    "dev:web": "npm run dev --workspace @kingworld/web",
+    "build": "npm run build:api && npm run build:web",
+    "build:api": "tsc -p tsconfig.build.json",
+    "build:web": "npm run build --workspace @kingworld/web",
+    "start": "node dist/apps/api/src/main.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:migrate:deploy": "prisma migrate deploy",
+    "db:reset": "prisma migrate reset --force",
+    "db:seed": "tsx database/seed.ts",
+    "db:studio": "prisma studio",
+    "setup": "npm install && npm run db:generate && npm run db:migrate && npm run db:seed",
+    "verify": "npm run typecheck && npm run lint && npm run test && npm run build"
+  },
+  "prisma": {
+    "schema": "database/schema.prisma",
+    "seed": "tsx database/seed.ts"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.0",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.2",
+    "@types/jsonwebtoken": "^9.0.9",
+    "@types/node": "^22.15.3",
+    "@types/supertest": "^6.0.3",
+    "@vitest/coverage-v8": "^3.2.4",
+    "eslint": "^9.39.0",
+    "prisma": "^6.15.0",
+    "supertest": "^7.1.4",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.46.0",
+    "vitest": "^3.2.4"
+  },
+  "allowScripts": {
+    "prisma@6.19.3": true,
+    "@prisma/client@6.19.3": true,
+    "@prisma/engines@6.19.3": true,
+    "esbuild@0.25.12": true,
+    "esbuild@0.28.2": true
+  }
+}

@@ -1,0 +1,795 @@
+// -----------------------------------------------------------------------------
+// King World -- Phase 1 relational schema
+// -----------------------------------------------------------------------------
+// Provider note (IMPORTANT -- read before adding new columns):
+//   SQLite is the Phase 1 datasource. The SQLite connector in Prisma does not
+//   support native `enum` or `Json` scalars, and has no unsigned integers.
+//   Therefore:
+//     * enum-like columns are `String` + validated by Zod enums in
+//       packages/shared/src/enums.ts (single source of truth),
+//     * structured payloads are `String` holding JSON, wrapped by the
+//       typed helpers in packages/shared/src/json.ts,
+//     * money is `Int` in MINOR UNITS (e.g. cents) -- never a float.
+//   Phase 2 migration path to Postgres: swap these to `enum` + `jsonb` +
+//   `numeric(19,4)`. See docs/ARCHITECTURE.md ? Database Portability.
+// -----------------------------------------------------------------------------
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// =============================================================================
+// IDENTITY & ACCESS
+// =============================================================================
+
+model User {
+  id           String  @id @default(cuid())
+  email        String  @unique
+  passwordHash String
+  displayName  String
+  /// OWNER | ADMIN | OBSERVER -- see packages/shared/src/enums.ts UserRole
+  role         String  @default("OBSERVER")
+  isActive     Boolean @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  ownedCompanies Company[]        @relation("CompanyOwner")
+  memberships    CompanyMember[]
+  sentMessages   Message[]        @relation("MessageSenderUser")
+  requestedApprovals ApprovalRequest[] @relation("ApprovalRequester")
+  decidedApprovals   ApprovalRequest[] @relation("ApprovalDecider")
+  activityLogs   ActivityLog[]
+  conversations  Conversation[]
+  wallets        Wallet[]
+
+  @@index([role])
+}
+
+model Company {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  ownerId     String
+  /// Denormalised pointer to the Wallet whose ownerType=COMPANY, ownerId=id.
+  /// Resolved exclusively through packages/economy LedgerService so the two
+  /// can never disagree.
+  treasuryWalletId String?
+  foundedAt   DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  owner     User              @relation("CompanyOwner", fields: [ownerId], references: [id])
+  departments Department[]
+  members   CompanyMember[]
+  projects  Project[]
+  tasks     Task[]
+  agents    Agent[]
+  conversations Conversation[]
+  approvals ApprovalRequest[]
+
+  @@index([ownerId])
+}
+
+model Department {
+  id          String   @id @default(cuid())
+  companyId   String
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  company Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  members CompanyMember[]
+
+  @@unique([companyId, name])
+  @@index([companyId])
+}
+
+model CompanyMember {
+  id           String   @id @default(cuid())
+  companyId    String
+  agentId      String
+  departmentId String?
+  title        String
+  /// Free-form role key, matched against Agent.roleKey. Drives behaviour via
+  /// the RoleProfile registry -- never branch on the agent's name.
+  roleKey      String
+  /// Annual salary in MINOR UNITS. Paid via SALARY transactions.
+  salaryMinor  Int      @default(0)
+  isActive     Boolean  @default(true)
+  joinedAt     DateTime @default(now())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  company    Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  agent      Agent       @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  department Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  user       User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  userId     String?
+
+  @@unique([companyId, agentId])
+  @@index([agentId])
+  @@index([departmentId])
+}
+
+// =============================================================================
+// WORLD - CITY - LOCATIONS - SIMULATION CLOCK
+// =============================================================================
+
+model World {
+  id          String  @id @default(cuid())
+  name        String  @unique
+  description String?
+  isActive    Boolean @default(true)
+
+  // -- Simulation clock ------------------------------------------------------
+  // simulatedNow() = new Date(now + timeOffsetMinutes).
+  // A heartbeat advances the offset by (realMinutes x timeScale).
+  timeScale         Int @default(60)
+  timeOffsetMinutes Int @default(0)
+  lastTickAt        DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  cities    City[]
+  agents    Agent[]
+  approvals ApprovalRequest[]
+}
+
+model City {
+  id          String   @id @default(cuid())
+  worldId     String
+  name        String
+  description String?
+  /// district / town / capital -- extensible for Phase 2 districts.
+  kind        String   @default("CITY")
+  population  Int      @default(0)
+  foundedAt   DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  world     World      @relation(fields: [worldId], references: [id], onDelete: Cascade)
+  locations Location[]
+
+  @@unique([worldId, name])
+  @@index([worldId])
+}
+
+model Location {
+  id       String  @id @default(cuid())
+  cityId   String
+  name     String
+  /// HQ | BANK | MARKET | OFFICE | HOME | SHOP | RESTAURANT | SCHOOL |
+  /// HOSPITAL | GOVERNMENT | TRANSPORT | PUBLIC_SPACE | OTHER
+  kind     String  @default("OTHER")
+  address  String?
+  capacity Int?
+  /// JSON -- Phase 2: geometry, floorplan, opening hours, price modifiers.
+  metadata String?
+  isActive Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  city   City    @relation(fields: [cityId], references: [id], onDelete: Cascade)
+  agents Agent[]
+
+  @@unique([cityId, name])
+  @@index([cityId])
+  @@index([kind])
+}
+
+// =============================================================================
+// AGENTS
+// =============================================================================
+
+model Agent {
+  id       String  @id @default(cuid())
+  name     String
+  slug     String  @unique
+  /// Behaviour key resolved by packages/agents RoleProfileRegistry.
+  /// e.g. PLANNER, EXECUTOR.  Adding a role must never require code changes to
+  /// any `if (agent.name === ...)` branch -- there are none.
+  roleKey  String
+  title    String
+  /// Profile written by the Agent Factory; seeded for the two Phase 1 agents.
+  systemPrompt String
+  personality   String @default("{}") // JSON
+  goals         String @default("[]") // JSON string[]
+  skills        String @default("[]") // JSON string[]
+  /// JSON -- declared abilities. Narrowed at runtime by granted permissions.
+  capabilities  String @default("[]") // JSON string[]
+
+  // -- AI provider selection (never hard-coded) ------------------------------
+  // providerId is resolved through the AIProvider registry in packages/ai.
+  // Changing provider or model is a data change; agent logic is untouched.
+  providerId String
+  model      String
+  temperature Float @default(0.3)
+  maxTokens  Int    @default(2048)
+
+  // -- World placement -------------------------------------------------------
+  worldId         String?
+  currentLocationId String?
+  currentCompanyId String?
+  currentJob      String?
+
+  /// Aggregate standing, 0-100. Phase 2 derives it from event history.
+  reputation Int @default(50)
+
+  isActive Boolean   @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  world         World?    @relation(fields: [worldId], references: [id], onDelete: SetNull)
+  currentLocation Location? @relation(fields: [currentLocationId], references: [id], onDelete: SetNull)
+  currentCompany Company?  @relation(fields: [currentCompanyId], references: [id], onDelete: SetNull)
+
+  state         AgentState?
+  memories      AgentMemory[]
+  stateHistory  AgentStateHistory[]
+  memberships   CompanyMember[]
+  sentMessages  Message[]       @relation("MessageSenderAgent")
+  createdTasks  Task[]          @relation("TaskCreatorAgent")
+  assignedTasks Task[]          @relation("TaskAssigneeAgent")
+  conversations ConversationParticipant[]
+  toolInvocations ToolInvocation[]
+  relationshipsOut AgentRelationship[] @relation("RelationshipSource")
+  relationshipsIn  AgentRelationship[] @relation("RelationshipTarget")
+  blueprintsRequested AgentBlueprint[] @relation("BlueprintRequester")
+  approvalRequests  ApprovalRequest[]   @relation("ApprovalRequestAgentRequester")
+
+  @@index([roleKey])
+  @@index([worldId])
+  @@index([currentCompanyId])
+  @@index([currentLocationId])
+}
+
+model AgentState {
+  id      String @id @default(cuid())
+  agentId String @unique
+
+  /// ONLINE | OFFLINE | IDLE | WORKING | THINKING | WAITING | SLEEPING |
+  /// ERROR | PAUSED
+  state String @default("OFFLINE")
+  activity  String?
+  mood      String?
+
+  currentTaskId     String?
+  currentLocationId String?
+  /// JSON -- Phase 2: energy, hunger, social need, focus.
+  vitals            String @default("{}")
+
+  lastActivityAt DateTime?
+  errorCount     Int       @default(0)
+  updatedAt      DateTime  @updatedAt
+
+  agent     Agent  @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  currentTask Task? @relation("AgentStateCurrentTask", fields: [currentTaskId], references: [id], onDelete: SetNull)
+
+  @@index([state])
+  @@index([currentTaskId])
+}
+
+model AgentStateHistory {
+  id       String  @id @default(cuid())
+  agentId  String
+  fromState String?
+  toState  String
+  activity String?
+  reason   String?
+  changedAt DateTime @default(now())
+
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([agentId, changedAt])
+}
+
+model AgentMemory {
+  id      String @id @default(cuid())
+  agentId String
+
+  /// SHORT_TERM | LONG_TERM | EPISODIC | FACT
+  kind    String
+  content String
+
+  /// 1-10. Drives retrieval ranking together with recency.
+  importance Int @default(5)
+
+  /// Where the memory came from: CONVERSATION | TASK | EVENT | TOOL |
+  /// OBSERVATION | HUMAN | SYSTEM. Kept as provenance, not as a foreign key,
+  /// so a memory survives the deletion of its trigger.
+  source String @default("SYSTEM")
+
+  // Optional links for cross-reference / timeline reconstruction.
+  taskId         String?
+  conversationId String?
+  eventId        String?
+  relatedAgentId String?
+
+  /// JSON -- Phase 2: embedding vector handle, tags, salience decay curve.
+  metadata String @default("{}")
+
+  accessCount     Int       @default(0)
+  lastAccessedAt  DateTime?
+  expiresAt       DateTime?
+  createdAt       DateTime  @default(now())
+
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([agentId, kind])
+  @@index([agentId, importance])
+  @@index([taskId])
+  @@index([expiresAt])
+}
+
+model AgentRelationship {
+  id       String @id @default(cuid())
+  agentId  String
+  targetAgentId String
+
+  /// Phase 2 social graph. Bounds: -100..100.
+  affinity        Int @default(0)
+  trust           Int @default(50)
+  interactionCount Int @default(0)
+  notes           String?
+  lastInteractionAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  agent  Agent @relation("RelationshipSource", fields: [agentId], references: [id], onDelete: Cascade)
+  target Agent @relation("RelationshipTarget", fields: [targetAgentId], references: [id], onDelete: Cascade)
+
+  @@unique([agentId, targetAgentId])
+  @@index([targetAgentId])
+}
+
+// =============================================================================
+// TASKS
+// =============================================================================
+
+model Project {
+  id          String   @id @default(cuid())
+  companyId   String
+  name        String
+  description String?
+  /// PLANNING | ACTIVE | PAUSED | COMPLETED | CANCELLED
+  status      String   @default("PLANNING")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  tasks   Task[]
+
+  @@unique([companyId, name])
+  @@index([companyId])
+}
+
+model Task {
+  id          String  @id @default(cuid())
+  title       String
+  description String?
+
+  /// PENDING | PLANNED | ASSIGNED | RUNNING | WAITING_APPROVAL | BLOCKED |
+  /// COMPLETED | FAILED | CANCELLED
+  status      String  @default("PENDING")
+  /// LOW | MEDIUM | HIGH | CRITICAL
+  priority    String  @default("MEDIUM")
+
+  companyId  String?
+  projectId  String?
+  parentTaskId String?
+
+  creatorAgentId String?
+  creatorUserId  String?
+  assigneeAgentId String?
+
+  result String?
+  error  String?
+  /// JSON -- free-form execution context, plan steps, artifacts.
+  metadata String @default("{}")
+
+  /// Total attempts. Each execution attempt increments it.
+  attempts Int @default(0)
+
+  plannedAt   DateTime?
+  startedAt   DateTime?
+  completedAt DateTime?
+  cancelledAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  company   Company?  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  project   Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  parentTask Task?    @relation("TaskHierarchy", fields: [parentTaskId], references: [id], onDelete: SetNull)
+  childTasks Task[]   @relation("TaskHierarchy")
+  creatorAgent Agent? @relation("TaskCreatorAgent", fields: [creatorAgentId], references: [id], onDelete: SetNull)
+  assigneeAgent Agent? @relation("TaskAssigneeAgent", fields: [assigneeAgentId], references: [id], onDelete: SetNull)
+
+  blockedBy        TaskDependency[] @relation("TaskBlockedBy")
+  blocks           TaskDependency[] @relation("TaskBlocks")
+  messages         Message[]
+  currentForStates AgentState[]     @relation("AgentStateCurrentTask")
+  approvals        ApprovalRequest[]
+
+  @@index([status])
+  @@index([priority])
+  @@index([assigneeAgentId, status])
+  @@index([creatorAgentId])
+  @@index([companyId])
+  @@index([projectId])
+  @@index([parentTaskId])
+}
+
+model TaskDependency {
+  id             String @id @default(cuid())
+  /// The task that cannot proceed yet.
+  taskId         String
+  /// The task that must complete first.
+  dependsOnTaskId String
+  createdAt      DateTime @default(now())
+
+  task     Task @relation("TaskBlockedBy", fields: [taskId], references: [id], onDelete: Cascade)
+  dependsOn Task @relation("TaskBlocks", fields: [dependsOnTaskId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, dependsOnTaskId])
+  @@index([dependsOnTaskId])
+}
+
+// =============================================================================
+// COMMUNICATION
+// =============================================================================
+
+model Conversation {
+  id       String  @id @default(cuid())
+  /// HUMAN_AGENT | AGENT_AGENT | SYSTEM
+  kind     String
+  title    String
+  companyId String?
+  createdByUserId String?
+  isClosed Boolean  @default(false)
+  /// JSON -- Phase 2: shared context window, topic, priority.
+  metadata  String  @default("{}")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company       Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdBy     User?    @relation(fields: [createdByUserId], references: [id], onDelete: SetNull)
+  participants  ConversationParticipant[]
+  messages      Message[]
+
+  @@index([companyId])
+  @@index([kind])
+  @@index([updatedAt])
+}
+
+model ConversationParticipant {
+  id             String   @id @default(cuid())
+  conversationId String
+  agentId        String
+  joinedAt       DateTime @default(now())
+  lastReadAt     DateTime?
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  agent        Agent        @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, agentId])
+  @@index([agentId])
+}
+
+model Message {
+  id             String  @id @default(cuid())
+  conversationId String
+
+  /// HUMAN | AGENT | SYSTEM
+  senderType String
+  senderUserId  String?
+  senderAgentId String?
+
+  /// MESSAGE | PLAN | REPORT | REQUEST | QUESTION | APPROVAL_REQUEST |
+  /// TOOL_RESULT | TASK_RESULT | SYSTEM_NOTICE
+  kind    String @default("MESSAGE")
+
+  content String
+  taskId  String?
+  /// Correlates with the correlationId that produced this message.
+  correlationId String?
+  /// JSON -- plan payload, tool invocations, approval snapshot.
+  metadata String @default("{}")
+
+  createdAt DateTime @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderUser   User?        @relation("MessageSenderUser", fields: [senderUserId], references: [id], onDelete: SetNull)
+  senderAgent  Agent?       @relation("MessageSenderAgent", fields: [senderAgentId], references: [id], onDelete: SetNull)
+  task         Task?        @relation(fields: [taskId], references: [id], onDelete: SetNull)
+
+  @@index([conversationId, createdAt])
+  @@index([senderAgentId])
+  @@index([taskId])
+}
+
+// =============================================================================
+// ECONOMY -- append-only double-entry ledger
+// =============================================================================
+
+model Wallet {
+  id     String @id @default(cuid())
+  /// AGENT | USER | COMPANY
+  ownerType String
+  ownerId   String
+  currency  String @default("KW")
+
+  /// Signed balance in MINOR UNITS. Only packages/economy LedgerService may
+  /// write this column, and only inside a DB transaction that also appends
+  /// Transaction rows. There is no other code path in the system.
+  balanceMinor Int @default(0)
+
+  /// Optimistic-lock counter. Every balance write bumps it and asserts the
+  /// previous value, which makes concurrent double-spend structurally
+  /// impossible rather than merely unlikely.
+  version   Int      @default(0)
+  isFrozen  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  owner            User?          @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  ownerUserId      String?
+  transactions     Transaction[]
+  outgoingTransfers Transaction[] @relation("TransferCounterparty")
+
+  @@unique([ownerType, ownerId, currency])
+  @@index([ownerType, ownerId])
+}
+
+model Transaction {
+  id       String @id @default(cuid())
+  walletId String
+
+  /// DEPOSIT | WITHDRAWAL | TRANSFER | SALARY | PURCHASE | REWARD |
+  /// PENALTY | TAX | FEE | ADJUSTMENT
+  type String
+
+  /// DEBIT | CREDIT -- the effect of this leg on `walletId`.
+  direction String
+
+  /// Always positive. Sign is carried by `direction`.
+  amountMinor Int
+
+  /// Wallet balance immediately after this leg was applied. Makes the
+  /// statement independently verifiable without replaying the whole ledger.
+  balanceAfterMinor Int
+
+  currency String @default("KW")
+
+  /// Two legs of a transfer share one group id.
+  transferGroupId String?
+
+  counterpartyType String?
+  counterpartyId   String?
+
+  referenceType String?
+  referenceId   String?
+
+  description String?
+
+  /// USER | AGENT | SYSTEM
+  actorType String
+  actorId   String?
+  approvalRequestId String?
+
+  /// Client-supplied dedupe key. Unique -- retrying a payment can never
+  /// double-charge.
+  idempotencyKey String?
+
+  /// JSON
+  metadata String @default("{}")
+  createdAt DateTime @default(now())
+
+  wallet         Wallet  @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  counterparty   Wallet? @relation("TransferCounterparty", fields: [counterpartyWalletId], references: [id], onDelete: SetNull)
+  counterpartyWalletId String?
+  approval       ApprovalRequest? @relation(fields: [approvalRequestId], references: [id], onDelete: SetNull)
+
+  @@unique([walletId, idempotencyKey])
+  @@index([walletId, createdAt])
+  @@index([transferGroupId])
+  @@index([type])
+  @@index([referenceType, referenceId])
+  @@index([approvalRequestId])
+}
+
+// =============================================================================
+// APPROVALS
+// =============================================================================
+
+model ApprovalRequest {
+  id String @id @default(cuid())
+
+  /// USER | AGENT | SYSTEM
+  requesterType String
+  requesterAgentId String?
+  requesterUserId  String?
+
+  /// Dotted action identifier, e.g. "wallet.transfer" or "agent.create".
+  action         String
+  /// JSON -- the exact arguments that were withheld pending approval.
+  actionPayload  String
+  reason         String
+
+  /// LOW | MEDIUM | HIGH | CRITICAL
+  risk String @default("MEDIUM")
+
+  /// PENDING | APPROVED | REJECTED | EXPIRED
+  status String @default("PENDING")
+
+  companyId String?
+  worldId   String?
+  taskId    String?
+
+  decidedByUserId String?
+  decisionNote    String?
+  decidedAt       DateTime?
+
+  expiresAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  requester  Agent?    @relation("ApprovalRequestAgentRequester", fields: [requesterAgentId], references: [id], onDelete: SetNull)
+  requesterUser User?   @relation("ApprovalRequester", fields: [requesterUserId], references: [id], onDelete: SetNull)
+  decidedBy  User?     @relation("ApprovalDecider", fields: [decidedByUserId], references: [id], onDelete: SetNull)
+  company    Company?  @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  world      World?    @relation(fields: [worldId], references: [id], onDelete: SetNull)
+  task       Task?     @relation(fields: [taskId], references: [id], onDelete: SetNull)
+
+  transactions Transaction[]
+  // After approval the request re-drives the original tool invocation exactly
+  // once. Guarded by these two columns.
+  executedAt  DateTime?
+  executionError String?
+
+  @@index([status])
+  @@index([requesterAgentId])
+  @@index([companyId])
+  @@index([expiresAt])
+}
+
+// =============================================================================
+// AGENT FACTORY (Phase 1 = blueprint + approval only, no instantiation)
+// =============================================================================
+
+model AgentBlueprint {
+  id       String @id @default(cuid())
+  companyId String?
+
+  name     String
+  roleKey  String
+  title    String
+
+  systemPrompt String
+  personality  String @default("{}")
+  goals        String @default("[]")
+  skills       String @default("[]")
+  capabilities String @default("[]")
+
+  providerId  String
+  model       String
+  temperature Float @default(0.3)
+  maxTokens   Int    @default(2048)
+
+  /// DRAFT | PENDING_APPROVAL | APPROVED | REJECTED | INSTANTIATED
+  status String @default("DRAFT")
+
+  requestedByAgentId String?
+  approvalRequestId  String?
+  instantiatedAgentId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  requestedBy Agent? @relation("BlueprintRequester", fields: [requestedByAgentId], references: [id], onDelete: SetNull)
+
+  @@index([companyId])
+  @@index([status])
+}
+
+// =============================================================================
+// OBSERVABILITY
+// =============================================================================
+
+model EventLog {
+  /// Monotonic integer id -- the event log's primary ordering key.
+  id Int @id @default(autoincrement())
+
+  type String
+  /// INFO | WARN | ERROR | CRITICAL
+  severity String @default("INFO")
+
+  /// USER | AGENT | SYSTEM
+  actorType String
+  actorId   String?
+  actorName String?
+
+  targetType String?
+  targetId   String?
+
+  worldId String?
+  cityId  String?
+  companyId String?
+
+  /// JSON
+  payload String @default("{}")
+
+  correlationId String
+  createdAt DateTime @default(now())
+
+  @@index([correlationId])
+  @@index([type])
+  @@index([createdAt])
+  @@index([actorType, actorId])
+  @@index([worldId])
+  @@index([companyId])
+}
+
+model ActivityLog {
+  id Int @id @default(autoincrement())
+
+  /// USER | AGENT | SYSTEM
+  actorType String
+  actorId   String?
+  actorName String
+
+  action     String
+  targetType String?
+  targetId   String?
+  /// OK | ERROR
+  result String @default("OK")
+  error  String?
+
+  correlationId String
+  ip            String?
+  userAgent     String?
+  /// JSON
+  metadata      String @default("{}")
+  createdAt DateTime @default(now())
+
+  actor User? @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+  actorUserId String?
+
+  @@index([correlationId])
+  @@index([actorType, actorId])
+  @@index([action])
+  @@index([createdAt])
+}
+
+model ToolInvocation {
+  id Int @id @default(autoincrement())
+
+  agentId String?
+  toolName String
+  /// JSON -- validated arguments
+  arguments String
+  /// SUCCESS | DENIED | PENDING_APPROVAL | ERROR
+  status String
+  /// JSON
+  result  String?
+  error   String?
+  durationMs Int?
+
+  correlationId String
+  approvalRequestId String?
+  createdAt DateTime @default(now())
+
+  agent Agent? @relation(fields: [agentId], references: [id], onDelete: SetNull)
+
+  @@index([agentId])
+  @@index([toolName])
+  @@index([correlationId])
+  @@index([createdAt])
+}
