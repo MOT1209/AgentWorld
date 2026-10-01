@@ -18,6 +18,22 @@ Every response carries `correlationId`; errors are `{ code, message, correlation
 - `POST /world/move-agent {agentId, toLocationId, reason?}`
 - `POST /world/worlds|cities|locations` — create geography
 
+## Simulation
+
+- `GET /simulation/state?worldId=` — world status/clock, engine heartbeat, counts, per-agent state + needs
+- `GET /simulation/clock?worldId=` — simulated vs wall clock
+- `POST /simulation/start|pause|resume|stop {worldId?}` — world lifecycle (WORLD_WRITE)
+- `POST /simulation/tick {worldId?}` — run one tick synchronously (WORLD_WRITE)
+- `POST /simulation/speed {timeScale, worldId?}` — 0.1x..10000x (WORLD_WRITE)
+
+## Event stream
+
+- `GET /events/stream?token=<JWT>&worldId=&companyId=&type=` — Server-Sent
+  Events (`text/event-stream`). EventSource cannot set headers, so the token may
+  be passed as a query parameter; `event.read` is required. Each message is
+  `id: <EventLog.id>`, `event: <TYPE>`, `data: <persisted event JSON>`; a
+  `connected` event and periodic `: heartbeat` comments keep the stream open.
+
 ## Companies
 
 - `GET /companies`, `POST /companies {name, description?}`
@@ -33,6 +49,12 @@ Every response carries `correlationId`; errors are `{ code, message, correlation
 - `POST /agents/:id/provider {providerId, model, temperature?}` — vendor swap as data
 - `POST /agents/:id/run {trigger, conversationId?, taskId?, userMessage?}`
 - `POST /agents/:id/chat {content, companyId?}` — direct thread + run
+- `GET /agents/:id/activity` — the single open activity + recent history
+- `GET /agents/:id/needs` — parsed vitals (0..100, higher is better)
+- `GET /agents/:id/goals?status=` — structured goal lifecycle
+- `POST /agents/:id/goals {title, description?, priority?, status?, progress?}` (AGENT_MODIFY)
+- `PATCH /agents/:id/goals/:goalId` (AGENT_MODIFY)
+- `POST /agents/:id/actions {type, ...}` — validated MOVE / START_ACTIVITY / STOP_ACTIVITY / REST / IDLE (AGENT_MODIFY)
 
 ## Tasks
 

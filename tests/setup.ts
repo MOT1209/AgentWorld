@@ -20,10 +20,32 @@ const databaseDir = join(root, "database");
 const migrationsDir = join(databaseDir, "migrations");
 
 function resolveTestDbUrl(): { url: string; filePath: string } {
-  const raw = (process.env.TEST_DATABASE_URL ?? "file:./test.db").trim();
-  const match = /^file:(.+)$/.exec(raw);
-  const relative = (match?.[1] ?? "./test.db").replace(/^\.\//, "");
-  const filePath = join(databaseDir, relative);
+  // An explicit TEST_DATABASE_URL is honored verbatim (e.g. CI pinning).
+  // Otherwise each run gets a UNIQUE file so concurrent runs (two sessions,
+  // watch mode + single run, sharded CI) can never share -- and corrupt --
+  // each other's database.
+  const explicit = (process.env.TEST_DATABASE_URL ?? "").trim();
+  if (explicit !== "") {
+    const match = /^file:(.+)$/.exec(explicit);
+    const relative = (match?.[1] ?? "./test.db").replace(/^\.\//, "");
+    const filePath = join(databaseDir, relative);
+    return { url: `file:${filePath}`, filePath };
+  }
+  // Best-effort cleanup of stale run files; the live one is never ours.
+  try {
+    for (const entry of readdirSync(databaseDir)) {
+      if (/^test-\d+-\d+\.db(-journal|-wal|-shm)?$/.test(entry)) {
+        try {
+          unlinkSync(join(databaseDir, entry));
+        } catch {
+          // Locked by a live run -- leave it alone.
+        }
+      }
+    }
+  } catch {
+    // Database dir unreadable; creation below fails loudly.
+  }
+  const filePath = join(databaseDir, `test-${process.pid}-${Date.now()}.db`);
   return { url: `file:${filePath}`, filePath };
 }
 
@@ -95,6 +117,10 @@ try {
     "Task",
     "Project",
     "AgentRelationship",
+    // Phase 1 simulation tables: they reference Agent and Location, so they
+    // must be dropped before either.
+    "AgentActivity",
+    "AgentGoal",
     "AgentMemory",
     "AgentStateHistory",
     "AgentState",

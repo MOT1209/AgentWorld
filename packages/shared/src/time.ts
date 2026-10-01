@@ -54,13 +54,28 @@ export interface SimulatedTime {
   phase: DailyPhase;
 }
 
+/** Lowest representable speed. 0.5x is a development control, not a limit. */
+export const MIN_TIME_SCALE = 0.1;
+export const MAX_TIME_SCALE = 10_000;
+
+/** Clamps a world's speed multiplier to the representable range. */
+export function clampTimeScale(timeScale: number): number {
+  if (!Number.isFinite(timeScale)) return 1;
+  return Math.min(MAX_TIME_SCALE, Math.max(MIN_TIME_SCALE, timeScale));
+}
+
+/**
+ * `simulatedNow = wallNow + offset`, where the offset is the simulation LEAD
+ * over the wall clock. This is why the wall timestamp is never multiplied by
+ * the speed: `nextOffset` accumulates the lead instead (see below), so
+ * simulated time advances at exactly `timeScale` x real time.
+ */
 export function computeSimulatedTime(
   world: { timeOffsetMinutes: number; timeScale: number },
   at: Date = new Date(),
 ): SimulatedTime {
-  const effectiveScale = Math.max(1, world.timeScale);
-  const scaled = new Date(at.getTime() * effectiveScale);
-  const simulatedNow = new Date(scaled.getTime() + world.timeOffsetMinutes * MINUTE_MS);
+  const effectiveScale = clampTimeScale(world.timeScale);
+  const simulatedNow = new Date(at.getTime() + world.timeOffsetMinutes * MINUTE_MS);
   return {
     simulatedNow,
     wallNow: at,
@@ -71,9 +86,14 @@ export function computeSimulatedTime(
 }
 
 /**
- * Advances the persisted offset by the elapsed real time x timeScale.
- * Called by the world heartbeat; the result is idempotent per tick because the
- * offset is stored, not recomputed from a fixed epoch.
+ * Advances the persisted lead by `elapsedRealMinutes x (timeScale - 1)`.
+ *
+ * Because the lead is added to the wall clock, the resulting rate is
+ * `1 + (timeScale - 1) = timeScale` -- exactly the configured speed. Storing
+ * the lead (rather than recomputing from a fixed epoch) makes a tick
+ * idempotent: two heartbeats cannot double-apply the same interval.
+ *
+ * A paused world does not accumulate lead because the engine stops ticking it.
  */
 export function nextOffset(
   world: { timeOffsetMinutes: number; lastTickAt: Date | null },
@@ -82,8 +102,11 @@ export function nextOffset(
 ): number {
   if (world.lastTickAt === null) return world.timeOffsetMinutes;
   const elapsedMs = Math.max(0, at.getTime() - world.lastTickAt.getTime());
-  const elapsedScaledMs = elapsedMs * Math.max(1, timeScale);
-  return world.timeOffsetMinutes + Math.floor(elapsedScaledMs / MINUTE_MS);
+  const scale = clampTimeScale(timeScale);
+  const leadMs = elapsedMs * (scale - 1);
+  // Kept fractional: at 0.5x a sub-minute tick must not be truncated to zero
+  // or the world would never appear to move.
+  return world.timeOffsetMinutes + leadMs / MINUTE_MS;
 }
 
 export function addHours(date: Date, hours: number): Date {

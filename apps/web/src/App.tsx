@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, getToken, setToken } from "./api.js";
+import { SimulationView } from "./SimulationView.js";
 
-type Section = "world" | "company" | "agents" | "tasks" | "chat" | "economy" | "approvals" | "activity";
+type Section = "simulation" | "world" | "company" | "agents" | "tasks" | "chat" | "economy" | "approvals" | "activity";
 
 const SECTIONS: Array<{ key: Section; label: string }> = [
+  { key: "simulation", label: "Simulation" },
   { key: "world", label: "World" },
   { key: "company", label: "Company" },
   { key: "agents", label: "Agents" },
@@ -254,6 +256,7 @@ export default function App(): JSX.Element {
         ))}
       </nav>
       <main className="mx-auto max-w-6xl p-4">
+        {section === "simulation" && <SimulationView token={token} />}
         {section === "world" && (
           <Panel title="World snapshot" error={world.error}>
             <pre className="overflow-auto text-xs">{JSON.stringify(world.data, null, 2)}</pre>

@@ -16,6 +16,13 @@ import { hashPassword } from "../packages/security/src/password.js";
 import { ensureWallet } from "../packages/economy/src/wallet.service.js";
 import { fundTreasury } from "../packages/economy/src/treasury.service.js";
 import { actorSystem } from "../packages/shared/src/actor.js";
+import {
+  defaultPersonalityForRole,
+  makeSkill,
+  needsFromInitial,
+  serializeSkills,
+  serializeVitals,
+} from "../packages/simulation/src/index.js";
 
 const SYSTEM = actorSystem("seed");
 
@@ -47,8 +54,17 @@ async function main(): Promise<void> {
   let world = await prisma.world.findUnique({ where: { name: "King World" } });
   if (world === null) {
     world = await prisma.world.create({
-      data: { name: "King World", description: "The first simulated company world", timeScale: config.world.timeScale },
+      data: {
+        name: "King World",
+        description: "The first simulated company world",
+        timeScale: config.world.timeScale,
+        status: "RUNNING",
+      },
     });
+  } else if (world.status === "INITIALIZING" || world.status === "STOPPED") {
+    // A seeded world is meant to be observable immediately.
+    world = await prisma.world.update({ where: { id: world.id }, data: { status: "RUNNING" } });
+    console.log("seed: world promoted to RUNNING");
   }
   let city = await prisma.city.findUnique({ where: { worldId_name: { worldId: world.id, name: "King City" } } });
   if (city === null) {
@@ -58,8 +74,11 @@ async function main(): Promise<void> {
   }
 
   // 3. Locations
-  const locations: Array<{ name: string; kind: string; address: string | null }> = [
-    { name: "King AI Corporation HQ", kind: "HQ", address: "1 King Plaza" },
+  const locations: Array<{ name: string; kind: string; address: string | null; capacity?: number }> = [
+    { name: "King AI Corporation HQ", kind: "HQ", address: "1 King Plaza", capacity: 50 },
+    { name: "Ahmad Workspace", kind: "OFFICE", address: "1 King Plaza, Floor 3", capacity: 4 },
+    { name: "Rashid Workspace", kind: "OFFICE", address: "1 King Plaza, Floor 2", capacity: 4 },
+    { name: "Common Area", kind: "PUBLIC_SPACE", address: "1 King Plaza, Lobby", capacity: 100 },
     { name: "Central Bank", kind: "BANK", address: "2 Vault Street" },
     { name: "Central Market", kind: "MARKET", address: "3 Bazaar Road" },
   ];
@@ -71,7 +90,13 @@ async function main(): Promise<void> {
     const row =
       existing ??
       (await prisma.location.create({
-        data: { cityId: city.id, name: loc.name, kind: loc.kind, address: loc.address },
+        data: {
+          cityId: city.id,
+          name: loc.name,
+          kind: loc.kind,
+          address: loc.address,
+          ...(loc.capacity !== undefined ? { capacity: loc.capacity } : {}),
+        },
       }));
     locationIds[loc.name] = row.id;
   }
@@ -94,7 +119,12 @@ async function main(): Promise<void> {
       title: "Chief Planner",
       systemPrompt: "You are Ahmad, the Chief Planner of King AI Corporation. Break goals into plans, delegate to EXECUTOR, and review results.",
       goals: ["Keep the company plan current", "Delegate clearly scoped tasks"],
-      skills: ["planning", "delegation", "review"],
+      skills: [makeSkill("Planning", 5, 40), makeSkill("Delegation", 4), makeSkill("Review", 3)],
+      workLocation: "Ahmad Workspace",
+      structuredGoals: [
+        { title: "Publish the first week plan for King AI Corporation", priority: "HIGH", status: "ACTIVE", progress: 20 },
+        { title: "Survey Central Market prices", priority: "MEDIUM", status: "PENDING", progress: 0 },
+      ],
     },
     {
       name: "Rashid",
@@ -102,12 +132,21 @@ async function main(): Promise<void> {
       title: "Operations Executor",
       systemPrompt: "You are Rashid, the Operations Executor. Carry out assigned tasks with tools, report back concisely, and ask when blocked.",
       goals: ["Execute assigned tasks reliably", "Report outcomes clearly"],
-      skills: ["execution", "tool-use", "reporting"],
+      skills: [makeSkill("Execution", 5, 25), makeSkill("Tool Use", 4), makeSkill("Reporting", 3)],
+      workLocation: "Rashid Workspace",
+      structuredGoals: [
+        { title: "Complete the Central Market survey", priority: "MEDIUM", status: "ACTIVE", progress: 0 },
+      ],
     },
   ];
   const agents: Record<string, { id: string }> = {};
+  const nowIso = new Date().toISOString();
   for (const def of agentDefs) {
     const slug = slugify(def.name);
+    const personality = JSON.stringify(defaultPersonalityForRole(def.roleKey));
+    const skillsJson = serializeSkills(def.skills);
+    const vitalsJson = serializeVitals({ needs: needsFromInitial(), updatedAt: nowIso });
+    const workspaceId = locationIds[def.workLocation] ?? hqId;
     let agent = await prisma.agent.findUnique({ where: { slug } });
     if (agent === null) {
       agent = await prisma.agent.create({
@@ -117,21 +156,23 @@ async function main(): Promise<void> {
           roleKey: def.roleKey,
           title: def.title,
           systemPrompt: def.systemPrompt,
-          personality: JSON.stringify({ style: "concise" }),
+          personality,
           goals: JSON.stringify(def.goals),
-          skills: JSON.stringify(def.skills),
+          skills: skillsJson,
           capabilities: JSON.stringify([]),
           providerId,
           model: "mock-1",
           temperature: 0.3,
           maxTokens: 2048,
           worldId: world.id,
-          currentLocationId: hqId,
+          currentLocationId: workspaceId,
           currentCompanyId: company.id,
           currentJob: def.title,
         },
       });
-      await prisma.agentState.create({ data: { agentId: agent.id, state: "IDLE", currentLocationId: hqId } });
+      await prisma.agentState.create({
+        data: { agentId: agent.id, state: "IDLE", currentLocationId: workspaceId, vitals: vitalsJson },
+      });
       await prisma.agentStateHistory.create({
         data: { agentId: agent.id, fromState: null, toState: "IDLE", reason: "seeded" },
       });
@@ -141,15 +182,39 @@ async function main(): Promise<void> {
         data: {
           roleKey: def.roleKey,
           title: def.title,
+          personality,
+          skills: skillsJson,
           providerId,
           worldId: world.id,
-          currentLocationId: hqId,
+          currentLocationId: workspaceId,
           currentCompanyId: company.id,
           isActive: true,
         },
       });
+      await prisma.agentState.upsert({
+        where: { agentId: agent.id },
+        create: { agentId: agent.id, state: "IDLE", currentLocationId: workspaceId, vitals: vitalsJson },
+        update: { currentLocationId: workspaceId, vitals: vitalsJson },
+      });
     }
     agents[def.name] = { id: agent.id };
+
+    // Structured goal lifecycle (Phase 1). Free-form Agent.goals stays for prompts.
+    const goalCount = await prisma.agentGoal.count({ where: { agentId: agent.id } });
+    if (goalCount === 0) {
+      for (const goal of def.structuredGoals) {
+        await prisma.agentGoal.create({
+          data: {
+            agentId: agent.id,
+            title: goal.title,
+            priority: goal.priority,
+            status: goal.status,
+            progress: goal.progress,
+          },
+        });
+      }
+    }
+
     await ensureWallet(prisma, { ownerType: "AGENT", ownerId: agent.id });
   }
 

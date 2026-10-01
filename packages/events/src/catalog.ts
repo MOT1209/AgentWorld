@@ -78,6 +78,16 @@ export const EVENT_TYPES = {
   // always tell an agent's own account of something from the system's.
   AGENT_OBSERVATION: "AGENT_OBSERVATION",
 
+  // Simulation (Phase 1 core engine). World status is deliberately one event
+  // with a from/to payload rather than four near-identical types, so a
+  // subscriber cannot miss a transition by subscribing to the wrong one.
+  WORLD_STATUS_CHANGED: "WORLD_STATUS_CHANGED",
+  AGENT_ACTIVITY_STARTED: "AGENT_ACTIVITY_STARTED",
+  AGENT_ACTIVITY_COMPLETED: "AGENT_ACTIVITY_COMPLETED",
+  AGENT_GOAL_CREATED: "AGENT_GOAL_CREATED",
+  AGENT_GOAL_UPDATED: "AGENT_GOAL_UPDATED",
+  AGENT_GOAL_COMPLETED: "AGENT_GOAL_COMPLETED",
+
   // Security
   LOGIN_SUCCEEDED: "LOGIN_SUCCEEDED",
   LOGIN_FAILED: "LOGIN_FAILED",
@@ -189,6 +199,28 @@ export interface EventPayloadMap {
     category: string;
     note: string;
   };
+
+  WORLD_STATUS_CHANGED: {
+    worldId: string;
+    fromStatus: string;
+    toStatus: string;
+    timeScale: number;
+  };
+  AGENT_ACTIVITY_STARTED: {
+    agentId: string;
+    activityId: string;
+    type: string;
+    locationId: string | null;
+  };
+  AGENT_ACTIVITY_COMPLETED: {
+    agentId: string;
+    activityId: string;
+    type: string;
+    durationSimMinutes: number;
+  };
+  AGENT_GOAL_CREATED: { agentId: string; goalId: string; title: string; priority: string };
+  AGENT_GOAL_UPDATED: { agentId: string; goalId: string; status: string; progress: number };
+  AGENT_GOAL_COMPLETED: { agentId: string; goalId: string; title: string };
 
   LOGIN_SUCCEEDED: { userId: string; email: string };
   LOGIN_FAILED: { email: string; reason: string };

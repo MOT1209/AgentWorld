@@ -231,9 +231,11 @@ export async function getSimulatedTime(db: DbClient, worldId?: string): Promise<
 export async function tickWorld(
   db: DbClient,
   worldId?: string,
+  /** Injectable "now" so deterministic tests can advance the world clock. */
+  at: Date = new Date(),
 ): Promise<{ world: World; simulated: SimulatedTime }> {
   const world = worldId === undefined ? await getActiveWorld(db) : await requireWorld(db, worldId);
-  const now = new Date();
+  const now = at;
   const offset = nextOffset(world, world.timeScale, now);
 
   const updated = await db.world.update({

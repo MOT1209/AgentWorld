@@ -14,6 +14,11 @@ import { worldTools } from "./definitions/world-tools.js";
 import { companyTools } from "./definitions/company-tools.js";
 import { eventTools } from "./definitions/event-tools.js";
 import { approvalTools } from "./definitions/approval-tools.js";
+import { planTools } from "./definitions/plan-tools.js";
+import { reviewTools } from "./definitions/review-tools.js";
+import { reportTools } from "./definitions/report-tools.js";
+import { escalationTools } from "./definitions/escalation-tools.js";
+import { sessionTools } from "./definitions/session-tools.js";
 import { ToolRegistry } from "./registry.js";
 
 export const BUILT_IN_TOOLS: AnyToolDefinition[] = [
@@ -25,6 +30,11 @@ export const BUILT_IN_TOOLS: AnyToolDefinition[] = [
   ...companyTools,
   ...eventTools,
   ...approvalTools,
+  ...planTools,
+  ...reviewTools,
+  ...reportTools,
+  ...escalationTools,
+  ...sessionTools,
 ];
 
 export function createDefaultRegistry(): ToolRegistry {
@@ -43,3 +53,8 @@ export { worldTools, worldGetStateTool, worldGetLocationTool } from "./definitio
 export { companyTools, companyInfoTool } from "./definitions/company-tools.js";
 export { eventTools, eventEmitTool } from "./definitions/event-tools.js";
 export { approvalTools, approvalListTool, approvalGetTool, approvalDecideTool } from "./definitions/approval-tools.js";
+export { planTools, planCreateTool, planUpdateTool, planListTool, planGetTool } from "./definitions/plan-tools.js";
+export { reviewTools, reviewSubmitTool } from "./definitions/review-tools.js";
+export { reportTools, reportSubmitTool } from "./definitions/report-tools.js";
+export { escalationTools, escalateTool } from "./definitions/escalation-tools.js";
+export { sessionTools, sessionStartTool, sessionStatusTool } from "./definitions/session-tools.js";

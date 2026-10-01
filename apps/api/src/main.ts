@@ -2,6 +2,7 @@ import "dotenv/config";
 import { createApp, subscribeAgentWakeup } from "./app.js";
 import { getConfig, logger, redactedConfig } from "../../../packages/shared/src/index.js";
 import { connectDatabase, disconnectDatabase } from "../../../packages/database/src/index.js";
+import { getSimulationEngine } from "../../../packages/simulation/src/index.js";
 
 const log = logger.child({ component: "api.main" });
 
@@ -12,6 +13,15 @@ async function main(): Promise<void> {
   await connectDatabase();
   subscribeAgentWakeup();
 
+  // The simulation heartbeat only advances a world whose status is RUNNING; a
+  // paused or stopped world costs nothing but a timer tick.
+  const simulation = getSimulationEngine();
+  simulation.ensureHeartbeat();
+  log.info("Simulation heartbeat started", {
+    action: "simulation.heartbeat_started",
+    tickIntervalMs: simulation.tickIntervalMs,
+  });
+
   const app = createApp();
   const server = app.listen(config.port, () => {
     log.info(`API listening on :${config.port}`, { action: "api.listening", port: config.port });
@@ -19,6 +29,7 @@ async function main(): Promise<void> {
 
   const shutdown = (signal: string): void => {
     log.info(`Received ${signal}, shutting down`, { action: "api.shutdown" });
+    simulation.dispose();
     server.close(() => {
       void disconnectDatabase().finally(() => process.exit(0));
     });

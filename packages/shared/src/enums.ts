@@ -29,6 +29,10 @@ export const AgentState = {
   THINKING: "THINKING",
   WAITING: "WAITING",
   SLEEPING: "SLEEPING",
+  // Phase 1 simulation states (additive: the column is a String).
+  TRAVELING: "TRAVELING",
+  RESTING: "RESTING",
+  SOCIALIZING: "SOCIALIZING",
   ERROR: "ERROR",
   PAUSED: "PAUSED",
 } as const;
@@ -316,6 +320,11 @@ export const HIERARCHY_KINDS = ["STRATEGIC", "OPERATIONAL"] as const;
 export const HierarchyKindSchema = z.enum(HIERARCHY_KINDS);
 export type HierarchyKind = z.infer<typeof HierarchyKindSchema>;
 
+/** How many tasks an agent may hold at once. Mirrors Agent.concurrency. */
+export const CONCURRENCY_LEVELS = ["LOW", "NORMAL", "HIGH"] as const;
+export const ConcurrencyLevelSchema = z.enum(CONCURRENCY_LEVELS);
+export type ConcurrencyLevel = z.infer<typeof ConcurrencyLevelSchema>;
+
 export const ERROR_CATEGORIES = [
   "TRANSIENT",
   "CONFIGURATION",
@@ -350,6 +359,113 @@ export type ToolInvocationStatus = z.infer<typeof ToolInvocationStatusSchema>;
 
 export const OPERATION_RESULTS = ["OK", "ERROR"] as const;
 export const OperationResultSchema = z.enum(OPERATION_RESULTS);
+
+// -- Simulation (Phase 1 core engine) ----------------------------------------
+
+/**
+ * Lifecycle of a World. The engine only ticks a RUNNING world; PAUSED keeps
+ * every agent, activity and need frozen without losing state.
+ */
+export const WORLD_STATUSES = [
+  "INITIALIZING",
+  "RUNNING",
+  "PAUSED",
+  "STOPPED",
+  "ERROR",
+] as const;
+export const WorldStatusSchema = z.enum(WORLD_STATUSES);
+export type WorldStatus = z.infer<typeof WorldStatusSchema>;
+
+/** Development-facing speed presets. Internally any 0.1x..10000x is allowed. */
+export const SPEED_PRESETS = [0.5, 1, 2, 10, 60] as const;
+export type SpeedPreset = (typeof SPEED_PRESETS)[number];
+
+/** What an agent is occupationally doing over an interval. */
+export const ACTIVITY_TYPES = [
+  "WORK",
+  "REST",
+  "THINK",
+  "TRAVEL",
+  "SOCIALIZE",
+  "IDLE",
+  "SLEEP",
+] as const;
+export const ActivityTypeSchema = z.enum(ACTIVITY_TYPES);
+export type ActivityType = z.infer<typeof ActivityTypeSchema>;
+
+export const ACTIVITY_STATUSES = [
+  "PLANNED",
+  "ACTIVE",
+  "COMPLETED",
+  "CANCELLED",
+  "FAILED",
+] as const;
+export const ActivityStatusSchema = z.enum(ACTIVITY_STATUSES);
+export type ActivityStatus = z.infer<typeof ActivityStatusSchema>;
+
+/** Only one activity per agent may be PLANNED or ACTIVE at a time. */
+export const OPEN_ACTIVITY_STATUSES: readonly ActivityStatus[] = ["PLANNED", "ACTIVE"];
+
+export const GOAL_STATUSES = [
+  "PENDING",
+  "ACTIVE",
+  "PAUSED",
+  "COMPLETED",
+  "FAILED",
+  "CANCELLED",
+] as const;
+export const GoalStatusSchema = z.enum(GOAL_STATUSES);
+export type GoalStatus = z.infer<typeof GoalStatusSchema>;
+
+/** Simulated needs (Phase 1 spec section 12). 0..100, never a real biology. */
+export const NEED_TYPES = [
+  "ENERGY",
+  "HUNGER",
+  "SOCIAL",
+  "REST",
+  "ENTERTAINMENT",
+] as const;
+export const NeedTypeSchema = z.enum(NEED_TYPES);
+export type NeedType = z.infer<typeof NeedTypeSchema>;
+
+/** Simulation-level actions. Distinct from the AI tool surface. */
+export const AGENT_ACTION_TYPES = [
+  "MOVE",
+  "START_ACTIVITY",
+  "STOP_ACTIVITY",
+  "REST",
+  "IDLE",
+] as const;
+export const AgentActionTypeSchema = z.enum(AGENT_ACTION_TYPES);
+export type AgentActionType = z.infer<typeof AgentActionTypeSchema>;
+
+/**
+ * Validated agent lifecycle transitions (Phase 1 spec section 21).
+ *
+ * OFFLINE -> IDLE/ONLINE is how an agent comes back. ERROR may only be left
+ * through an explicit recovery into IDLE or ONLINE, so a failing agent cannot
+ * silently resume work. The simulation engine and the ActionValidator both
+ * consult this table before any state write.
+ */
+export const AGENT_STATE_TRANSITIONS: Record<AgentState, readonly AgentState[]> = {
+  OFFLINE: ["ONLINE", "IDLE", "ERROR"],
+  ONLINE: ["IDLE", "OFFLINE", "WORKING", "THINKING", "SLEEPING", "TRAVELING", "RESTING", "SOCIALIZING", "PAUSED", "ERROR"],
+  IDLE: ["WORKING", "THINKING", "WAITING", "SLEEPING", "TRAVELING", "RESTING", "SOCIALIZING", "ONLINE", "OFFLINE", "PAUSED", "ERROR"],
+  WORKING: ["IDLE", "WAITING", "THINKING", "PAUSED", "OFFLINE", "ERROR"],
+  THINKING: ["IDLE", "WORKING", "WAITING", "PAUSED", "OFFLINE", "ERROR"],
+  WAITING: ["IDLE", "WORKING", "THINKING", "PAUSED", "OFFLINE", "ERROR"],
+  SLEEPING: ["IDLE", "ONLINE", "OFFLINE", "PAUSED", "ERROR"],
+  TRAVELING: ["IDLE", "WORKING", "SOCIALIZING", "PAUSED", "OFFLINE", "ERROR"],
+  RESTING: ["IDLE", "SLEEPING", "WORKING", "PAUSED", "OFFLINE", "ERROR"],
+  SOCIALIZING: ["IDLE", "WORKING", "RESTING", "PAUSED", "OFFLINE", "ERROR"],
+  PAUSED: ["IDLE", "ONLINE", "OFFLINE", "ERROR"],
+  ERROR: ["IDLE", "ONLINE"],
+};
+
+export function canTransitionAgentState(from: AgentState, to: AgentState): boolean {
+  if (from === to) return true;
+  return (AGENT_STATE_TRANSITIONS[from] ?? []).includes(to);
+}
 
 // -- Helpers -----------------------------------------------------------------
 

@@ -23,6 +23,16 @@ import { agentRunRateLimit } from "../middleware/rate-limit.js";
 import { toAgentDto } from "../dto/index.js";
 import { orchestrateAgentRun } from "../services/agent-orchestrator.js";
 import { findOrCreateDirectConversation, sendMessage } from "../../../../packages/agents/src/communication.service.js";
+import {
+  listActivities,
+  getOpenActivity,
+  listGoals,
+  createGoal,
+  updateGoal,
+  executeAction,
+  AgentActionSchema,
+  parseVitals,
+} from "../../../../packages/simulation/src/index.js";
 
 export const agentRouter: Router = Router();
 agentRouter.use(authenticate);
@@ -321,6 +331,153 @@ agentRouter.post(
         req,
       );
       res.json({ data: { conversationId: conversation.id, run: result }, correlationId });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// -- Phase 1 simulation surface ---------------------------------------------
+
+agentRouter.get(
+  "/:id/activity",
+  requirePermission(PERMISSIONS.AGENT_READ),
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const agentId = req.params.id as string;
+      const q = req.query as Record<string, string | undefined>;
+      const [open, history] = await Promise.all([
+        getOpenActivity(prisma, agentId),
+        listActivities(prisma, {
+          agentId,
+          ...(q.status !== undefined ? { status: q.status } : {}),
+          ...(q.limit !== undefined ? { limit: Number(q.limit) || 25 } : {}),
+        }),
+      ]);
+      res.json({
+        data: { open, history, correlationId: getCorrelationId(req) },
+        correlationId: getCorrelationId(req),
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+agentRouter.get(
+  "/:id/needs",
+  requirePermission(PERMISSIONS.AGENT_READ),
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const state = await getAgentState(prisma, req.params.id as string);
+      res.json({ data: parseVitals(state.vitals), correlationId: getCorrelationId(req) });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+agentRouter.get(
+  "/:id/goals",
+  requirePermission(PERMISSIONS.AGENT_READ),
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const q = req.query as Record<string, string | undefined>;
+      const goals = await listGoals(prisma, {
+        agentId: req.params.id as string,
+        ...(q.status !== undefined ? { status: q.status } : {}),
+      });
+      res.json({ data: goals, correlationId: getCorrelationId(req) });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+const CreateGoalSchema = z.object({
+  title: z.string().min(1).max(300),
+  description: z.string().max(2000).nullable().optional(),
+  priority: z.string().min(1).max(40).optional(),
+  status: z.string().min(1).max(40).optional(),
+  progress: z.number().min(0).max(100).optional(),
+});
+
+agentRouter.post(
+  "/:id/goals",
+  requirePermission(PERMISSIONS.AGENT_MODIFY),
+  validate("body", CreateGoalSchema),
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const principal = getPrincipal(req);
+      const agentId = req.params.id as string;
+      const body = req.body as z.infer<typeof CreateGoalSchema>;
+      const agent = await getAgent(prisma, agentId);
+      const goal = await createGoal(
+        prisma,
+        {
+          agentId,
+          title: body.title,
+          description: body.description ?? null,
+          ...(body.priority !== undefined ? { priority: body.priority } : {}),
+          ...(body.status !== undefined ? { status: body.status } : {}),
+          ...(body.progress !== undefined ? { progress: body.progress } : {}),
+        },
+        {
+          actor: principalToActor(principal),
+          correlationId: getCorrelationId(req),
+          worldId: agent.worldId ?? undefined,
+        },
+      );
+      res.status(201).json({ data: goal, correlationId: getCorrelationId(req) });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+const UpdateGoalSchema = z.object({
+  title: z.string().min(1).max(300).optional(),
+  description: z.string().max(2000).nullable().optional(),
+  priority: z.string().min(1).max(40).optional(),
+  status: z.string().min(1).max(40).optional(),
+  progress: z.number().min(0).max(100).optional(),
+});
+
+agentRouter.patch(
+  "/:id/goals/:goalId",
+  requirePermission(PERMISSIONS.AGENT_MODIFY),
+  validate("body", UpdateGoalSchema),
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const principal = getPrincipal(req);
+      const body = req.body as z.infer<typeof UpdateGoalSchema>;
+      const goal = await updateGoal(prisma, req.params.goalId as string, body, {
+        actor: principalToActor(principal),
+        correlationId: getCorrelationId(req),
+      });
+      res.json({ data: goal, correlationId: getCorrelationId(req) });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+agentRouter.post(
+  "/:id/actions",
+  requirePermission(PERMISSIONS.AGENT_MODIFY),
+  validate("body", AgentActionSchema),
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const principal = getPrincipal(req);
+      const agentId = req.params.id as string;
+      const agent = await getAgent(prisma, agentId);
+      const result = await executeAction(prisma, agentId, req.body, {
+        actor: principalToActor(principal),
+        correlationId: getCorrelationId(req),
+        worldId: agent.worldId ?? undefined,
+        permissions: principal.permissions,
+      });
+      res.json({ data: result, correlationId: getCorrelationId(req) });
     } catch (error) {
       next(error);
     }

@@ -40,7 +40,7 @@ export async function createTestAgent(input?: {
   const agent = await prisma.agent.create({
     data: {
       name,
-      slug: `${slugify(name)}-${counter}`,
+      slug: `${slugify(name)}-${++counter}`,
       roleKey: input?.roleKey ?? "EXECUTOR",
       title: "Test Agent",
       systemPrompt: "Test prompt",

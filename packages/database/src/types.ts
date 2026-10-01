@@ -16,6 +16,8 @@ export type {
   Agent,
   AgentState,
   AgentStateHistory,
+  AgentActivity,
+  AgentGoal,
   AgentMemory,
   AgentRelationship,
   Project,
@@ -31,6 +33,14 @@ export type {
   EventLog,
   ActivityLog,
   ToolInvocation,
+  // Phase 2 orchestration.
+  Plan,
+  TaskReview,
+  Report,
+  AgentSession,
+  AgentHierarchy,
+  Escalation,
+  DecisionConflict,
 } from "@prisma/client";
 
 /** ActorRef lives in shared so no domain package needs the ORM to name a caller. */

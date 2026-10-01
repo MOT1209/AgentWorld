@@ -52,9 +52,19 @@ Agent replacement via the Factory never breaks caller addressing.
 ## Two clocks
 
 - Wall clock — security (token expiry, rate limits), audit ordering.
-- Simulation clock — `timeOffsetMinutes x timeScale`; agents think/rest here.
+- Simulation clock — `simulatedNow = wallNow + timeOffsetMinutes`, advanced at
+  `timeScale` x real time; agents think/rest here.
 
 Advancing the simulation never extends an approval window.
+
+## Simulation engine
+
+`packages/simulation` owns world clock control, needs, skills, goals,
+activities, the deterministic decision engine, the validated action system, and
+the tick loop. A heartbeat ticks only a `RUNNING` world; each tick finishes due
+activities, decays needs, and lets free agents decide. Every decision passes the
+same `validateAction` gate as an operator action, so neither a rule nor a future
+model can bypass the agent lifecycle. See `docs/SIMULATION_ENGINE.md`.
 
 ## AI providers
 

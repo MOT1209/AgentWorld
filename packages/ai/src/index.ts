@@ -11,3 +11,4 @@ export {
   setProviderRegistry,
   ensureMockProvider,
 } from "./registry.js";
+export { routeModel, type ModelRequest, type ModelRoute, type LatencyProfile } from "./router.js";

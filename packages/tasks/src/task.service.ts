@@ -101,6 +101,8 @@ export async function createTask(
       companyId: input.companyId ?? ctx.companyId ?? null,
       projectId: input.projectId ?? null,
       parentTaskId: input.parentTaskId ?? null,
+      planId: input.planId ?? null,
+      type: taskTypeOf(input),
       creatorAgentId: input.creatorAgentId ?? ctx.agentId ?? null,
       creatorUserId: input.creatorUserId ?? null,
       assigneeAgentId: input.assigneeAgentId ?? null,
