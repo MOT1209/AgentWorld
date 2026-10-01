@@ -16,14 +16,29 @@
 import { TASK_STATUSES, type TaskStatus } from "../../shared/src/index.js";
 
 export const TASK_TRANSITIONS: Record<TaskStatus, readonly TaskStatus[]> = {
-  PENDING: ["PLANNED", "ASSIGNED", "BLOCKED", "CANCELLED"],
+  // Phase 2 additions: PLANNING (being decomposed), READY (planned, awaiting
+  // assignment), REVIEWING (work done, under review). The Phase 1 statuses all
+  // keep their original exits, so nothing that existed before breaks.
+  PENDING: ["PLANNING", "READY", "PLANNED", "ASSIGNED", "BLOCKED", "CANCELLED"],
+  PLANNING: ["READY", "PLANNED", "PENDING", "BLOCKED", "CANCELLED"],
+  READY: ["ASSIGNED", "RUNNING", "PENDING", "PLANNED", "BLOCKED", "CANCELLED"],
   PLANNED: ["ASSIGNED", "PENDING", "BLOCKED", "CANCELLED"],
   ASSIGNED: ["RUNNING", "BLOCKED", "WAITING_APPROVAL", "FAILED", "PENDING", "CANCELLED"],
-  RUNNING: ["COMPLETED", "FAILED", "BLOCKED", "WAITING_APPROVAL", "CANCELLED"],
+  RUNNING: [
+    "COMPLETED",
+    "REVIEWING",
+    "FAILED",
+    "BLOCKED",
+    "WAITING_APPROVAL",
+    "CANCELLED",
+  ],
   WAITING_APPROVAL: ["RUNNING", "COMPLETED", "FAILED", "BLOCKED", "CANCELLED"],
   BLOCKED: ["ASSIGNED", "RUNNING", "PLANNED", "PENDING", "CANCELLED"],
+  // Review outcomes: approve -> COMPLETED, needs changes -> back to work,
+  // reject -> FAILED. Rejection and rework both remain re-enterable.
+  REVIEWING: ["COMPLETED", "FAILED", "ASSIGNED", "RUNNING", "BLOCKED", "CANCELLED"],
   COMPLETED: [],
-  FAILED: ["PENDING", "PLANNED", "ASSIGNED", "RUNNING", "CANCELLED"],
+  FAILED: ["PENDING", "PLANNED", "READY", "ASSIGNED", "RUNNING", "CANCELLED"],
   CANCELLED: [],
 };
 
@@ -59,10 +74,11 @@ export const ACTIVE_TASK_STATUSES: readonly TaskStatus[] = [
   "WAITING_APPROVAL",
 ];
 
-/** Statuses a planner hands to an executor. */
+/** Statuses a planner hands to an executor. READY is the Phase 2 ready-queue. */
 export const ASSIGNABLE_TASK_STATUSES: readonly TaskStatus[] = [
   "PENDING",
   "PLANNED",
+  "READY",
   "BLOCKED",
   "FAILED",
 ];

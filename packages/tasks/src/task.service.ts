@@ -13,7 +13,9 @@
  *     reassign. An agent cannot silently take over someone else's work.
  */
 import {
+  TaskPrioritySchema,
   TaskStatusSchema,
+  TaskTypeSchema,
   invalidStateTransition,
   newCorrelationId,
   toJson,
@@ -55,18 +57,29 @@ export interface CreateTaskInput {
   companyId?: string | null;
   projectId?: string | null;
   parentTaskId?: string | null;
+  /** Phase 2: the plan this task decomposes, when it belongs to one. */
+  planId?: string | null;
+  /** Phase 2: task type, matched against agent capabilities when delegating. */
+  type?: string;
   metadata?: Record<string, unknown>;
   /** Task ids that must complete before this one may start. */
   dependsOn?: string[];
 }
 
 function priorityOf(input: CreateTaskInput): string {
-  const value = input.priority ?? "MEDIUM";
-  const parsed = (["LOW", "MEDIUM", "HIGH", "CRITICAL"] as const).find((p) => p === value);
-  if (parsed === undefined) {
-    throw validationError(`Invalid task priority: ${String(value)}`);
+  const parsed = TaskPrioritySchema.safeParse(input.priority ?? "MEDIUM");
+  if (!parsed.success) {
+    throw validationError(`Invalid task priority: ${String(input.priority)}`);
   }
-  return parsed;
+  return parsed.data;
+}
+
+function taskTypeOf(input: CreateTaskInput): string {
+  const parsed = TaskTypeSchema.safeParse(input.type ?? "GENERAL");
+  if (!parsed.success) {
+    throw validationError(`Invalid task type: ${String(input.type)}`);
+  }
+  return parsed.data;
 }
 
 export async function createTask(

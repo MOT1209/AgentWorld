@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>King World - تقرير المراجعة</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --panel2:#1c2330; --line:#30363d;
+    --txt:#e6edf3; --muted:#9198a1; --ok:#3fb950; --todo:#f85149; --warn:#d29922;
+    --accent:#58a6ff; --accent2:#bc8cff;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);
+    font-family:"Segoe UI",Tahoma,system-ui,sans-serif;line-height:1.7}
+  .wrap{max-width:1100px;margin:0 auto;padding:32px 20px 64px}
+  header{border-bottom:1px solid var(--line);padding-bottom:20px;margin-bottom:28px}
+  h1{margin:0 0 6px;font-size:28px}
+  .sub{color:var(--muted);font-size:14px}
+  .tag{display:inline-block;background:var(--panel2);border:1px solid var(--line);
+    border-radius:999px;padding:2px 12px;font-size:12px;margin-inline-start:8px}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin:24px 0}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px}
+  .card .n{font-size:30px;font-weight:700}
+  .card .l{color:var(--muted);font-size:13px}
+  .ok .n{color:var(--ok)} .todo .n{color:var(--todo)} .warn .n{color:var(--warn)} .acc .n{color:var(--accent)}
+  h2{font-size:20px;margin:36px 0 14px;padding-right:10px;border-right:3px solid var(--accent)}
+  h3{font-size:16px;margin:20px 0 8px;color:var(--accent2)}
+  table{width:100%;border-collapse:collapse;background:var(--panel);
+    border:1px solid var(--line);border-radius:10px;overflow:hidden;font-size:14px}
+  th,td{padding:10px 14px;border-bottom:1px solid var(--line);text-align:right}
+  th{background:var(--panel2);color:var(--muted);font-weight:600}
+  tr:last-child td{border-bottom:none}
+  .st{font-weight:700;font-size:13px}
+  .st.done{color:var(--ok)} .st.todo{color:var(--todo)}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+  .mod{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px}
+  .mod b{display:block;margin-bottom:6px;color:var(--txt)}
+  .mod span{color:var(--muted);font-size:13px;display:block}
+  code,pre{font-family:Consolas,"Courier New",monospace;direction:ltr;unicode-bidi:isolate}
+  code{background:var(--panel2);border:1px solid var(--line);border-radius:5px;
+    padding:1px 6px;font-size:13px;color:#79c0ff}
+  pre{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+    padding:14px;overflow-x:auto;font-size:13px;color:#c9d1d9;line-height:1.5}
+  ul{padding-inline-start:22px} li{margin:6px 0}
+  .note{background:#21262d;border:1px solid var(--line);border-inline-start:3px solid var(--warn);
+    border-radius:8px;padding:12px 16px;font-size:14px;color:#d5dae0;margin:14px 0}
+  .ok-box{border-inline-start-color:var(--ok)}
+  .badge{display:inline-block;border-radius:6px;padding:1px 9px;font-size:12px;font-weight:700}
+  .badge.g{background:#1a3a24;color:#3fb950} .badge.r{background:#3d1d1c;color:#ff7b72}
+  footer{margin-top:44px;padding-top:16px;border-top:1px solid var(--line);
+    color:var(--muted);font-size:13px}
+  a{color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>King World <span style="color:var(--muted);font-weight:400">/ تقرير المراجعة</span></h1>
+  <div class="sub">
+    AI Agent Company World - شركة رقمية يديرها وكلاء AI
+    <span class="tag">Phase 1: core engine</span>
+    <span class="tag">المصدر: plan.md</span>
+    <span class="tag">التاريخ: 2026-10-01</span>
+  </div>
+</header>
+
+<div class="cards">
+  <div class="card ok"><div class="n">11</div><div class="l">عناصر منجزة (DONE)</div></div>
+  <div class="card todo"><div class="n">8</div><div class="l">عناصر متبقية (TODO)</div></div>
+  <div class="card acc"><div class="n">27</div><div class="l">موديل في قاعدة البيانات</div></div>
+  <div class="card acc"><div class="n">17</div><div class="l">أداة (Tool) جاهزة</div></div>
+  <div class="card warn"><div class="n">0</div><div class="l">ملفات HTML قبل هذا التقرير</div></div>
+  <div class="card acc"><div class="n">4</div><div class="l">أدوار وكلاء معرّفة</div></div>
+</div>
+
+<div class="note ok-box">
+  <b>الخلاصة:</b> المحرك الأساسي (ledger, events, security, tasks, memory, world, agents, tools, approvals)
+  مكتمل ويعمل بـ <code>tsc --noEmit</code> نظيف. الطبقة الخارجية — HTTP API، البيانات الأولية،
+  الاختبارات، الداشبورد، التوثيق — لم تبدأ بعد. النظام مصمم ليعمل من الصفر <b>بدون أي مفتاح API</b>
+  عبر الـ <code>mock</code> provider.
+</div>
+
+<h2>1. حالة التعريف بالإنجاز (Definition of Done)</h2>
+<table>
+  <tr><th>البند</th><th>الحالة</th></tr>
+  <tr><td>Monorepo + toolchain + config</td><td class="st done">DONE</td></tr>
+  <tr><td>Database schema + migrations</td><td class="st done">DONE</td></tr>
+  <tr><td>Ledger with audit guarantees</td><td class="st done">DONE</td></tr>
+  <tr><td>Event bus + audit log</td><td class="st done">DONE</td></tr>
+  <tr><td>AI provider abstraction</td><td class="st done">DONE</td></tr>
+  <tr><td>Security: auth, RBAC, permissions, sanitisation</td><td class="st done">DONE</td></tr>
+  <tr><td>Task engine + state machine</td><td class="st done">DONE</td></tr>
+  <tr><td>Memory engine</td><td class="st done">DONE</td></tr>
+  <tr><td>World / clock</td><td class="st done">DONE</td></tr>
+  <tr><td>Agent runtime + role profiles</td><td class="st done">DONE</td></tr>
+  <tr><td>Tool registry + executor + 17 tools</td><td class="st done">DONE</td></tr>
+  <tr><td>Approval policy + service</td><td class="st done">DONE</td></tr>
+  <tr><td>HTTP API (<code>apps/api</code>)</td><td class="st todo">TODO</td></tr>
+  <tr><td>Seed data (<code>database/seed.ts</code>)</td><td class="st todo">TODO</td></tr>
+  <tr><td>Tests (<code>tests/</code>)</td><td class="st todo">TODO</td></tr>
+  <tr><td>Dashboard (<code>apps/web</code>)</td><td class="st todo">TODO</td></tr>
+  <tr><td>Docs (<code>docs/</code>)</td><td class="st todo">TODO</td></tr>
+  <tr><td>Lint clean</td><td class="st todo">TODO</td></tr>
+  <tr><td>Build passes</td><td class="st todo">TODO</td></tr>
+  <tr><td>End-to-end verification</td><td class="st todo">TODO</td></tr>
+</table>
+
+<h2>2. ما تم بناؤه (Built)</h2>
+
+<h3>قاعدة البيانات</h3>
+<p style="color:var(--muted);font-size:14px;margin-top:0">
+<code>database/schema.prisma</code> - 27 موديل مع foreign keys و indexes:
+<span dir="ltr" style="display:block;margin-top:6px;font-family:Consolas,monospace;font-size:13px">
+User · Company · Department · CompanyMember · World · City · Location · Agent · AgentState ·
+AgentStateHistory · AgentMemory · AgentRelationship · Project · Task · TaskDependency ·
+Conversation · ConversationParticipant · Message · Wallet · Transaction · ApprovalRequest ·
+AgentBlueprint · EventLog · ActivityLog · ToolInvocation</span>
+</p>
+<ul>
+  <li><code>20260930191421_init</code> — المخطط الكامل</li>
+  <li><code>20260930200000_ledger_immutability</code> — triggers تجعل جدول <code>Transaction</code> append-only</li>
+</ul>
+
+<h3>الحزم (packages)</h3>
+<div class="grid">
+  <div class="mod"><b>shared</b><span>enums, money (وحدات صحيحة فقط), errors, json, config, logger, correlation, dual clock, pagination, slug, actor</span></div>
+  <div class="mod"><b>database</b><span>client singleton + health, transaction مع retry على SQLITE_BUSY و optimistic-lock</span></div>
+  <div class="mod"><b>security</b><span>permissions + HUMAN_ONLY, RBAC (OWNER/ADMIN/OBSERVER), bcrypt, JWT HS256, rate-limit, sanitize</span></div>
+  <div class="mod"><b>events</b><span>catalog (~45 حدث), bus يكتب داخل نفس transaction, audit log يسجّل الرفض كالنجاح</span></div>
+  <div class="mod"><b>ai</b><span>AIProvider interface + OpenAI-compatible / Anthropic / Google / mock، و Zod to JSON Schema</span></div>
+  <div class="mod"><b>economy</b><span>wallet, ledger (الكاتب الوحيد للأرصدة), statements + verifyLedger, treasury</span></div>
+  <div class="mod"><b>company</b><span>إنشاء الشركة، overview، أقسام، أعضاء، مشاريع، findAgentsByRole</span></div>
+  <div class="mod"><b>world</b><span>World/City/Location CRUD، moveAgent، tickWorld، snapshot، dual-clock</span></div>
+  <div class="mod"><b>tasks</b><span>جدول انتقالات صريح، كشف دوران التبعيات، صلاحيات، getNextAvailableTask</span></div>
+  <div class="mod"><b>memory</b><span>4 أنواع باعمار نصف عمر مختلفة، ترتيب importance+recency، انتهاء صلاحية</span></div>
+  <div class="mod"><b>approvals</b><span>جداول ALWAYS_APPROVE / ROUTINE / ACTION_RISK، claimForExecution أحادي، expiry sweep</span></div>
+  <div class="mod"><b>agents</b><span>4 أدوار، CRUD + state history، تواصل بالدور، prompt-builder، runtime think-act-observe، blueprints</span></div>
+  <div class="mod"><b>tools</b><span>registry يتحقق عند الإقلاع، executor كنقطة إنفاذ واحدة، 17 أداة مدمجة</span></div>
+</div>
+
+<h3>الأدوار الأربعة</h3>
+<p style="font-size:14px;color:var(--muted)">
+<code>PLANNER</code> · <code>EXECUTOR</code> · <code>REVIEWER</code> · <code>ANALYST</code>
+— السلوكيات تأتي من <code>roleKey -&gt; RoleProfile</code>، ولا يوجد أي
+<code>if (agent.name === ...)</code> في المستودع. السجل يرفض تحميل دور يمنح أي صلاحية human-only.
+</p>
+
+<h3>الأدوات الـ 17</h3>
+<pre>task.create  task.update  task.list  task.detail
+message.send  message.read
+memory.store  memory.search  memory.forget
+wallet.balance  wallet.transfer  wallet.statement
+world.get_state  world.get_location
+company.info  event.emit
+approval.list  approval.get  approval.decide   (human-only)</pre>
+
+<h2>3. الضمانات المحاسبية (Ledger)</h2>
+<ul>
+  <li><b>Atomicity</b> — تحديث الرصيد + قيد Transaction في transaction واحدة.</li>
+  <li><b>No overdraft</b> — رصيد سالب مرفوض.</li>
+  <li><b>Double entry</b> — التحويل يكتب DEBIT + CREDIT يشتركان في <code>transferGroupId</code>.</li>
+  <li><b>Idempotency</b> — <code>idempotencyKey</code> يحوّل إعادة المحاولة إلى no-op.</li>
+  <li><b>Immutability</b> — triggers ترفض أي <code>UPDATE</code>/<code>DELETE</code> على <code>Transaction</code>.</li>
+  <li><b>Optimistic locking</b> — كل كتابة تتحقق من <code>version</code> للمحفظة.</li>
+  <li><b>Lock order ثابت</b> — ترتيب محفظات مرتّب، مستحيل الـ deadlock.</li>
+</ul>
+<div class="note ok-box"><code>verifyLedger()</code> يعيد تشغيل الدفتر كله ويثبت أن كل رصيد مخزّن يساوي مجموع قيوده.</div>
+
+<h2>4. الأعمال المتبقية (Remaining)</h2>
+
+<h3>4.1 <code>apps/api</code> — طبقة HTTP (لم تبدأ) <span class="badge r">الأكبر</span></h3>
+<pre>apps/api/src/
+  main.ts               bootstrap + graceful shutdown
+  app.ts                تجميع express (ليستورد الاختبار بدون listen)
+  config/routes.ts      جدول /api/v1
+  middleware/           authenticate · require-permission · rate-limit
+                        correlation · error-handler · validate
+  routes/               auth · world · company · agent · task
+                        conversation · memory · economy ·
+                        approval · tool · event
+  services/             composition-root · agent-orchestrator · approval-replay
+  dto/                  response mappers (لا تسرّب provider secrets)</pre>
+
+<h3>4.2 <code>database/seed.ts</code> (لم يبدأ)</h3>
+<ul>
+  <li>مالك من <code>SEED_OWNER_EMAIL</code> / <code>SEED_OWNER_PASSWORD</code> + محفظته</li>
+  <li>World "King World" (timeScale 60) + City "King City"</li>
+  <li>مواقع: HQ، Central Bank، Central Market</li>
+  <li>شركة "King AI Corporation" + وكيلاها <b>Ahmad</b> (PLANNER) و <b>Rashid</b> (EXECUTOR)</li>
+  <li>أقسام، عضويات برواتب، محافظ مموّلة عبر <code>deposit</code> حقيقي (ليس كتابة رصيد مباشرة)</li>
+  <li>محادثة ومهام نموذجية + ذاكرات + طلب موافقة معلّق — idempotent</li>
+</ul>
+
+<h3>4.3 <code>tests/</code> (لم يبدأ) <span class="badge r">أولوية عالية</span></h3>
+<p style="font-size:14px;color:var(--muted)">
+<code>tests/setup.ts</code> يجب أن يعيد بناء قاعدة الاختبار من الـ migrations
+(حذف الملف + <code>prisma migrate deploy</code>) لأن triggers تمنع <code>deleteMany</code>.
+</p>
+<ul>
+  <li>حالة الوكيل + التاريخ، التواصل human-&gt;agent و agent-&gt;agent بالدور</li>
+  <li>المهام: انتقالات غير قانونية مرفوضة، دوران تبعيات مرفوض، تبعية غير مكتملة تمنع البدء</li>
+  <li>الذاكرة: تخزين، ترتيب، انتهاء، عزل بين الوكلاء</li>
+  <li><b>حالات مالية حرجة:</b> رصيد غير كافٍ، لا سلبية، حفظ الكمية، idempotency،
+      التزامن لا يسمح بـ double-spend، <code>verifyLedger()</code> نظيف، الـ trigger يرفض UPDATE/DELETE،
+      تحويل لنفس المحفظة وعملة مختلفة مرفوضان</li>
+  <li>صلاحيات الأدوات: رفض بلا صلاحية، humanOnly للكائنات، agentOnly للبشر، Zod يرفض وسيطات خاطئة، بوابة الموافقة</li>
+  <li>السجل يرفض منح صلاحيات human-only + تكامل: auth -&gt; chat -&gt; task -&gt; run</li>
+</ul>
+
+<h3>4.4 <code>apps/web</code> — الداشبورد (لم يبدأ)</h3>
+<p style="font-size:14px;color:var(--muted)">
+React + Vite + Tailwind. أقسام: World, Company, Agents, Tasks, Communication, Economy, Approvals, Activity.
+عرض المحادثة يجب أن يفرّق بصرياً بين human / agent / system / tool call / task result (الحقل <code>kind</code> جاهز).
+<code>VITE_API_BASE_URL</code> عام فقط؛ التوكن في الذاكرة أو sessionStorage.
+</p>
+
+<h3>4.5 <code>docs/</code> (لم يبدأ)</h3>
+<p style="font-size:14px;color:var(--muted)">
+<code>ARCHITECTURE.md</code> — <code>SECURITY.md</code> — <code>API.md</code> — <code>ROADMAP.md</code> (خطة مدينة المرحلة 2).
+</p>
+
+<h2>5. قرارات المعمارية ولماذا</h2>
+<ul>
+  <li><b>Monorepo + tsc single-pass</b> — استيراد نسبي بامتداد <code>.js</code> صريح حتى يعمل runtime بعد إصدار <code>dist/</code>.</li>
+  <li><b>Money وحدات صحيحة</b> — لا float إطلاقاً؛ مخلوط العملات يرمي خطأ؛ حد 2,147,483,647 = 21,474,836.47 KW (مسار الترقية: BigInt/Postgres).</li>
+  <li><b>SQLite للمرحلة 1</b> — لا <code>enum</code> ولا <code>Json</code> في موصل SQLite، لذا أعمدة String تتحقق بـ Zod.</li>
+  <li><b>الدفتر هو الكاتب الوحيد</b> — <code>ledger.service.ts</code> المسار الوحيد الذي يلمس <code>Wallet.balanceMinor</code>.</li>
+  <li><b>الوكلاء مُهيّؤون لا مُبرمَجون</b> — السلوك من RoleProfile، والسجل يرفض أي دور يمنح صلاحية human-only.</li>
+  <li><b>الوكلاء يتصرفون عبر الأدوات فقط</b> — الـ runtime لا يملك handle لقاعدة البيانات؛ كل تأثير يمر بـ <code>ToolExecutor</code>.</li>
+  <li><b>طبقة AI قابلة للاستبدال فعلاً</b> — تغيير المزود = <code>UPDATE</code> وليس نشر جديد.</li>
+  <li><b>العنونة بالدور لا بالاسم</b> — <code>message.send({to:"EXECUTOR"})</code>.</li>
+  <li><b>ساعتان</b> — ساعة جدارية للأمان/التدقيق، وساعة محاكاة للوكلا. تمرير الوقت لا يمرّر نوافذ الموافقة.</li>
+</ul>
+
+<h2>6. مشكلات ومعروفات يجب نقلها</h2>
+<table>
+  <tr><th style="width:32%">المشكلة</th><th>التفصيل</th></tr>
+  <tr><td><code>npm 11</code> يمنع install scripts</td><td><code>npm approve-scripts prisma @prisma/client @prisma/engines esbuild</code></td></tr>
+  <tr><td>ترميز Windows</td><td>PowerShell كتب CP1252 و BOM. شغّل <code>scripts/normalize-encoding.mjs</code> بعد أي تعديل جماعي. الكود ASCII فقط.</td></tr>
+  <tr><td><code>toJsonArray</code> مقابل <code>JSON.stringify</code></td><td>الأولى للقراءة والثانية للكتابة؛ الخلط سبب أخطاء حقيقية في <code>agent.service.ts</code>.</td></tr>
+  <tr><td>Prisma <code>OR</code> sibling</td><td>يتغطى على بعضه؛ يجب تغليفه داخل <code>AND</code> (انظر <code>retrieveMemories</code>).</td></tr>
+  <tr><td>rollback + trigger الحذف</td><td>حذف محفظة لها transactions يفشل؛ المحافظ تُتقاعد بـ <code>isFrozen = 1</code>.</td></tr>
+  <tr><td>فلتر الذات في <code>message.send</code></td><td>وكيل يخاطب دور يحمله وحده يحصل على خطأ صريح لا سكتة.</td></tr>
+  <tr><td>Mock provider heuristic</td><td>يقرأ نص الـ prompt وأسماء الأدوات؛ تغيير الدور يغيّر سلوكه. متوقع — هو stub.</td></tr>
+</table>
+
+<h2>7. الترتيب المقترح للجلسة التالية</h2>
+<ol>
+  <li><code>apps/api</code> assembly + middleware + <code>auth.routes.ts</code> ثم تحقق الدخول بـ curl</li>
+  <li><code>database/seed.ts</code> لإدخال بيانات حقيقية</li>
+  <li><code>tests/setup.ts</code> + مجموعة الاختبارات المالية أولاً (الأعلى خطورة)</li>
+  <li>بقية مسارات الـ API</li>
+  <li>ربط approval replay + استيقاظ الوكيل عند وصول رسالة</li>
+  <li><code>apps/web</code></li>
+  <li><code>docs/</code></li>
+  <li><code>npm run verify</code> ثم قائمة فحص المرحلة 1</li>
+</ol>
+
+<div class="note">
+  <b>أمر التحقق النهائي:</b> <code>npm run verify</code>
+  (typecheck -&gt; lint -&gt; test -&gt; build).
+</div>
+
+<h2>8. التشغيل السريع</h2>
+<pre>npm install
+cp .env.example .env          # يعمل كما هو; لا حاجة لمفاتيح API
+npm run db:generate
+npm run db:migrate
+npm run db:seed
+npm run dev                   # API  :4000
+npm run dev:web               # Web  :5173</pre>
+
+<footer>
+  أُنشئ تلقائياً من <code>plan.md</code> — 2026-10-01 · حالة القراءة: مجلدات
+  <code>apps/api/src</code> و <code>tests</code> و <code>docs</code> فارغة و<code>database/seed.ts</code> غير موجود وقت المراجعة.
+</footer>
+
+</div>
+</body>
+</html>

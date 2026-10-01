@@ -57,6 +57,19 @@ export const EVENT_TYPES = {
   APPROVAL_REJECTED: "APPROVAL_REJECTED",
   APPROVAL_EXPIRED: "APPROVAL_EXPIRED",
 
+  // Planning & orchestration (Phase 2)
+  PLAN_CREATED: "PLAN_CREATED",
+  PLAN_STATUS_CHANGED: "PLAN_STATUS_CHANGED",
+  PLAN_APPROVED: "PLAN_APPROVED",
+  TASK_REVIEWED: "TASK_REVIEWED",
+  REPORT_WRITTEN: "REPORT_WRITTEN",
+  ESCALATION_RAISED: "ESCALATION_RAISED",
+  ESCALATION_RESOLVED: "ESCALATION_RESOLVED",
+  DECISION_CONFLICT_RAISED: "DECISION_CONFLICT_RAISED",
+  DECISION_CONFLICT_RESOLVED: "DECISION_CONFLICT_RESOLVED",
+  SESSION_STARTED: "SESSION_STARTED",
+  SESSION_FINISHED: "SESSION_FINISHED",
+
   // Tools
   TOOL_INVOKED: "TOOL_INVOKED",
   TOOL_DENIED: "TOOL_DENIED",
@@ -106,6 +119,7 @@ export interface EventPayloadMap {
     senderType: string;
     senderId: string | null;
     kind: string;
+    notifyAgentId?: string | null;
   };
 
   TASK_CREATED: { taskId: string; title: string; createdByAgentId: string | null };
@@ -138,6 +152,34 @@ export interface EventPayloadMap {
   APPROVAL_GRANTED: { approvalRequestId: string; action: string; decidedByUserId: string };
   APPROVAL_REJECTED: { approvalRequestId: string; action: string; decidedByUserId: string };
   APPROVAL_EXPIRED: { approvalRequestId: string; action: string };
+
+  PLAN_CREATED: { planId: string; title: string; createdByAgentId: string | null };
+  PLAN_STATUS_CHANGED: { planId: string; fromStatus: string; toStatus: string };
+  PLAN_APPROVED: { planId: string; approvedByUserId: string };
+  TASK_REVIEWED: {
+    taskId: string;
+    attempt: number;
+    reviewerAgentId: string | null;
+    outcome: string;
+  };
+  REPORT_WRITTEN: {
+    reportId: string;
+    taskId: string | null;
+    kind: string;
+    authorAgentId: string | null;
+  };
+  ESCALATION_RAISED: {
+    escalationId: string;
+    taskId: string | null;
+    category: string;
+    raisedByAgentId: string;
+    toAgentId: string | null;
+  };
+  ESCALATION_RESOLVED: { escalationId: string; resolution: string; resolvedByAgentId: string | null };
+  DECISION_CONFLICT_RAISED: { conflictId: string; subject: string; raisedByAgentId: string };
+  DECISION_CONFLICT_RESOLVED: { conflictId: string; resolution: string; resolvedByAgentId: string | null };
+  SESSION_STARTED: { sessionId: string; agentId: string; trigger: string };
+  SESSION_FINISHED: { sessionId: string; agentId: string; status: string };
 
   TOOL_INVOKED: { toolName: string; agentId: string | null; status: string; durationMs: number };
   TOOL_DENIED: { toolName: string; agentId: string | null; reason: string; requiredPermission: string | null };

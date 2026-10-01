@@ -49,8 +49,19 @@ export default tseslint.config(
     },
   },
   {
+    files: ["apps/web/src/**/*.ts", "apps/web/src/**/*.tsx"],
+    languageOptions: {
+      globals: {
+        document: "readonly",
+        window: "readonly",
+        sessionStorage: "readonly",
+        localStorage: "readonly",
+      },
+    },
+  },
+  {
     files: ["**/*.js", "**/*.mjs"],
     ...tseslint.configs.disableTypeChecked,
-    languageOptions: { globals: { process: "readonly", console: "readonly" } },
+    languageOptions: { globals: { process: "readonly", console: "readonly", Buffer: "readonly" } },
   },
 );

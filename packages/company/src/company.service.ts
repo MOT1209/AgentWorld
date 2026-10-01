@@ -223,7 +223,7 @@ export async function listDepartments(db: DbClient, companyId: string): Promise<
 export async function createProject(
   db: DbClient,
   input: { companyId: string; name: string; description?: string },
-  ctx: CompanyContext,
+  _ctx: CompanyContext,
 ): Promise<Project> {
   const company = await getCompany(db, input.companyId);
   const existing = await db.project.findUnique({

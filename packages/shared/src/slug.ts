@@ -10,5 +10,5 @@ export function slugify(input: string): string {
 }
 
 export function isValidToolName(name: string): boolean {
-  return /^[a-z][a-zA-Z0-9]*(\.[a-z][a-zA-Z0-9]*)+$/.test(name);
+  return /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/.test(name);
 }

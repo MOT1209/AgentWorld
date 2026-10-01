@@ -207,6 +207,7 @@ export async function sendMessage(
       senderType,
       senderId: input.senderAgentId ?? input.senderUserId ?? null,
       kind,
+      notifyAgentId,
     },
   });
 

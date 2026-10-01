@@ -35,7 +35,8 @@ import { getActiveTask, getTaskDetail } from "../../tasks/src/index.js";
 import type { ToolExecutionContext, ToolExecutionResult, ToolSpec } from "../../tools/src/types.js";
 import { buildRuntimeProfile, changeAgentState, type AgentRuntimeProfile } from "./agent.service.js";
 import { sendMessage } from "./communication.service.js";
-import { buildSystemPrompt, buildTurnMessages, MAX_CONTEXT_MESSAGES } from "./prompt-builder.js";
+import { buildSystemPrompt, buildTurnMessages } from "./prompt-builder.js";
+import type { MAX_CONTEXT_MESSAGES } from "./prompt-builder.js";
 
 const log = logger.child({ component: "agents.runtime" });
 

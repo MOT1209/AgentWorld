@@ -62,6 +62,25 @@ export const PERMISSIONS = {
   APPROVAL_REQUEST: "approval.request",
   APPROVAL_DECIDE: "approval.decide",
 
+  // planning & orchestration (Phase 2)
+  PLAN_READ: "plan.read",
+  PLAN_CREATE: "plan.create",
+  PLAN_UPDATE: "plan.update",
+  PLAN_APPROVE: "plan.approve",
+
+  // execution & review (Phase 2)
+  TASK_REVIEW: "task.review",
+  REPORT_CREATE: "report.create",
+  ESCALATE: "agent.escalate",
+
+  // sessions (Phase 2)
+  SESSION_READ: "session.read",
+  SESSION_START: "session.start",
+
+  // workspace (Phase 2)
+  WORKSPACE_READ: "workspace.read",
+  WORKSPACE_WRITE: "workspace.write",
+
   // observability
   EVENT_READ: "event.read",
   EVENT_EMIT: "event.emit",
@@ -93,6 +112,9 @@ export const HUMAN_ONLY_PERMISSIONS: readonly Permission[] = [
   PERMISSIONS.COMPANY_STRUCTURE_MODIFY,
   PERMISSIONS.AUDIT_READ,
   PERMISSIONS.WALLET_WITHDRAW,
+  // Agents propose plans; a human signs them off. Granting this to a role
+  // would let an agent authorise its own plan execution.
+  PERMISSIONS.PLAN_APPROVE,
 ] as const;
 
 export function assertNoHumanOnlyPermissions(permissions: readonly string[], context: string): void {

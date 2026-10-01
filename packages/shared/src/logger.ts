@@ -97,9 +97,11 @@ function write(level: LogLevel, message: string, context: LogContext = {}): void
     const line = `${timestamp} ${lvl.toUpperCase().padEnd(5)} ${msg}${extra}`;
     if (lvl === "error") console.error(line);
     else if (lvl === "warn") console.warn(line);
+    // eslint-disable-next-line no-console
     else console.log(line);
     return;
   }
+  // eslint-disable-next-line no-console
   console.log(JSON.stringify(record));
 }
 

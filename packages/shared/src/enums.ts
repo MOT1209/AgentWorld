@@ -55,11 +55,14 @@ export type MemorySource = z.infer<typeof MemorySourceSchema>;
 
 export const TASK_STATUSES = [
   "PENDING",
+  "PLANNING",
+  "READY",
   "PLANNED",
   "ASSIGNED",
   "RUNNING",
   "WAITING_APPROVAL",
   "BLOCKED",
+  "REVIEWING",
   "COMPLETED",
   "FAILED",
   "CANCELLED",
@@ -67,9 +70,50 @@ export const TASK_STATUSES = [
 export const TaskStatusSchema = z.enum(TASK_STATUSES);
 export type TaskStatus = z.infer<typeof TaskStatusSchema>;
 
-export const TASK_PRIORITIES = ["LOW", "MEDIUM", "HIGH", "CRITICAL"] as const;
+/**
+ * Ordering only -- never compare these strings directly. MEDIUM is the Phase 1
+ * name for "normal"; both rank identically so old rows keep working.
+ */
+export const TASK_PRIORITY_RANK: Record<TaskPriority, number> = {
+  LOW: 0,
+  MEDIUM: 1,
+  NORMAL: 1,
+  HIGH: 2,
+  URGENT: 3,
+  CRITICAL: 4,
+};
+
+export const TASK_PRIORITIES = [
+  "LOW",
+  "MEDIUM",
+  "NORMAL",
+  "HIGH",
+  "URGENT",
+  "CRITICAL",
+] as const;
 export const TaskPrioritySchema = z.enum(TASK_PRIORITIES);
 export type TaskPriority = z.infer<typeof TaskPrioritySchema>;
+
+/** Higher wins. Ties fall back to creation order (handled by the caller). */
+export function priorityRank(priority: string): number {
+  return TASK_PRIORITY_RANK[priority as TaskPriority] ?? 1;
+}
+
+/** Phase 2 task types. Matched against an agent's capabilities when delegating. */
+export const TASK_TYPES = [
+  "PLANNING",
+  "RESEARCH",
+  "ANALYSIS",
+  "IMPLEMENTATION",
+  "TESTING",
+  "REVIEW",
+  "OPERATIONS",
+  "COORDINATION",
+  "COMMUNICATION",
+  "GENERAL",
+] as const;
+export const TaskTypeSchema = z.enum(TASK_TYPES);
+export type TaskType = z.infer<typeof TaskTypeSchema>;
 
 export const PROJECT_STATUSES = [
   "PLANNING",
@@ -97,6 +141,12 @@ export const MESSAGE_KINDS = [
   "REQUEST",
   "QUESTION",
   "APPROVAL_REQUEST",
+  "APPROVAL_RESPONSE",
+  "TASK",
+  "TASK_UPDATE",
+  "WARNING",
+  "ERROR",
+  "SYSTEM",
   "TOOL_RESULT",
   "TASK_RESULT",
   "SYSTEM_NOTICE",
@@ -175,6 +225,109 @@ export const BLUEPRINT_STATUSES = [
 ] as const;
 export const BlueprintStatusSchema = z.enum(BLUEPRINT_STATUSES);
 export type BlueprintStatus = z.infer<typeof BlueprintStatusSchema>;
+
+// -- Phase 2 orchestration ---------------------------------------------------
+
+export const PLAN_STATUSES = [
+  "DRAFT",
+  "ANALYZING",
+  "READY",
+  "EXECUTING",
+  "PAUSED",
+  "COMPLETED",
+  "FAILED",
+  "CANCELLED",
+] as const;
+export const PlanStatusSchema = z.enum(PLAN_STATUSES);
+export type PlanStatus = z.infer<typeof PlanStatusSchema>;
+
+export const PLAN_TRANSITIONS: Record<PlanStatus, readonly PlanStatus[]> = {
+  DRAFT: ["ANALYZING", "CANCELLED"],
+  ANALYZING: ["READY", "DRAFT", "CANCELLED"],
+  READY: ["EXECUTING", "PAUSED", "CANCELLED"],
+  EXECUTING: ["PAUSED", "COMPLETED", "FAILED", "CANCELLED"],
+  PAUSED: ["EXECUTING", "CANCELLED"],
+  COMPLETED: [],
+  FAILED: ["READY", "CANCELLED"],
+  CANCELLED: [],
+};
+
+export const SESSION_STATUSES = [
+  "INITIALIZING",
+  "RUNNING",
+  "WAITING",
+  "COMPLETED",
+  "FAILED",
+  "CANCELLED",
+] as const;
+export const SessionStatusSchema = z.enum(SESSION_STATUSES);
+export type SessionStatus = z.infer<typeof SessionStatusSchema>;
+
+export const REVIEW_OUTCOMES = [
+  "APPROVED",
+  "NEEDS_CHANGES",
+  "REJECTED",
+  "ESCALATE",
+] as const;
+export const ReviewOutcomeSchema = z.enum(REVIEW_OUTCOMES);
+export type ReviewOutcome = z.infer<typeof ReviewOutcomeSchema>;
+
+export const REPORT_KINDS = [
+  "PROGRESS",
+  "TASK",
+  "EXECUTION",
+  "REVIEW",
+  "ERROR",
+] as const;
+export const ReportKindSchema = z.enum(REPORT_KINDS);
+export type ReportKind = z.infer<typeof ReportKindSchema>;
+
+export const ESCALATION_CATEGORIES = [
+  "BLOCKED",
+  "TOOL_UNAVAILABLE",
+  "TASK_IMPOSSIBLE",
+  "APPROVAL_REQUIRED",
+  "REPEATED_FAILURE",
+  "PERMISSION_DENIED",
+  "MISSING_INFORMATION",
+] as const;
+export const EscalationCategorySchema = z.enum(ESCALATION_CATEGORIES);
+export type EscalationCategory = z.infer<typeof EscalationCategorySchema>;
+
+export const ESCALATION_STATUSES = [
+  "OPEN",
+  "ACKNOWLEDGED",
+  "RESOLVED",
+  "REJECTED",
+] as const;
+export const EscalationStatusSchema = z.enum(ESCALATION_STATUSES);
+export type EscalationStatus = z.infer<typeof EscalationStatusSchema>;
+
+export const CONFLICT_STATUSES = [
+  "OPEN",
+  "DISCUSSING",
+  "RESOLVED",
+  "ESCALATED",
+] as const;
+export const ConflictStatusSchema = z.enum(CONFLICT_STATUSES);
+export type ConflictStatus = z.infer<typeof ConflictStatusSchema>;
+
+export const HIERARCHY_KINDS = ["STRATEGIC", "OPERATIONAL"] as const;
+export const HierarchyKindSchema = z.enum(HIERARCHY_KINDS);
+export type HierarchyKind = z.infer<typeof HierarchyKindSchema>;
+
+export const ERROR_CATEGORIES = [
+  "TRANSIENT",
+  "CONFIGURATION",
+  "PERMISSION",
+  "INPUT",
+  "TOOL",
+  "AI_PROVIDER",
+  "SYSTEM",
+  "UNKNOWN",
+] as const;
+export const ErrorCategorySchema = z.enum(ERROR_CATEGORIES);
+export type ErrorCategory = z.infer<typeof ErrorCategorySchema>;
 
 // -- Observability -----------------------------------------------------------
 

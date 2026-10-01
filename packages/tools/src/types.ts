@@ -79,7 +79,9 @@ export interface ToolDefinition<TInput = unknown> {
   execute(context: ToolExecutionContext, input: TInput): Promise<ToolOutput>;
 }
 
-export type AnyToolDefinition = ToolDefinition<never> | ToolDefinition<ZodTypeAny> | ToolDefinition<any>;
+export type AnyToolDefinition =
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  | ToolDefinition<never> | ToolDefinition<ZodTypeAny> | ToolDefinition<any>;
 
 export type ToolExecutionStatus = "SUCCESS" | "DENIED" | "PENDING_APPROVAL" | "ERROR";
 

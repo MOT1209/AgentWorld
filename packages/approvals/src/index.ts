@@ -12,6 +12,17 @@ export {
 } from "./approval-policy.js";
 
 export {
+  ApprovalPolicyEngine,
+  createDefaultPolicyEngine,
+  policyEngine,
+  setPolicyEngine,
+  type ApprovalVerdict,
+  type PolicySubject,
+  type PolicyResult,
+  type PolicyRule,
+} from "./policy-engine.js";
+
+export {
   requestApproval,
   decideApproval,
   claimForExecution,

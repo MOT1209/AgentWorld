@@ -69,7 +69,7 @@ export async function listWorlds(db: DbClient): Promise<World[]> {
 export async function createCity(
   db: DbClient,
   input: { worldId: string; name: string; description?: string; kind?: string },
-  ctx: WorldContext,
+  _ctx: WorldContext,
 ): Promise<City> {
   await requireWorld(db, input.worldId);
   return db.city.create({

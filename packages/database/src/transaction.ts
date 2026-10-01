@@ -7,7 +7,8 @@
  * serialise, and the retry makes the second one see the first one's committed
  * balance instead of failing opaquely.
  */
-import { Prisma, PrismaClient } from "@prisma/client";
+import { Prisma } from "@prisma/client";
+import type { PrismaClient } from "@prisma/client";
 
 export type DbClient = PrismaClient | Prisma.TransactionClient;
 

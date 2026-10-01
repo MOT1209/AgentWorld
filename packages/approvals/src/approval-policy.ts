@@ -40,6 +40,15 @@ export const ROUTINE_ACTIONS: readonly string[] = [
   "company.info",
   "wallet.balance",
   "event.emit",
+  "plan.create",
+  "plan.update",
+  "plan.list",
+  "plan.get",
+  "review.submit",
+  "report.submit",
+  "agent.escalate",
+  "session.start",
+  "session.status",
 ];
 
 export const ACTION_RISK: Record<string, RiskLevel> = {
@@ -56,6 +65,17 @@ export const ACTION_RISK: Record<string, RiskLevel> = {
   "world.get_location": "LOW",
   "company.info": "LOW",
   "event.emit": "LOW",
+  // Phase 2 orchestration actions.
+  "plan.create": "LOW",
+  "plan.update": "LOW",
+  "plan.list": "LOW",
+  "plan.get": "LOW",
+  "plan.approve": "MEDIUM",
+  "review.submit": "LOW",
+  "report.submit": "LOW",
+  "agent.escalate": "MEDIUM",
+  "session.start": "LOW",
+  "session.status": "LOW",
   "agent.create": "CRITICAL",
   "agent.delete": "CRITICAL",
   "agent.modify": "HIGH",

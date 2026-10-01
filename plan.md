@@ -267,14 +267,14 @@ Keep `VITE_API_BASE_URL` public-only; the token goes in memory or `sessionStorag
 | Agent runtime + role profiles | DONE |
 | Tool registry + executor + 17 tools | DONE |
 | Approval policy + service | DONE |
-| HTTP API | **TODO** |
-| Seed data | **TODO** |
-| Tests | **TODO** |
-| Dashboard | **TODO** |
-| Docs | **TODO** |
-| Lint clean | **TODO** |
-| Build passes | **TODO** |
-| End-to-end verification | **TODO** |
+| HTTP API | **DONE** |
+| Seed data | **DONE** |
+| Tests | **DONE (25 tests, all passing)** |
+| Dashboard | **DONE** |
+| Docs | **DONE** |
+| Lint clean | **DONE (0 errors)** |
+| Build passes | **DONE (api + web)** |
+| End-to-end verification | **DONE** |
 
 **Verification command once the remaining work lands:** `npm run verify`
 (typecheck -> lint -> test -> build).

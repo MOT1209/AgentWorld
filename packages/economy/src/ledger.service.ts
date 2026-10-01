@@ -336,8 +336,6 @@ export async function transfer(input: TransferInput): Promise<TransferResult> {
   if (replay !== null) return replay;
 
   const ordered = [input.fromWalletId, input.toWalletId].sort();
-  const fromId = ordered[0] === input.fromWalletId ? input.fromWalletId : input.toWalletId;
-  const toId = ordered[0] === input.toWalletId ? input.toWalletId : input.fromWalletId;
 
   let outcome: { transferGroupId: string; debit: Transaction; credit: Transaction };
   try {
@@ -356,8 +354,8 @@ export async function transfer(input: TransferInput): Promise<TransferResult> {
         });
       }
 
-      const fromWallet = firstWallet.id === fromId ? firstWallet : secondWallet;
-      const toWallet = firstWallet.id === toId ? firstWallet : secondWallet;
+      const fromWallet = firstWallet.id === input.fromWalletId ? firstWallet : secondWallet;
+      const toWallet = firstWallet.id === input.toWalletId ? firstWallet : secondWallet;
 
       if (fromWallet.isFrozen) throw conflict("Source wallet is frozen", { walletId: fromWallet.id });
       if (toWallet.isFrozen) throw conflict("Target wallet is frozen", { walletId: toWallet.id });
