@@ -19,8 +19,17 @@
  *   - Verdicts are pure data. Callers decide what to do: the tool executor
  *     turns REQUIRE_APPROVAL into an ApprovalRequest, a route turns it into a
  *     403, a service refuses before it writes.
+ *
+ * Relationship to approval-policy.ts (the WIRED path used by ToolExecutor):
+ * the default lists below DERIVE from its canonical tables so the two can
+ * never drift apart. One deliberate difference remains: unknown actions
+ * default to DENY here while evaluateApproval allows unknown LOW-risk
+ * actions. That fail-closed default is the reason this engine exists and the
+ * reason it must not silently replace the wired path until every consumer
+ * (plan approval, escalation resolution, session actions) opts in explicitly.
  */
 import type { RiskLevel } from "../../shared/src/index.js";
+import { ALWAYS_APPROVE_ACTIONS, ROUTINE_ACTIONS } from "./approval-policy.js";
 
 export type ApprovalVerdict = "ALLOW" | "REQUIRE_APPROVAL" | "DENY";
 
@@ -29,6 +38,8 @@ export interface PolicySubject {
   action: string;
   /** Optional amount for spend-sensitive rules (integer minor units). */
   amountMinor?: number;
+  /** The tool's own declared risk. HIGH/CRITICAL escalates (mirrors step 4 of evaluateApproval). */
+  declaredRisk?: RiskLevel;
   /** Role/permission context the rule may consult. */
   actorType?: "AGENT" | "USER" | "SYSTEM";
   roleKey?: string;
@@ -89,10 +100,12 @@ export class ApprovalPolicyEngine {
  * change underneath existing callers:
  *
  *   1. Explicit approval-required actions  -> REQUIRE_APPROVAL
- *   2. Spend at/above threshold            -> REQUIRE_APPROVAL
- *   3. Routine actions                     -> ALLOW
- *   4. HIGH/CRITICAL declared risk         -> REQUIRE_APPROVAL
- *   5. Everything else                     -> DENY (engine default)
+ *   2. Spend at/above threshold            -> REQUIRE_APPROVAL (below -> ALLOW,
+ *      claiming the whole transfer exactly like evaluateApproval)
+ *   3. HIGH/CRITICAL declared risk        -> REQUIRE_APPROVAL
+ *   4. Routine actions                     -> ALLOW
+ *   5. Static high-risk list               -> REQUIRE_APPROVAL
+ *   6. Everything else                     -> DENY (engine default)
  *
  * `registerRule` can be called between these to tighten a specific action
  * without touching the shared defaults.
@@ -103,45 +116,20 @@ export function createDefaultPolicyEngine(options?: {
   routineActions?: readonly string[];
   highRiskActions?: readonly string[];
 }): ApprovalPolicyEngine {
-  const always = new Set(
-    options?.alwaysApproveActions ?? [
-      "agent.create",
-      "agent.delete",
-      "agent.modify",
-      "agent.set_permissions",
-      "company.structure.modify",
-      "wallet.withdraw",
-      "wallet.adjust",
-      "world.write",
-      "external.action",
-      "admin.impersonate",
-    ],
-  );
-  const routine = new Set(
-    options?.routineActions ?? [
-      "task.create",
-      "task.update",
-      "task.list",
-      "message.send",
-      "message.read",
-      "memory.store",
-      "memory.search",
-      "world.get_state",
-      "world.get_location",
-      "company.info",
-      "wallet.balance",
-      "event.emit",
-      "plan.create",
-      "plan.update",
-      "plan.list",
-      "plan.get",
-      "report.submit",
-      "review.submit",
-      "agent.escalate",
-      "session.start",
-      "session.status",
-    ],
-  );
+  // Single source of truth: the canonical tables in approval-policy.ts.
+  // ENGINE_ROUTINE_EXTRAS covers LOW-risk actions that predate the routine
+  // list (each maps to an ACTION_RISK "LOW" entry); approval.decide stays
+  // OUT on purpose so the human-only tool keeps its fail-closed default.
+  const ENGINE_ROUTINE_EXTRAS = [
+    "wallet.transfer",
+    "task.detail",
+    "memory.forget",
+    "wallet.statement",
+    "approval.list",
+    "approval.get",
+  ] as const;
+  const always = new Set(options?.alwaysApproveActions ?? ALWAYS_APPROVE_ACTIONS);
+  const routine = new Set(options?.routineActions ?? [...ROUTINE_ACTIONS, ...ENGINE_ROUTINE_EXTRAS]);
   const highRisk = new Set(
     options?.highRiskActions ?? [
       "agent.create",
@@ -150,6 +138,7 @@ export function createDefaultPolicyEngine(options?: {
       "company.structure.modify",
       "wallet.withdraw",
       "wallet.adjust",
+      "approval.decide",
     ],
   );
   const threshold = options?.spendThresholdMinor ?? 50_000;
@@ -164,14 +153,34 @@ export function createDefaultPolicyEngine(options?: {
       };
     })
     .register("spend-threshold", (subject) => {
-      if (subject.amountMinor === undefined) return null;
-      if (subject.amountMinor < threshold) return null;
+      // Mirrors evaluateApproval's transfer branch: the amount verdict claims
+      // the whole action, so a declared risk never overrides a below-threshold
+      // transfer (it is ALLOW, full stop).
+      if (subject.action !== "wallet.transfer" || subject.amountMinor === undefined) return null;
+      if (subject.amountMinor < threshold) {
+        return {
+          verdict: "ALLOW",
+          reason: `Transfer of ${subject.amountMinor} minor units is below the approval threshold of ${threshold}.`,
+          risk: "MEDIUM",
+        };
+      }
       return {
         verdict: "REQUIRE_APPROVAL",
         reason:
           `Amount ${subject.amountMinor} minor units meets or exceeds the ` +
           `configured approval threshold of ${threshold}.`,
         risk: "HIGH",
+      };
+    })
+    .register("declared-risk", (subject) => {
+      // Before routine on purpose (mirrors evaluateApproval step 4): a HIGH
+      // declared risk escalates even routine actions. Transfers never reach
+      // here with an amount -- the spend rule above already claimed them.
+      if (subject.declaredRisk !== "HIGH" && subject.declaredRisk !== "CRITICAL") return null;
+      return {
+        verdict: "REQUIRE_APPROVAL",
+        reason: `Action '${subject.action}' declares risk '${subject.declaredRisk}'.`,
+        risk: subject.declaredRisk,
       };
     })
     .register("routine-actions", (subject) => {

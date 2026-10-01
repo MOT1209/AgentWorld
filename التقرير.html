@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>التقرير الشامل — مشروع AgentWorld</title>
+<style>
+  :root{
+    --bg:#0b0e14; --bg2:#11151f; --panel:#151b29; --panel2:#1a2233;
+    --line:#263049; --txt:#e8ecf4; --muted:#9aa4bb;
+    --gold:#e8b84b; --gold2:#f5d67b; --ok:#3fb950; --warn:#d29922;
+    --bad:#f85149; --info:#58a6ff; --violet:#bc8cff; --teal:#39c5cf;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:radial-gradient(1200px 500px at 50% -80px,#1b2540 0%,var(--bg) 60%) fixed,var(--bg);
+    color:var(--txt);font-family:"Segoe UI",Tahoma,"Noto Kufi Arabic",system-ui,sans-serif;line-height:1.8}
+  a{color:var(--info)}
+  .wrap{max-width:1080px;margin:0 auto;padding:0 20px 80px}
+  header.hero{text-align:center;padding:64px 20px 36px}
+  .kicker{display:inline-block;border:1px solid var(--gold);color:var(--gold2);border-radius:999px;
+    padding:4px 18px;font-size:14px;letter-spacing:.5px;margin-bottom:18px}
+  h1{font-size:clamp(30px,5vw,52px);margin:0 0 8px;
+    background:linear-gradient(90deg,var(--gold2),var(--gold),#fff,var(--gold2));
+    -webkit-background-clip:text;background-clip:text;color:transparent}
+  .sub{color:var(--muted);font-size:18px;max-width:760px;margin:0 auto}
+  .meta{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin-top:22px}
+  .chip{background:var(--panel);border:1px solid var(--line);border-radius:999px;
+    padding:5px 16px;font-size:13px;color:var(--muted)}
+  .chip b{color:var(--txt)}
+  nav.toc{position:sticky;top:0;z-index:10;background:rgba(11,14,20,.92);backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--line);padding:10px 0;margin:26px 0 8px}
+  nav.toc .wrap{display:flex;flex-wrap:wrap;gap:8px;padding-bottom:0}
+  nav.toc a{font-size:13px;color:var(--muted);text-decoration:none;border:1px solid var(--line);
+    border-radius:999px;padding:4px 14px}
+  nav.toc a:hover{color:var(--gold2);border-color:var(--gold)}
+  section.card{background:linear-gradient(180deg,var(--panel),var(--bg2));
+    border:1px solid var(--line);border-radius:16px;padding:28px;margin:22px 0;
+    box-shadow:0 12px 40px rgba(0,0,0,.35)}
+  h2{margin:0 0 4px;font-size:24px;display:flex;align-items:center;gap:10px}
+  h2 .n{background:var(--gold);color:#111;border-radius:10px;min-width:34px;height:34px;
+    display:inline-flex;align-items:center;justify-content:center;font-size:17px}
+  h3{color:var(--gold2);margin:26px 0 8px;font-size:18px}
+  p.lead{color:var(--muted);margin-top:0}
+  .grid{display:grid;gap:14px}
+  .g2{grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+  .g3{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
+  .g6{grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}
+  .gauge{background:var(--panel2);border:1px solid var(--line);border-radius:14px;
+    padding:16px 10px;text-align:center}
+  .gauge svg{width:96px;height:96px}
+  .gauge .v{font-size:22px;font-weight:700}
+  .gauge .t{font-size:13px;color:var(--muted);margin-top:4px}
+  .kpi{background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:14px;text-align:center}
+  .kpi .n{font-size:30px;font-weight:800;color:var(--gold2)}
+  .kpi .t{font-size:13px;color:var(--muted)}
+  table{width:100%;border-collapse:collapse;font-size:14px;margin:12px 0}
+  th,td{border:1px solid var(--line);padding:9px 12px;text-align:right;vertical-align:top}
+  th{background:var(--panel2);color:var(--gold2)}
+  tr:nth-child(even) td{background:rgba(255,255,255,.015)}
+  code{font-family:Consolas,monospace;background:#0d1320;border:1px solid var(--line);
+    border-radius:6px;padding:1px 7px;font-size:.86em;color:#ffd88a;direction:ltr;display:inline-block}
+  .file{font-family:Consolas,monospace;font-size:.82em;color:var(--teal);direction:ltr;display:inline-block}
+  .sev{display:inline-block;border-radius:999px;padding:2px 14px;font-size:12px;font-weight:700}
+  .s-crit{background:rgba(248,81,73,.15);color:#ff9d97;border:1px solid var(--bad)}
+  .s-high{background:rgba(210,153,34,.15);color:#e8b84b;border:1px solid var(--warn)}
+  .s-med{background:rgba(88,166,255,.13);color:#8fc3ff;border:1px solid var(--info)}
+  .s-low{background:rgba(63,185,80,.12);color:#7ee787;border:1px solid var(--ok)}
+  .finding{border:1px solid var(--line);border-right:4px solid var(--warn);border-radius:12px;
+    padding:16px 18px;margin:14px 0;background:rgba(255,255,255,.012)}
+  .finding.crit{border-right-color:var(--bad)}
+  .finding.med{border-right-color:var(--info)}
+  .finding.low{border-right-color:var(--ok)}
+  .finding h4{margin:0 0 6px;font-size:16px}
+  .finding p{margin:6px 0;color:#cdd5e4;font-size:14px}
+  .finding .fix{color:var(--muted);font-size:13px}
+  .strength{display:flex;gap:10px;margin:10px 0;font-size:14px}
+  .strength .ic{color:var(--ok);font-weight:800;flex-shrink:0}
+  .idea{border:1px dashed var(--violet);border-radius:12px;padding:14px 18px;margin:12px 0}
+  .idea h4{margin:0 0 4px;color:#d6bcff}
+  .idea p{margin:4px 0;font-size:14px;color:#cdd5e4}
+  .prio{display:inline-block;min-width:44px;text-align:center;border-radius:8px;font-weight:800;font-size:13px;padding:2px 10px}
+  .p0{background:var(--bad);color:#fff}.p1{background:var(--warn);color:#111}.p2{background:var(--info);color:#06121f}
+  footer{color:var(--muted);text-align:center;font-size:13px;margin-top:40px}
+  @media print{
+    body{background:#fff;color:#111} section.card,nav.toc{box-shadow:none}
+    nav.toc{display:none} h1{-webkit-text-fill-color:#111}
+    th{background:#eee!important;color:#111!important}
+  }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <span class="kicker">تقرير مراجعة شاملة &bull; قراءة فقط &bull; بدون تنفيذ اختبارات</span>
+  <h1>👑 التقرير الشامل — AgentWorld</h1>
+  <p class="sub">مدينة رقمية لشركة ذكاء اصطناعي: وكلاء بوظائف وأموال وهويات وذاكرة وعلاقات —
+  مراجعة معمارية وأمنية وجودة كاملة للمشروع كما هو على الفرع <code>main</code>.</p>
+  <div class="meta">
+    <span class="chip">📅 التاريخ: <b>1 أكتوبر 2026</b></span>
+    <span class="chip">🔍 المنهجية: <b>فحص الكود والمخطط والوثائق</b></span>
+    <span class="chip">🚫 بدون تشغيل أي اختبار</span>
+    <span class="chip">📁 النطاق: <b>الشجرة كاملة</b></span>
+  </div>
+</header>
+
+<div class="wrap">
+
+<nav class="toc"><div class="wrap" style="padding:0">
+  <a href="#s0">الخلاصة</a><a href="#s1">الدرجات</a><a href="#s2">الجرد</a>
+  <a href="#s3">نقاط القوة</a><a href="#s4">الملاحظات</a><a href="#s5">أفكار مستقبلية</a>
+  <a href="#s6">خارطة التحسينات</a><a href="#s7">الملحق</a>
+</div></nav>
+
+<!-- ======================= 0. EXEC SUMMARY ======================= -->
+<section class="card" id="s0">
+  <h2><span class="n">0</span> الخلاصة التنفيذية</h2>
+  <p class="lead">الحكم العام: مشروع ناضج معماريًا، منضبط أمنيًا، ومختبر جيدًا — تنقصه الإغلاقات الأخيرة.</p>
+  <p>
+  المشروع في حالة ممتازة إجمالًا: نواة Phase 1 مكتملة ومختبرة (54 اختبارًا)، وبنية Phase 2 للتنسيق
+  (خطط، تفويض، مراجعة، تقارير، تصعيد، جلسات، محاكاة) موجودة في المخطط والخدمات، ووثيقة معمارية لـ Phase 3 جاهزة.
+  أخطر ما وُجد: <b>كود ميت حرج</b> (محرك سياسات غير موصول)، و<b>انفصال الجلسات عن الـ runtime</b>، و<b>جدول هرمي لا يُكتب أبدًا</b>،
+  وغياب مسارات API لواجهات التنسيق الجديدة، وغياب CI تمامًا. لا توجد ثغرة أمنية حرجة مكشوفة —
+  طبقة التفويض (permission ← Zod ← approval ← audit) سليمة ومطبقة ب single enforcement point.
+  </p>
+  <div class="grid g3">
+    <div class="kpi"><div class="n">8.0 / 10</div><div class="t">التقييم العام</div></div>
+    <div class="kpi"><div class="n">7</div><div class="t">ملاحظات عالية الأولوية</div></div>
+    <div class="kpi"><div class="n">12</div><div class="t">فكرة مستقبلية مقترحة</div></div>
+  </div>
+</section>
+
+<!-- ======================= 1. SCORES ======================= -->
+<section class="card" id="s1">
+  <h2><span class="n">1</span> بطاقة التقييم</h2>
+  <p class="lead">ستة محاور، كل محور من 10 — مبنية على فحص مباشر للملفات.</p>
+  <div class="grid g6">
+    <div class="gauge">
+      <svg viewBox="0 0 96 96"><circle cx="48" cy="48" r="40" fill="none" stroke="#263049" stroke-width="10"/>
+      <circle cx="48" cy="48" r="40" fill="none" stroke="#e8b84b" stroke-width="10" stroke-linecap="round"
+        stroke-dasharray="251.3" stroke-dashoffset="25.1" transform="rotate(-90 48 48)"/></svg>
+      <div class="v">9.0</div><div class="t">🏛️ المعمارية</div>
+    </div>
+    <div class="gauge">
+      <svg viewBox="0 0 96 96"><circle cx="48" cy="48" r="40" fill="none" stroke="#263049" stroke-width="10"/>
+      <circle cx="48" cy="48" r="40" fill="none" stroke="#e8b84b" stroke-width="10" stroke-linecap="round"
+        stroke-dasharray="251.3" stroke-dashoffset="37.7" transform="rotate(-90 48 48)"/></svg>
+      <div class="v">8.5</div><div class="t">🔒 الأمان</div>
+    </div>
+    <div class="gauge">
+      <svg viewBox="0 0 96 96"><circle cx="48" cy="48" r="40" fill="none" stroke="#263049" stroke-width="10"/>
+      <circle cx="48" cy="48" r="40" fill="none" stroke="#3fb950" stroke-width="10" stroke-linecap="round"
+        stroke-dasharray="251.3" stroke-dashoffset="50.3" transform="rotate(-90 48 48)"/></svg>
+      <div class="v">8.0</div><div class="t">🧹 جودة الكود</div>
+    </div>
+    <div class="gauge">
+      <svg viewBox="0 0 96 96"><circle cx="48" cy="48" r="40" fill="none" stroke="#263049" stroke-width="10"/>
+      <circle cx="48" cy="48" r="40" fill="none" stroke="#3fb950" stroke-width="10" stroke-linecap="round"
+        stroke-dasharray="251.3" stroke-dashoffset="50.3" transform="rotate(-90 48 48)"/></svg>
+      <div class="v">8.0</div><div class="t">🧪 الاختبارات</div>
+    </div>
+    <div class="gauge">
+      <svg viewBox="0 0 96 96"><circle cx="48" cy="48" r="40" fill="none" stroke="#263049" stroke-width="10"/>
+      <circle cx="48" cy="48" r="40" fill="none" stroke="#58a6ff" stroke-width="10" stroke-linecap="round"
+        stroke-dasharray="251.3" stroke-dashoffset="37.7" transform="rotate(-90 48 48)"/></svg>
+      <div class="v">8.5</div><div class="t">📚 التوثيق</div>
+    </div>
+    <div class="gauge">
+      <svg viewBox="0 0 96 96"><circle cx="48" cy="48" r="40" fill="none" stroke="#263049" stroke-width="10"/>
+      <circle cx="48" cy="48" r="40" fill="none" stroke="#d29922" stroke-width="10" stroke-linecap="round"
+        stroke-dasharray="251.3" stroke-dashoffset="87.9" transform="rotate(-90 48 48)"/></svg>
+      <div class="v">6.5</div><div class="t">🧩 الاكتمال</div>
+    </div>
+  </div>
+  <h3>لماذا هذه الدرجات؟</h3>
+  <table>
+    <tr><th>المحور</th><th>التبرير المختصر</th></tr>
+    <tr><td>المعمارية 9.0</td><td>فصل simulation/execution، single-writer للـ ledger، single enforcement point للأدوات، role-based بلا تشعب بالأسماء. خصم نقطة لوجود كود غير موصول (policy-engine) وجداول بلا خدمات قارئة.</td></tr>
+    <tr><td>الأمان 8.5</td><td>RBAC + human-only + approval replay أحادي + triggers عدم قابلية + JWT مقيد + rate limits + تعقيم. خصم 1.5 لغياب اختبارات اختراق سلبية وعدم وجود سياسة أوامر بعد (Phase 3).</td></tr>
+    <tr><td>جودة الكود 8.0</td><td>TypeScript صارم، no-explicit-any، ESLint نظيف، أخطاء منظمة. خصم نقطتين لتشعب خدمتين (approval-policy مقابل policy-engine) وبقايا سكربتات تشخيصية.</td></tr>
+    <tr><td>الاختبارات 8.0</td><td>54 اختبارًا تغطي أصعب المناطق (سباقات ledger، idempotency، rework). خصم نقطتين: لا تغطية للمسارات الجديدة (plans API بلا اختبار) ولا E2E للمتصفح.</td></tr>
+    <tr><td>التوثيق 8.5</td><td>7 وثائق + README showcase. خصم 1.5: API.md لا يوثق plans/simulation/events الجديدة، ولا توجد وثيقة قرارات معمارية (ADRs).</td></tr>
+    <tr><td>الاكتمال 6.5</td><td>Phase 1 كامل، Phase 2 هيكليًا ~70% وظيفيًا ~45% (خدمات بلا واجهات)، Phase 3 تصميم فقط. هذا هو عنق الزجاجة الحقيقي.</td></tr>
+  </table>
+</section>
+
+<!-- ======================= 2. INVENTORY ======================= -->
+<section class="card" id="s2">
+  <h2><span class="n">2</span> جرد ما هو موجود فعلًا</h2>
+  <p class="lead">كل رقم أدناه مُتحقق منه بقراءة الشجرة — لا تقديرات.</p>
+  <div class="grid g3">
+    <div class="kpi"><div class="n">16</div><div class="t">حزمة packages</div></div>
+    <div class="kpi"><div class="n">28</div><div class="t">أداة مسجلة (19 + 9)</div></div>
+    <div class="kpi"><div class="n">14</div><div class="t">ملف مسارات API</div></div>
+    <div class="kpi"><div class="n">~36</div><div class="t">جدول Prisma</div></div>
+    <div class="kpi"><div class="n">54</div><div class="t">اختبارًا في 8 ملفات</div></div>
+    <div class="kpi"><div class="n">4</div><div class="t">ملفات migration</div></div>
+  </div>
+  <h3>الحزم الست عشرة</h3>
+  <table>
+    <tr><th>الحزمة</th><th>الدور</th><th>الحالة</th></tr>
+    <tr><td><span class="file">shared / database / security</span></td><td>أساسيات: money، أخطاء، JWT، RBAC، عميل Prisma</td><td>✅ مكتملة</td></tr>
+    <tr><td><span class="file">economy / events</span></td><td>الـ ledger أحادي الكاتب + bus الأحداث والتدقيق</td><td>✅ مكتملة</td></tr>
+    <tr><td><span class="file">tasks / memory / world / company</span></td><td>آلات الحالة، ذاكرة متدهورة، ساعة مزدوجة، هيكل الشركة</td><td>✅ مكتملة</td></tr>
+    <tr><td><span class="file">agents / tools / ai</span></td><td>حلقة think-act-observe، 28 أداة، المزودون + ModelRouter</td><td>✅ مكتملة</td></tr>
+    <tr><td><span class="file">approvals</span></td><td>السياسة + الخدمة + <b>محرك سياسات غير موصول</b></td><td>⚠️ انظر ملاحظة H-1</td></tr>
+    <tr><td><span class="file">orchestration</span></td><td>خطط، تفويض، مراجعة، تقارير، تصعيد، نزاعات</td><td>⚠️ خدمات بلا واجهات (H-4)</td></tr>
+    <tr><td><span class="file">runtime</span></td><td>خدمة الجلسات فقط</td><td>⚠️ غير مربوطة بالـ runtime (H-2)</td></tr>
+    <tr><td><span class="file">simulation</span></td><td>احتياجات، مهارات، أهداف، أنشطة، محرك قرارات، tick</td><td>✅ تعمل (18 اختبارًا)</td></tr>
+  </table>
+</section>
+
+<!-- ======================= 3. STRENGTHS ======================= -->
+<section class="card" id="s3">
+  <h2><span class="n">3</span> نقاط القوة (تُحفظ وتُبنى عليها)</h2>
+  <div class="strength"><span class="ic">✔</span><span><b>الـ ledger أحادي الكاتب</b> بسبع ضمانات موثقة ومختبرة بالسباقات — <span class="file">packages/economy/src/ledger.service.ts</span>. هذا أثمن أصل في المشروع.</span></div>
+  <div class="strength"><span class="ic">✔</span><span><b>نقطة إنفاذ واحدة للأدوات</b>: lookup ← audience ← permission ← Zod ← approval ← execute ← audit — <span class="file">packages/tools/src/executor.ts</span>. لا يوجد باب خلفي.</span></div>
+  <div class="strength"><span class="ic">✔</span><span><b>السلوك من الدور لا الاسم</b>: لا يوجد <code>if (agent.name === ...)</code> في المستودع كله، والسجل يرفض الأدوار ذات الصلاحيات البشرية.</span></div>
+  <div class="strength"><span class="ic">✔</span><span><b>إعادة تشغيل الموافقات أحادية الطيران</b> (<code>claimForExecution</code>) — مستحيل تنفيذ مزدوج لموافقة واحدة.</span></div>
+  <div class="strength"><span class="ic">✔</span><span><b>حظر المراجعة الذاتية + ميزانية rework</b> في حلقة المراجعة — تصميم ناضج نادر في مشاريع الهواة.</span></div>
+  <div class="strength"><span class="ic">✔</span><span><b>فصل المحاكاة عن التنفيذ</b> كمبدأ معلن وموثق — أساس Phase 3 الصحيح.</span></div>
+  <div class="strength"><span class="ic">✔</span><span><b>عزل بيئة الاختبار لكل عملية</b> (<code>test-&lt;pid&gt;.db</code>) — حل جذري لمشكلة فساد التشغيلات المتزامنة.</span></div>
+  <div class="strength"><span class="ic">✔</span><span><b>انضباط TypeScript صارم</b> (<code>noUncheckedIndexedAccess</code> + منع <code>any</code>) وESLint نظيف بدون أخطاء.</span></div>
+  <div class="strength"><span class="ic">✔</span><span><b>التوثيق يعيش مع الكود</b>: 7 وثائق + تعليقات معمارية داخل الملفات تشرح «لماذا» لا «ماذا».</span></div>
+</section>
+
+<!-- ======================= 4. FINDINGS ======================= -->
+<section class="card" id="s4">
+  <h2><span class="n">4</span> الملاحظات مرتبة بالخطورة</h2>
+  <p class="lead">كل ملاحظة: الموقع الدقيق، الأثر، والإصلاح المقترح.</p>
+
+  <div class="finding crit">
+    <h4><span class="sev s-crit">حرجة</span> H-1: محرك السياسات كود ميت — نظامان متوازيان للموافقات</h4>
+    <p>يوجد <span class="file">packages/approvals/src/policy-engine.ts</span> (محرك ALLOW/REQUIRE_APPROVAL/DENY أنيق) لكن <b>لا يستدعيه أحد</b> — الـ <code>ToolExecutor</code> يستخدم <span class="file">approval-policy.ts</span> القديم. أي تعديل مستقبلي على المحرك الجديد لن يغير سلوك النظام، وأي قارئ سيظن العكس. الأثر: التباس معماري + خطر انحراف القواعد.</p>
+    <p class="fix">🔧 الإصلاح: قرار واحد موثق — إما توصيل المحرك مكان <code>evaluateApproval</code> مع اختبارات تكافؤ، أو حذف الملف. لا يبقى الاثنان معًا.</p>
+  </div>
+
+  <div class="finding crit">
+    <h4><span class="sev s-crit">حرجة</span> H-2: الجلسات سجلات بلا runtime — <code>runAgent</code> لا يعرفها</h4>
+    <p>خدمة <span class="file">packages/runtime/src/session.service.ts</span> ممتازة، لكن حلقة الوكيل في <span class="file">packages/agents/src/runtime.ts</span> لا تنشئ صف <code>AgentSession</code> ولا تحدثه ولا تنهيه. النتيجة: لوحة المراقبة ستعرض جلسات فارغة دائمًا، و<code>SESSION_STARTED/FINISHED</code> لا تُنشر من المسار الحقيقي.</p>
+    <p class="fix">🔧 الإصلاح: تغليف <code>runAgent</code> بفتح/تحديث/إنهاء الجلسة في <code>agent-orchestrator.ts</code> (بدون تعديل الحلقة نفسها)، مع اختبار تكامل يثبت ظهور الجلسة.</p>
+  </div>
+
+  <div class="finding">
+    <h4><span class="sev s-high">عالية</span> H-3: جدول <code>AgentHierarchy</code> لا يُكتب أبدًا</h4>
+    <p>التصعيد يُوجَّه عبر <code>RoleProfile.reportsTo</code> (بيانات ثابتة) بينما جدول التسلسل في قاعدة البيانات فارغ دائمًا — تحقق: لا يوجد أي <code>agentHierarchy.create</code> في الحزم. التصميم المُعلن «التسلسل بيانات» غير متحقق.</p>
+    <p class="fix">🔧 الإصلاح: إما مزامنة الصفوف من <code>reportsTo</code> عند الإقلاع/البذر، أو حذف الجدول والاعتراف بأن التسلسل role-based. القرار يُوثق في <code>docs/ARCHITECTURE.md</code>.</p>
+  </div>
+
+  <div class="finding">
+    <h4><span class="sev s-high">عالية</span> H-4: خدمات التنسيق بلا واجهات — مخزون ميت للمستخدم</h4>
+    <p>توجد مسارات <code>/plans</code> فقط. لا مسارات لـ sessions/reviews/reports/escalations/conflicts، ولا شاشات dashboard لها، ولا بذر تجريبي، ولا اختبارات API لها. المستخدم (والبشر) لا يستطيع رؤية أو تشغيل 60% من Phase 2.</p>
+    <p class="fix">🔧 الإصلاح: routers رفيعة (نفس نمط <code>plan.routes.ts</code>) + 3 شاشات + بذر + اختبارات تكامل. جهد متوسط، قيمة عالية.</p>
+  </div>
+
+  <div class="finding">
+    <h4><span class="sev s-high">عالية</span> H-5: لا CI — البوابة الخضراء يدوية</h4>
+    <p>لا يوجد <code>.github/workflows</code>. كل التحقق (typecheck/lint/test/build) يعتمد على انضباط بشري، وقد رأينا كسر typecheck يُدفع للشجرة. cubefarm المرجعي لديه CI لكل PR.</p>
+    <p class="fix">🔧 الإصلاح: workflow واحد <code>verify</code> على ubuntu + windows (مع متغير <code>TEST_DATABASE_URL</code> فريد لكل job). نصف يوم عمل.</p>
+  </div>
+
+  <div class="finding">
+    <h4><span class="sev s-high">عالية</span> H-6: جلستان تكتبان نفس الشجرة — خطر حقيقي وقع فعلًا</h4>
+    <p>خلال المراجعة: تعديلات متزامنة على نفس الملفات، commit التقط ملفات نصف مكتملة، وتشغيلان للاختبارات أفسد أحدهما قاعدة الآخر (37 فشلًا زائفًا). أُصلح العرض (عزل test.db) لكن السبب الجذري — <b>لا يوجد بروتوكول تنسيق</b> — باقٍ.</p>
+    <p class="fix">🔧 الإصلاح: فرع لكل جلسة + PR بدل الدفع المباشر لـ <code>main</code>، أو ملف <code>LOCK</code>/إشارة حجز. إجرائي لا كودي.</p>
+  </div>
+
+  <div class="finding med">
+    <h4><span class="sev s-med">متوسطة</span> M-1: اختبار عدم القابلية يثبت الرفض بالسبب الخطأ</h4>
+    <p>اختبار <code>Transaction UPDATE/DELETE</code> ينجح لأن Prisma يرمي <i>Foreign key violation</i> قبل وصول الـ trigger — السلوك (الرفض) صحيح لكن الرسالة المُثبتة ليست رسالة الـ trigger. لو كُسر الـ trigger مستقبلًا، سيستمر الاختبار أخضرًا لنفس السبب الخطأ.</p>
+    <p class="fix">🔧 الإصلاح: تأكيد نص الخطأ يحتوي <code>immutable</code> عبر <code>$executeRawUnsafe</code> مباشرة بدل عميل Prisma.</p>
+  </div>
+
+  <div class="finding med">
+    <h4><span class="sev s-med">متوسطة</span> M-2: أدوات CLI معلقة في هذه البيئة (Prisma/npx)</h4>
+    <p><code>prisma --version</code> و<code>npx</code> يعلقان هنا؛ المشروع يعمل بحلول بديلة (SQL عبر المحرك + ثنائيات مباشرة). هذا دين بيئي سيعض أي مساهم جديد.</p>
+    <p class="fix">🔧 الإصلاح: توثيق البدائل في <code>CONTRIBUTING.md</code> جديد + سكربت <code>npm run doctor</code> يفحص الأدوات (على غرار cubefarm).</p>
+  </div>
+
+  <div class="finding med">
+    <h4><span class="sev s-med">متوسطة</span> M-3: حدود معلنة تحتاج مراجعة قبل الإنتاج</h4>
+    <p><code>MAX_MINOR ≈ 21M KW</code>، و<code>JWT_SECRET</code> التطويري، و<code>mock</code> كمزود افتراضي — كلها موثقة وآمنة افتراضيًا (الفشل مغلق في الإنتاج)، لكن لا يوجد اختبار إقلاع-إنتاج يثبت رفض القيم الضعيفة.</p>
+    <p class="fix">🔧 الإصلاح: اختبار <code>config.test.ts</code> يثبت أن الإنتاج يرفض الأسرار الضعيفة.</p>
+  </div>
+
+  <div class="finding low">
+    <h4><span class="sev s-low">منخفضة</span> L-1: مخلفات وتحذيرات صغيرة</h4>
+    <p>تحذير حجم الحزمة في بناء الويب (633KB — code-splitting لاحقًا)، ملف <code>docs/phase2-review.html</code> المؤقت، سجل <code>_prisma_migrations</code> قد يفتقد صف ledger (طُبق يدويًا)، و heuristics الـ mock الهشة (موثقة بصراحة كـ stub).</p>
+    <p class="fix">🔧 الإصلاح: تنظيف دفعي واحد + تثبيت سجل الـ migrations.</p>
+  </div>
+</section>
+
+<!-- ======================= 5. IDEAS ======================= -->
+<section class="card" id="s5">
+  <h2><span class="n">5</span> أفكار للإضافات المستقبلية 💡</h2>
+  <p class="lead">اثنتا عشرة فكرة، مرتبة من الأقرب للأبعد — كل واحدة تُبنى على موجود.</p>
+
+  <div class="idea"><h4>1. إغلاق حلقة الجلسات (أسبوع)</h4><p>توصيل <code>runAgent ←→ AgentSession</code> (H-2) + شاشة inspector تعرض الجلسة الحية. يحوّل المراقبة من لقطات إلى بث.</p></div>
+  <div class="idea"><h4>2. واجهات التنسيق الكاملة (أسبوع)</h4><p>مسارات + شاشات + بذر لـ sessions/reviews/reports/escalations (H-4). أول مرة يرى فيها المالك عمل Phase 2 حقيقيًا.</p></div>
+  <div class="idea"><h4>3. ‏<code>AgentWorkspace</code> الحقيقي (Phase 3 §5–9)</h4><p>مجلد معزول لكل وكيل + <code>workspace.*</code> + حارس المسارات. cubefarm أثبت النمط (desk = worktree).</p></div>
+  <div class="idea"><h4>4. محطة OpenCode (Phase 3 §15)</h4><p><code>OpenCodeAdapter implements AIProvider</code> — الوكيل يكتب كودًا حقيقيًا داخل مساحة عمله، والتنفيذ يبقى مُصرَّحًا ومدققًا.</p></div>
+  <div class="idea"><h4>5. بث حي WebSocket (Phase 3 §40)</h4><p>استبدال الـ polling في الـ dashboard ببث <code>session.output/tool/completed</code> — نمط <code>/ws</code> موثق من cubefarm.</p></div>
+  <div class="idea"><h4>6. ذاكرة هجينة (Phase 3)</h4><p>واجهة <code>MemoryRetriever</code> موجودة بالاسم — إضافة بحث شعاعي حقيقي خلفها مع <code>metadata.embeddingRef</code> المحجوز، مع بقاء الـ keyword كأساس حتمي.</p></div>
+  <div class="idea"><h4>7. رواتب ومشتريات تلقائية (Phase 2→3)</h4><p>نبضة payroll من الخزينة + مشتريات السوق بمعدلات أسعار — أول اقتصاد يتحرك بذاته، و<code>verifyLedger</code> الليلي يحرسه.</p></div>
+  <div class="idea"><h4>8. وضع العرض Demo (صفر تكلفة)</h4><p>backend وهمي على غرار cubefarm (<code>--demo</code>): GitHub وأحداث مزيفة — لتجربة الـ dashboard والعروض بدون مفاتيح ولا إنفاق.</p></div>
+  <div class="idea"><h4>9. تصدير التدقيق (Audit export)</h4><p>تقرير امتثال بضغطة: كل الحركات + الموافقات + القرارات لفترة — يحوّل سجل التدقيق من مخزن إلى منتج.</p></div>
+  <div class="idea"><h4>10. اختبارات الفوضى (Chaos)</h4><p>قتل عمليات mid-transfer، ملء القرص، ساعة مزيفة — إثبات أن «الفشل لا يُسقط العالم» ليس شعارًا.</p></div>
+  <div class="idea"><h4>11. تعدد الشركات والأسواق</h4><p>المخطط يدعمها (مفاتيح مركبة عامة) — شركتان تتاجران عبر الخزائن، ثم سوق مركزي بأسعار.</p></div>
+  <div class="idea"><h4>12. المدينة ثلاثية الأبعاد (Phase 3 §44)</h4><p>العقد جاهز (<code>workspaceLocationId</code> + أحداث) — العرض لاحقًا، والمنطق لا ينتظره.</p></div>
+</section>
+
+<!-- ======================= 6. ROADMAP ======================= -->
+<section class="card" id="s6">
+  <h2><span class="n">6</span> خارطة التحسينات المقترحة</h2>
+  <table>
+    <tr><th>أولوية</th><th>البند</th><th>الجهد</th></tr>
+    <tr><td><span class="prio p0">P0</span></td><td>حسم مصير <b>policy-engine</b> (توصيل أو حذف) — H-1</td><td>صغير</td></tr>
+    <tr><td><span class="prio p0">P0</span></td><td>توصيل <b>الجلسات بالـ runtime</b> — H-2</td><td>متوسط</td></tr>
+    <tr><td><span class="prio p0">P0</span></td><td><b>CI pipeline</b> (verify على كل PR) — H-5</td><td>صغير</td></tr>
+    <tr><td><span class="prio p0">P0</span></td><td>بروتوكول <b>عدم التحرير المتزامن</b> (فرع لكل جلسة) — H-6</td><td>إجرائي</td></tr>
+    <tr><td><span class="prio p1">P1</span></td><td>واجهات التنسيق + شاشات + بذر — H-4</td><td>متوسط</td></tr>
+    <tr><td><span class="prio p1">P1</span></td><td>حسم <b>AgentHierarchy</b> (مزامنة أو حذف) — H-3</td><td>صغير</td></tr>
+    <tr><td><span class="prio p1">P1</span></td><td>دقة اختبار الـ triggers + اختبار إقلاع-الإنتاج — M-1/M-3</td><td>صغير</td></tr>
+    <tr><td><span class="prio p1">P1</span></td><td><code>CONTRIBUTING.md</code> + <code>doctor</code> للبيئة — M-2</td><td>صغير</td></tr>
+    <tr><td><span class="prio p2">P2</span></td><td><code>AgentWorkspace</code> + أدوات terminal/fs/git (الدفعة 2)</td><td>كبير</td></tr>
+    <tr><td><span class="prio p2">P2</span></td><td>OpenCodeAdapter + بث WebSocket + ذاكرة هجينة</td><td>كبير</td></tr>
+  </table>
+</section>
+
+<!-- ======================= 7. APPENDIX ======================= -->
+<section class="card" id="s7">
+  <h2><span class="n">7</span> الملحق: منهجية ومراجع</h2>
+  <p><b>المنهجية:</b> قراءة مباشرة للشجرة على <code>main</code> (مخطط Prisma، الخدمات، الأدوات، المسارات، الاختبارات، الوثائق) مع مطابقة الادعاءات بالgrep. <b>لم يُشغَّل أي اختبار أو أمر بناء أو تعديل كود</b> أثناء إعداد هذا التقرير — كل الأحكام من القراءة فقط.</p>
+  <h3>مراجع الملاحظات</h3>
+  <table>
+    <tr><th>ملاحظة</th><th>الملفات الشاهدة</th></tr>
+    <tr><td>H-1</td><td><span class="file">packages/approvals/src/policy-engine.ts</span> ↔ <span class="file">packages/tools/src/executor.ts</span> (يستخدم approval-policy)</td></tr>
+    <tr><td>H-2</td><td><span class="file">packages/agents/src/runtime.ts</span> (لا ذكر لـ AgentSession) ↔ <span class="file">packages/runtime/src/session.service.ts</span></td></tr>
+    <tr><td>H-3</td><td>بحث <code>agentHierarchy.create</code> يُرجع صفرًا في الحزم كلها</td></tr>
+    <tr><td>H-4</td><td><span class="file">apps/api/src/config/routes.ts</span> (14 ملف مسارات، بلا sessions/reviews/reports/escalations)</td></tr>
+    <tr><td>M-1</td><td><span class="file">tests/finance.test.ts:140-141</span> — الخطأ المثبت vs رسالة الـ trigger</td></tr>
+  </table>
+  <p style="color:var(--muted);font-size:13px">ملاحظة أمانة: الجرد العددي (28 أداة، 54 اختبارًا، ~36 جدولًا) يعكس الشجرة وقت كتابة التقرير وقد يتغير مع التطوير النشط.</p>
+</section>
+
+<footer>👑 AgentWorld — تقرير مراجعة شاملة &bull; أُعد بالفحص اليدوي الدقيق &bull; 1 أكتوبر 2026</footer>
+</div>
+</body>
+</html>

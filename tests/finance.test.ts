@@ -137,8 +137,15 @@ describe("finance edge cases", () => {
     const wa = await ensureWallet(prisma, { ownerType: "AGENT", ownerId: a.id });
     await deposit({ toWalletId: wa.id, amount: Money.fromMinor(500, "KW"), description: "d", actor: SYSTEM, correlationId: `${CORRELATION}-imm` });
     const tx = await prisma.transaction.findFirstOrThrow({ where: { walletId: wa.id } });
-    await expect(prisma.transaction.update({ where: { id: tx.id }, data: { description: "tampered" } })).rejects.toThrow();
-    await expect(prisma.transaction.delete({ where: { id: tx.id } })).rejects.toThrow();
+    // Raw SQL on purpose: the Prisma client rejects these writes first with a
+    // foreign-key error, which would keep this test green even if the trigger
+    // were dropped. Only the trigger's own message proves the guarantee.
+    await expect(
+      prisma.$executeRawUnsafe(`UPDATE "Transaction" SET description = 'tampered' WHERE id = '${tx.id}'`),
+    ).rejects.toThrow(/immutable/i);
+    await expect(
+      prisma.$executeRawUnsafe(`DELETE FROM "Transaction" WHERE id = '${tx.id}'`),
+    ).rejects.toThrow(/immutable/i);
   });
 
   it("rejects same-wallet and currency-mismatch transfers", async () => {

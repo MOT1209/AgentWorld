@@ -23,6 +23,8 @@ import {
 } from "../packages/orchestration/src/escalation.service.js";
 import { createTask, updateTask } from "../packages/tasks/src/index.js";
 import { routeModel } from "../packages/ai/src/index.js";
+import { orchestrateAgentRun } from "../apps/api/src/services/agent-orchestrator.js";
+import type { Request } from "express";
 import type { Permission } from "../packages/security/src/permissions.js";
 import { SYSTEM, CORRELATION, createTestAgent, unique } from "./helpers.js";
 
@@ -305,5 +307,29 @@ describe("model router", () => {
 
     expect(() => routeModel({ providerId: "no-such-provider" })).toThrow();
     expect(() => routeModel({ model: "no-such-model" })).toThrow();
+  });
+});
+
+describe("session wiring", () => {
+  it("wraps an orchestrated run in a finished session record", async () => {
+    const agent = await createTestAgent({ name: "Wired Runner" });
+    const fakeReq = { correlationId: `${CORRELATION}-wired` } as unknown as Request;
+
+    const result = await orchestrateAgentRun({ agentId: agent.id, trigger: "MANUAL", userMessage: "hello" }, fakeReq);
+    expect(result.outcome).toBe("COMPLETED");
+
+    const sessions = await listSessions(prisma, { agentId: agent.id });
+    expect(sessions.length).toBe(1);
+    expect(sessions[0]?.status).toBe("COMPLETED");
+    expect(sessions[0]?.providerId).toBe("mock");
+
+    const started = await prisma.eventLog.count({
+      where: { type: "SESSION_STARTED", targetId: sessions[0]?.id },
+    });
+    const finished = await prisma.eventLog.count({
+      where: { type: "SESSION_FINISHED", targetType: "AgentSession" },
+    });
+    expect(started).toBe(1);
+    expect(finished).toBeGreaterThan(0);
   });
 });
