@@ -9,7 +9,7 @@
  * executing the migration SQL through the query engine itself, which is
  * proven to work (seed + app run on it).
  */
-import { readFileSync, existsSync, unlinkSync, readdirSync } from "node:fs";
+import { readFileSync, existsSync, unlinkSync, readdirSync, statSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PrismaClient } from "@prisma/client";
@@ -21,9 +21,12 @@ const migrationsDir = join(databaseDir, "migrations");
 
 function resolveTestDbUrl(): { url: string; filePath: string } {
   // An explicit TEST_DATABASE_URL is honored verbatim (e.g. CI pinning).
-  // Otherwise each run gets a UNIQUE file so concurrent runs (two sessions,
-  // watch mode + single run, sharded CI) can never share -- and corrupt --
-  // each other's database.
+  // Otherwise the file is stable per OS process (pid): re-executions inside
+  // one run reuse it idempotently via the DROP loop below, while concurrent
+  // runs (two sessions, watch + single, sharded CI) get different pids and
+  // can never share -- or delete -- each other's database. Stale files from
+  // dead runs are reaped by age (a live run's file is always fresh); nothing
+  // ever deletes a file it did not create in this process.
   const explicit = (process.env.TEST_DATABASE_URL ?? "").trim();
   if (explicit !== "") {
     const match = /^file:(.+)$/.exec(explicit);
@@ -31,21 +34,24 @@ function resolveTestDbUrl(): { url: string; filePath: string } {
     const filePath = join(databaseDir, relative);
     return { url: `file:${filePath}`, filePath };
   }
-  // Best-effort cleanup of stale run files; the live one is never ours.
+  const ownBase = `test-${process.pid}.db`;
   try {
+    const cutoff = Date.now() - 2 * 60 * 60 * 1000;
     for (const entry of readdirSync(databaseDir)) {
-      if (/^test-\d+-\d+\.db(-journal|-wal|-shm)?$/.test(entry)) {
-        try {
-          unlinkSync(join(databaseDir, entry));
-        } catch {
-          // Locked by a live run -- leave it alone.
-        }
+      if (!/^test-\d+\.db(-journal|-wal|-shm)?$/.test(entry)) continue;
+      if (entry === ownBase) continue;
+      try {
+        const statPath = join(databaseDir, entry);
+        const mtime = statSync(statPath).mtimeMs;
+        if (mtime < cutoff) unlinkSync(statPath);
+      } catch {
+        // Locked or already gone -- leave it alone.
       }
     }
   } catch {
     // Database dir unreadable; creation below fails loudly.
   }
-  const filePath = join(databaseDir, `test-${process.pid}-${Date.now()}.db`);
+  const filePath = join(databaseDir, ownBase);
   return { url: `file:${filePath}`, filePath };
 }
 

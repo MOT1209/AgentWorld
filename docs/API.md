@@ -94,6 +94,12 @@ Every response carries `correlationId`; errors are `{ code, message, correlation
 - `GET /approvals/:id`
 - `POST /approvals/:id/decision {decision: APPROVED|REJECTED, note?, replay?}` — approving replays the frozen tool exactly once
 
+## Plans (Phase 2)
+
+- `GET /plans?status=&companyId=&createdByAgentId=&take=&skip=`
+- `GET /plans/:id` — plan plus `allowedTransitions`
+- `POST /plans/:id/approve` — **human-only** (`plan.approve`); READY → EXECUTING. Never exposed as a tool: agents propose, humans sign off.
+
 ## Tools & logs
 
 - `GET /tools/catalogue`, `GET /tools/invocations?agentId=&toolName=&status=`, `GET /tools/providers`
