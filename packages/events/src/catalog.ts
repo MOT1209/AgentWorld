@@ -89,6 +89,20 @@ export const EVENT_TYPES = {
   TOOL_INVOKED: "TOOL_INVOKED",
   TOOL_DENIED: "TOOL_DENIED",
 
+  // Skills (external ecosystem). Facts about discovery/install/lifecycle;
+  // every skill state change emits one of these plus an ActivityLog row.
+  SKILL_DISCOVERED: "SKILL_DISCOVERED",
+  SKILL_INSPECTED: "SKILL_INSPECTED",
+  SKILL_INSTALLED: "SKILL_INSTALLED",
+  SKILL_UPDATED: "SKILL_UPDATED",
+  SKILL_ROLLBACK: "SKILL_ROLLBACK",
+  SKILL_ENABLED: "SKILL_ENABLED",
+  SKILL_DISABLED: "SKILL_DISABLED",
+  SKILL_REMOVED: "SKILL_REMOVED",
+  SKILL_ASSIGNED: "SKILL_ASSIGNED",
+  SKILL_REQUESTED: "SKILL_REQUESTED",
+  SKILL_BLOCKED: "SKILL_BLOCKED",
+
   // Agent-authored observations. Separate from system events so an operator can
   // always tell an agent's own account of something from the system's.
   AGENT_OBSERVATION: "AGENT_OBSERVATION",
@@ -225,6 +239,18 @@ export interface EventPayloadMap {
 
   TOOL_INVOKED: { toolName: string; agentId: string | null; status: string; durationMs: number };
   TOOL_DENIED: { toolName: string; agentId: string | null; reason: string; requiredPermission: string | null };
+
+  SKILL_DISCOVERED: { source: string; count: number };
+  SKILL_INSPECTED: { skillKey: string; source: string; trust: string; risk: string };
+  SKILL_INSTALLED: { skillKey: string; version: string; source: string; trust: string; risk: string };
+  SKILL_UPDATED: { skillKey: string; fromVersion: string; toVersion: string };
+  SKILL_ROLLBACK: { skillKey: string; fromVersion: string; toVersion: string };
+  SKILL_ENABLED: { skillKey: string };
+  SKILL_DISABLED: { skillKey: string; reason: string | null };
+  SKILL_REMOVED: { skillKey: string };
+  SKILL_ASSIGNED: { skillKey: string; agentId: string };
+  SKILL_REQUESTED: { skillKey: string; agentId: string };
+  SKILL_BLOCKED: { skillKey: string; reason: string };
 
   AGENT_OBSERVATION: {
     agentId: string;

@@ -20,6 +20,9 @@ import { reportTools } from "./definitions/report-tools.js";
 import { escalationTools } from "./definitions/escalation-tools.js";
 import { sessionTools } from "./definitions/session-tools.js";
 import { workspaceTools } from "./definitions/workspace-tools.js";
+import { terminalTools } from "./definitions/terminal-tools.js";
+import { fsTools } from "./definitions/fs-tools.js";
+import { gitTools } from "./definitions/git-tools.js";
 import { ToolRegistry } from "./registry.js";
 
 export const BUILT_IN_TOOLS: AnyToolDefinition[] = [
@@ -37,6 +40,9 @@ export const BUILT_IN_TOOLS: AnyToolDefinition[] = [
   ...escalationTools,
   ...sessionTools,
   ...workspaceTools,
+  ...terminalTools,
+  ...fsTools,
+  ...gitTools,
 ];
 
 export function createDefaultRegistry(): ToolRegistry {
@@ -69,3 +75,23 @@ export {
   workspaceShareTool,
   workspaceArchiveTool,
 } from "./definitions/workspace-tools.js";
+export { terminalTools, terminalExecTool, terminalKillTool } from "./definitions/terminal-tools.js";
+export {
+  fsTools,
+  fsListTool,
+  fsReadTool,
+  fsWriteTool,
+  fsMkdirTool,
+  fsMoveTool,
+  fsDeleteTool,
+  fsSearchTool,
+} from "./definitions/fs-tools.js";
+export {
+  gitTools,
+  gitStatusTool,
+  gitBranchTool,
+  gitCheckoutTool,
+  gitDiffTool,
+  gitLogTool,
+  gitCommitTool,
+} from "./definitions/git-tools.js";

@@ -22,6 +22,10 @@ logs/
 .env.*
 !.env.example
 
+# agent harness downloads (third-party SKILL.md bundles, NOT AgentWorld skills)
+.agents/
+skills-lock.json
+
 # editors / OS
 .vscode/
 .idea/

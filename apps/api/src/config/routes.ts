@@ -19,6 +19,7 @@ import { reportRouter } from "../routes/report.routes.js";
 import { escalationRouter } from "../routes/escalation.routes.js";
 import { conflictRouter } from "../routes/conflict.routes.js";
 import { workspaceRouter } from "../routes/workspace.routes.js";
+import { skillRouter } from "../routes/skill.routes.js";
 
 export function registerRoutes(app: Express): void {
   app.use("/api/v1/auth", authRouter);
@@ -41,4 +42,5 @@ export function registerRoutes(app: Express): void {
   app.use("/api/v1/escalations", escalationRouter);
   app.use("/api/v1/conflicts", conflictRouter);
   app.use("/api/v1/workspaces", workspaceRouter);
+  app.use("/api/v1/skills", skillRouter);
 }
