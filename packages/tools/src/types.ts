@@ -70,8 +70,12 @@ export interface ToolDefinition<TInput = unknown> {
   /**
    * Argument-sensitive escalation. Called after schema validation with the
    * parsed input, e.g. "a transfer of 50,000 needs a human, 50 does not".
+   * May be async (e.g. to load the workspace's policy override).
    */
-  approvalPolicy?: (input: TInput, context: ToolExecutionContext) => ApprovalTrigger | null;
+  approvalPolicy?: (
+    input: TInput,
+    context: ToolExecutionContext,
+  ) => ApprovalTrigger | null | Promise<ApprovalTrigger | null>;
   /** Human callers are refused. Agent-only tools (e.g. internal state writes). */
   agentOnly?: boolean;
   /** Agent callers are refused. Human-only tools (e.g. approving requests). */

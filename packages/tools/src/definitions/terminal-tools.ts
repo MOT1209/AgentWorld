@@ -40,8 +40,9 @@ export const terminalExecTool: ToolDefinition<{
   description:
     "Run a command inside one of your workspaces and capture stdout, stderr, " +
     "and the exit code. Commands are argv arrays (no shell); the working " +
-    "directory is always the workspace root. Destructive commands are refused, " +
-    "publishing commands are held for human approval.",
+    "directory is always the workspace root. Destructive commands are refused; " +
+    "publishing commands and commands outside the routine allow-list are held " +
+    "for human approval.",
   inputSchema: z.object({
     workspaceId: z.string().min(1),
     argv: z.array(z.string().min(1).max(2000)).min(1).max(25),
@@ -51,9 +52,15 @@ export const terminalExecTool: ToolDefinition<{
   }),
   requiredPermission: PERMISSIONS.WORKSPACE_EXECUTE,
   risk: "MEDIUM",
-  approvalPolicy: (input, _context) => {
-    void _context;
-    const verdict = evaluateCommand(input.argv as string[]);
+  approvalPolicy: async (input, context) => {
+    let override: WorkspacePolicyOverride | undefined;
+    try {
+      const workspace = await context.db.workspace.findUnique({ where: { id: input.workspaceId } });
+      if (workspace !== null) override = policyOverrideFor(workspace);
+    } catch {
+      override = undefined;
+    }
+    const verdict = evaluateCommand(input.argv, override);
     if (verdict.verdict !== "REQUIRE_APPROVAL") return null;
     return { risk: verdict.risk, reason: verdict.reason };
   },

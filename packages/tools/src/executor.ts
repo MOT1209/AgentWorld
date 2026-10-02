@@ -121,7 +121,7 @@ export class ToolExecutor {
     const input = parsed.data as never;
 
     // 5. Approval
-    const trigger = this.evaluateApproval(tool, input, context);
+    const trigger = await this.evaluateApproval(tool, input, context);
     if (trigger !== null && context.isApprovalReplay !== true) {
       return this.hold(name, rawArguments, context, tool, input, trigger, started);
     }
@@ -186,14 +186,14 @@ export class ToolExecutor {
    *   - the action is on the always-approve list,
    *   - the tool declares HIGH/CRITICAL risk (or opts in via requiresApproval).
    */
-  private evaluateApproval(
-    tool: { name: string; risk: RiskLevel; requiresApproval?: boolean; approvalPolicy?: (input: never, context: ToolExecutionContext) => { risk: RiskLevel; reason: string } | null },
+  private async evaluateApproval(
+    tool: { name: string; risk: RiskLevel; requiresApproval?: boolean; approvalPolicy?: (input: never, context: ToolExecutionContext) => { risk: RiskLevel; reason: string } | null | Promise<{ risk: RiskLevel; reason: string } | null> },
     input: unknown,
     context: ToolExecutionContext,
-  ): { risk: RiskLevel; reason: string } | null {
+  ): Promise<{ risk: RiskLevel; reason: string } | null> {
     const policyTrigger =
       tool.approvalPolicy !== undefined
-        ? tool.approvalPolicy(input as never, context)
+        ? await tool.approvalPolicy(input as never, context)
         : null;
     if (policyTrigger !== null) return policyTrigger;
 

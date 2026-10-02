@@ -7,10 +7,13 @@
  *
  *   - DENY: destructive or infrastructure-level commands. Refused outright
  *     with `forbidden` before anything spawns. Never approvable.
- *   - REQUIRE_APPROVAL: publishing and deployment-shaped commands. Held for
+ *   - REQUIRE_APPROVAL: publishing commands, commands not on the routine
+ *     allow-list, anything whose arguments point outside the workspace, and
+ *     interpreters running inline code instead of a workspace file. Held for
  *     a human through the normal approval flow (`approvalPolicy` hook).
- *   - ALLOW: everything else, still bounded by timeout, cwd lock, output
- *     caps, and the audit trail.
+ *   - ALLOW: a curated set of routine, workspace-bounded work, still bounded
+ *     by timeout, cwd lock, output caps, and the audit trail. Unknown
+ *     commands are held for approval — never guessed at.
  *
  * Policies are data: workspaces may tighten them via `environment.policy`
  * (`{ deny: [...], approve: [...] }` matched against the binary name or the
@@ -83,6 +86,38 @@ const BUILT_IN_APPROVE = [
   "gh pr merge",
 ] as const;
 
+/**
+ * Routine, workspace-bounded work that runs without a human: navigation and
+ * reading, package managers, language runtimes (invoked with a file argument,
+ * never inline code), build/test toolchains, and git (publishing subcommands
+ * are caught by BUILT_IN_APPROVE first). Everything else — shells, network
+ * fetchers, privilege escalators, package managers' unknown verbs — is
+ * unknown by default and held for approval.
+ */
+const BUILT_IN_SAFE = new Set([
+  "ls", "dir", "pwd", "echo", "whoami", "date", "uname", "hostname",
+  "type", "wc", "head", "tail", "sort", "uniq", "grep", "find", "which",
+  "where", "cat", "mkdir", "touch", "cp", "mv",
+  "node", "python", "python3", "npm", "npx", "yarn", "pnpm", "bun", "deno",
+  "go", "cargo", "make", "tsc", "vitest", "jest", "eslint", "prettier",
+  "pytest", "pip", "pip3", "uv", "git",
+]);
+
+/** Runtimes that accept code as an argument rather than a file. */
+const INLINE_CODE_RUNTIMES = new Set(["node", "python", "python3", "bun", "deno"]);
+/** Flags that turn the next argv element into executable code. */
+const INLINE_CODE_FLAGS = new Set(["-e", "-p", "-c", "-r", "--eval", "--print", "eval"]);
+
+/** True when an argument is a path that can leave the workspace root. */
+function pointsOutsideWorkspace(argv: readonly string[]): boolean {
+  for (const part of argv.slice(1)) {
+    if (part === ".." || part.includes("../") || part.includes("..\\")) return true;
+    if (/^[a-zA-Z]:[\\/]/.test(part)) return true; // drive letter
+    if (/^[\\/]/.test(part)) return true;           // POSIX absolute or UNC
+  }
+  return false;
+}
+
 export function evaluateCommand(argv: string[], override?: WorkspacePolicyOverride): CommandPolicyResult {
   if (argv.length === 0 || (argv[0] ?? "").trim() === "") {
     return { verdict: "DENY", reason: "Empty command.", risk: "CRITICAL" };
@@ -112,7 +147,30 @@ export function evaluateCommand(argv: string[], override?: WorkspacePolicyOverri
       risk: "HIGH",
     };
   }
-  return { verdict: "ALLOW", reason: "Allowed within workspace bounds.", risk: "LOW" };
+  if (pointsOutsideWorkspace(argv)) {
+    return {
+      verdict: "REQUIRE_APPROVAL",
+      reason: `Argument '${argv[1] ?? ""}' points outside the workspace — human approval required.`,
+      risk: "HIGH",
+    };
+  }
+  const binary = (argv[0] ?? "").toLowerCase();
+  const inlineFlag = argv[1]?.toLowerCase();
+  if (INLINE_CODE_RUNTIMES.has(binary) && inlineFlag !== undefined && INLINE_CODE_FLAGS.has(inlineFlag)) {
+    return {
+      verdict: "REQUIRE_APPROVAL",
+      reason: `Interpreter '${argv[0]}' with inline code (${argv[1]}) requires human approval.`,
+      risk: "HIGH",
+    };
+  }
+  if (BUILT_IN_SAFE.has(binary)) {
+    return { verdict: "ALLOW", reason: "Allowed within workspace bounds.", risk: "LOW" };
+  }
+  return {
+    verdict: "REQUIRE_APPROVAL",
+    reason: `Unknown command '${argv[0]}' — human approval required.`,
+    risk: "HIGH",
+  };
 }
 
 const SECRET_KEY_PATTERN = /(token|secret|password|passwd|api[_-]?key|private[_-]?key|credential|authorization)/i;
