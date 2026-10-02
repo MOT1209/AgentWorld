@@ -7,6 +7,38 @@
  * flow. Nothing here touches the network, the database, or the filesystem
  * except through injected adapters, so tests stay hermetic.
  */
+/**
+ * Runtime skill definition.
+ *
+ * Re-exported by explicit name, not `export *`: this package also exports a
+ * catalog-listing `SkillStatus` from ./types.js, so a wildcard would make
+ * `SkillStatus` ambiguous here. Lifecycle types come from @kingworld/shared.
+ */
+export {
+  SKILL_KEY_PATTERN,
+  SEMVER_PATTERN,
+  isValidSkillKey,
+  isSemver,
+  skillKeyWithVersion,
+  SkillDependencyRefSchema,
+  skillDefinition,
+  definitionFingerprint,
+  SkillDefinitionError,
+  assertValidSkillDefinition,
+  riskRank,
+  fromManifest,
+  summarize,
+} from "./definition.js";
+export type {
+  SkillDefinition,
+  SkillDependencyRef,
+  SkillExecutionContext,
+  SkillHandler,
+  SkillOutcome,
+  SkillSummary,
+  SkillToolInvoker,
+} from "./definition.js";
+
 export * from "./sources.js";
 export * from "./types.js";
 export * from "./normalizer.js";

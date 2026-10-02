@@ -517,6 +517,134 @@ export function canTransitionAgentState(from: AgentState, to: AgentState): boole
   return (AGENT_STATE_TRANSITIONS[from] ?? []).includes(to);
 }
 
+// -- Skills (Phase 4) --------------------------------------------------------
+// A Skill is a versioned capability package that teaches an Agent HOW to do a
+// class of work. It is NOT a prompt and NOT a tool. See packages/skills.
+//
+// Lifecycle status. Transitions are explicit and terminal states are enforced:
+//   DRAFT -> ACTIVE -> DEPRECATED -> ARCHIVED
+//   DRAFT -> ARCHIVED, ACTIVE -> DISABLED -> ACTIVE, any -> ARCHIVED
+export const SKILL_STATUSES = [
+  "DRAFT",
+  "ACTIVE",
+  "DISABLED",
+  "DEPRECATED",
+  "ARCHIVED",
+] as const;
+export const SkillStatusSchema = z.enum(SKILL_STATUSES);
+export type SkillStatus = z.infer<typeof SkillStatusSchema>;
+
+// Trust level. Determines the permission ceiling an installed skill may be
+// granted: a lower-trust skill can never declare more authority than its tier
+// allows, so an untrusted bundle cannot launder privileges into the system.
+export const SKILL_TRUST_LEVELS = [
+  "SYSTEM",
+  "VERIFIED",
+  "COMMUNITY",
+  "USER",
+  "EXPERIMENTAL",
+] as const;
+export const SkillTrustLevelSchema = z.enum(SKILL_TRUST_LEVELS);
+export type SkillTrustLevel = z.infer<typeof SkillTrustLevelSchema>;
+
+/**
+ * Maximum risk a skill of each trust level may declare. A manifest asking for
+ * more is rejected at validation, which is what stops an EXPERIMENTAL bundle
+ * from shipping a CRITICAL-risk definition and inheriting review expectations.
+ */
+export const SKILL_TRUST_RISK_CEILING: Readonly<Record<SkillTrustLevel, RiskLevel>> = {
+  SYSTEM: "CRITICAL",
+  VERIFIED: "HIGH",
+  COMMUNITY: "MEDIUM",
+  USER: "MEDIUM",
+  EXPERIMENTAL: "LOW",
+};
+
+export const SKILL_STATUS_TRANSITIONS: Readonly<Record<SkillStatus, readonly SkillStatus[]>> = {
+  DRAFT: ["ACTIVE", "ARCHIVED"],
+  ACTIVE: ["DISABLED", "DEPRECATED", "ARCHIVED"],
+  DISABLED: ["ACTIVE", "DEPRECATED", "ARCHIVED"],
+  DEPRECATED: ["ARCHIVED", "ACTIVE"],
+  ARCHIVED: [],
+};
+
+export function canTransitionSkillStatus(from: SkillStatus, to: SkillStatus): boolean {
+  if (from === to) return true;
+  return (SKILL_STATUS_TRANSITIONS[from] ?? []).includes(to);
+}
+
+// How an agent holds a skill. Mirrors nothing else in the system: permissions
+// decide authority, this decides habitability.
+export const SKILL_TIERS = ["PRIMARY", "SECONDARY", "OPTIONAL", "DISABLED"] as const;
+export const SkillTierSchema = z.enum(SKILL_TIERS);
+export type SkillTier = z.infer<typeof SkillTierSchema>;
+
+export const SKILL_EXECUTION_STATUSES = [
+  "QUEUED",
+  "RUNNING",
+  "WAITING_APPROVAL",
+  "COMPLETED",
+  "FAILED",
+  "CANCELLED",
+  "TIMEOUT",
+] as const;
+export const SkillExecutionStatusSchema = z.enum(SKILL_EXECUTION_STATUSES);
+export type SkillExecutionStatus = z.infer<typeof SkillExecutionStatusSchema>;
+
+export const SKILL_EXECUTION_TERMINAL_STATUSES: readonly SkillExecutionStatus[] = [
+  "COMPLETED",
+  "FAILED",
+  "CANCELLED",
+  "TIMEOUT",
+];
+
+export function isTerminalSkillExecution(status: SkillExecutionStatus): boolean {
+  return SKILL_EXECUTION_TERMINAL_STATUSES.includes(status);
+}
+
+export const SKILL_EXECUTION_TRANSITIONS: Readonly<
+  Record<SkillExecutionStatus, readonly SkillExecutionStatus[]>
+> = {
+  QUEUED: ["RUNNING", "CANCELLED", "FAILED"],
+  RUNNING: ["WAITING_APPROVAL", "COMPLETED", "FAILED", "CANCELLED", "TIMEOUT"],
+  WAITING_APPROVAL: ["RUNNING", "COMPLETED", "FAILED", "CANCELLED", "TIMEOUT"],
+  COMPLETED: [],
+  FAILED: [],
+  CANCELLED: [],
+  TIMEOUT: [],
+};
+
+export function canTransitionSkillExecution(
+  from: SkillExecutionStatus,
+  to: SkillExecutionStatus,
+): boolean {
+  if (from === to) return true;
+  return (SKILL_EXECUTION_TRANSITIONS[from] ?? []).includes(to);
+}
+
+/**
+ * Skill categories (spec section 8, groups A-N). Data, not behaviour: adding a
+ * category is one entry here plus the skills that use it.
+ */
+export const SKILL_CATEGORIES = [
+  "CORE_INTELLIGENCE",
+  "AGENT_COMMUNICATION",
+  "MEMORY",
+  "RESEARCH",
+  "SOFTWARE_DEVELOPMENT",
+  "WORKSPACE",
+  "COMPANY",
+  "FINANCE",
+  "SALES_MARKETING",
+  "WORLD",
+  "DAILY_LIFE",
+  "SOCIAL",
+  "PERSONALITY",
+  "AGENT_MANAGEMENT",
+] as const;
+export const SkillCategorySchema = z.enum(SKILL_CATEGORIES);
+export type SkillCategory = z.infer<typeof SkillCategorySchema>;
+
 // -- Helpers -----------------------------------------------------------------
 
 export function enumValues<T extends Record<string, string>>(obj: T): Array<T[keyof T]> {
