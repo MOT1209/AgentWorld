@@ -163,14 +163,26 @@ export class GitHubProvider implements SkillProvider {
   }
 
   static parseIdentifier(identifier: string): { repository: string; path: string; revision: string } {
-    // Accepted: "owner/repo[@rev][/path...]"
-    const atSplit = identifier.split("@");
-    const repoAndPath = (atSplit[0] ?? "").trim();
-    const revision = (atSplit[1] ?? "HEAD").trim() || "HEAD";
+    // Accepted: "owner/repo[@rev][/path...]". The revision ends at the next
+    // "/" so "owner/repo@HEAD/path" pins HEAD with subpath "path".
+    const atIndex = identifier.indexOf("@");
+    const repoAndPath = (atIndex === -1 ? identifier : identifier.slice(0, atIndex)).trim();
+    const afterAt = (atIndex === -1 ? "" : identifier.slice(atIndex + 1)).trim();
+    let revision = "HEAD";
+    let extraPath = "";
+    if (afterAt !== "") {
+      const slash = afterAt.indexOf("/");
+      if (slash === -1) revision = afterAt || "HEAD";
+      else {
+        revision = afterAt.slice(0, slash).trim() || "HEAD";
+        extraPath = afterAt.slice(slash + 1).trim();
+      }
+    }
     const segments = repoAndPath.split("/").filter((s) => s.length > 0);
     if (segments.length < 2) throw new Error(`Invalid GitHub identifier '${identifier}'`);
     const repository = `${segments[0]}/${segments[1]}`;
-    const path = segments.slice(2).join("/");
+    const basePath = segments.slice(2).join("/");
+    const path = [basePath, extraPath].filter((s) => s.length > 0).join("/");
     if (path.includes("..")) throw new Error("GitHub skill path must not contain traversal");
     return { repository, path, revision };
   }

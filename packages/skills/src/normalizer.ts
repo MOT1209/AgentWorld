@@ -149,9 +149,12 @@ export function normalizeExternalSkill(raw: unknown, fallback: { externalId: str
 
 /** Build the controlled on-disk layout for a skill (no secrets inside). */
 export function skillInstallPath(sourceType: string, skillKey: string): string {
+  if (skillKey.includes("..") || skillKey.includes("/") || skillKey.includes("\\")) {
+    throw new Error("Skill key must not contain path traversal");
+  }
   const safeSource = sourceType.toLowerCase().replace(/[^a-z0-9-_]+/g, "-");
   const safeKey = skillKey.toLowerCase().replace(/[^a-z0-9-_]+/g, "-");
-  if (safeKey === "" || safeKey === "." || safeKey === "..") throw new Error("Invalid skill key for path");
-  if (safeKey.includes("..")) throw new Error("Skill key must not contain path traversal");
+  if (safeKey === "" || safeKey.replace(/-+/g, "") === "") throw new Error("Invalid skill key for path");
+  if (safeSource === "") throw new Error("Invalid source for path");
   return `skills/external/${safeSource}/${safeKey}`;
 }

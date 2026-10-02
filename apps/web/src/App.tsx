@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, getToken, setToken } from "./api.js";
 import { SimulationView } from "./SimulationView.js";
+import { SkillsView } from "./SkillsView.js";
 
-type Section = "simulation" | "world" | "company" | "agents" | "tasks" | "chat" | "economy" | "approvals" | "activity" | "plans" | "sessions" | "workspaces" | "escalations";
+type Section = "simulation" | "world" | "company" | "agents" | "tasks" | "chat" | "economy" | "approvals" | "activity" | "plans" | "sessions" | "workspaces" | "escalations" | "skills";
 
 const SECTIONS: Array<{ key: Section; label: string }> = [
   { key: "simulation", label: "Simulation" },
@@ -14,6 +15,7 @@ const SECTIONS: Array<{ key: Section; label: string }> = [
   { key: "sessions", label: "Sessions" },
   { key: "workspaces", label: "Workspaces" },
   { key: "escalations", label: "Escalations" },
+  { key: "skills", label: "Skills" },
   { key: "chat", label: "Communication" },
   { key: "economy", label: "Economy" },
   { key: "approvals", label: "Approvals" },
@@ -305,6 +307,7 @@ export default function App(): JSX.Element {
             <DataTable rows={((escalations.data?.items ?? []) as unknown[]) as Array<Record<string, unknown>>} />
           </Panel>
         )}
+        {section === "skills" && <SkillsView token={token} />}
         {section === "chat" && <ChatView token={token} />}
         {section === "economy" && (
           <Panel title="Wallets" error={wallets.error}>
