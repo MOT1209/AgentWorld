@@ -100,7 +100,7 @@ export interface SkillOutcome<TOutput = unknown> {
  * which is what makes "skills cannot bypass authorization" checkable instead
  * of aspirational -- there is no back door to bypass it with.
  */
-export interface SkillHandler<TInput = Record<string, unknown>, TOutput = unknown> {
+export interface SkillHandler<TOutput = unknown> {
   execute(
     context: SkillExecutionContext,
     tools: SkillToolInvoker,
@@ -117,7 +117,7 @@ export interface SkillToolInvoker {
   invoke(toolName: string, args: unknown): Promise<unknown>;
 }
 
-export interface SkillDefinition<TInput = Record<string, unknown>, TOutput = unknown> {
+export interface SkillDefinition<TOutput = unknown> {
   key: string;
   name: string;
   version: string;
@@ -144,17 +144,17 @@ export interface SkillDefinition<TInput = Record<string, unknown>, TOutput = unk
   outputSchema?: JsonSchema;
   /** System-owned skills ship with AgentWorld and cannot be replaced. */
   systemOwned: boolean;
-  handler?: SkillHandler<TInput, TOutput>;
+  handler?: SkillHandler<TOutput>;
   examples?: readonly string[];
 }
 
-export function skillDefinition<TInput extends Record<string, unknown>, TOutput>(
-  input: Omit<SkillDefinition<TInput, TOutput>, "status" | "trustLevel" | "systemOwned"> & {
+export function skillDefinition<TOutput>(
+  input: Omit<SkillDefinition<TOutput>, "status" | "trustLevel" | "systemOwned"> & {
     status?: SkillStatus;
     trustLevel?: SkillTrustLevel;
     systemOwned?: boolean;
   },
-): SkillDefinition<TInput, TOutput> {
+): SkillDefinition<TOutput> {
   return {
     ...input,
     status: input.status ?? "ACTIVE",
