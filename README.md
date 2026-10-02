@@ -16,9 +16,9 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Phase_1-complete-brightgreen" alt="Phase 1 complete" />
-  <img src="https://img.shields.io/badge/Phase_2-in_progress-blue" alt="Phase 2 in progress" />
-  <img src="https://img.shields.io/badge/Phase_3-designed-purple" alt="Phase 3 designed" />
-  <img src="https://img.shields.io/badge/tests-54_passing-brightgreen" alt="54 tests passing" />
+  <img src="https://img.shields.io/badge/Phase_2-complete-brightgreen" alt="Phase 2 complete" />
+  <img src="https://img.shields.io/badge/Phase_3-in_progress-blue" alt="Phase 3 in progress" />
+  <img src="https://img.shields.io/badge/tests-62_passing-brightgreen" alt="62 tests passing" />
   <img src="https://img.shields.io/badge/verify-typecheck_%E2%80%A2_lint_%E2%80%A2_test_%E2%80%A2_build-blue" alt="verify pipeline" />
   <img src="https://img.shields.io/badge/keys-zero_required-black" alt="zero API keys needed" />
 </p>
@@ -38,7 +38,7 @@ flowchart TB
         WS[Workspace]
         RUN[AgentRuntime]
         AI[AI Provider]
-        TOOLS[28 tools]
+        TOOLS[34 tools]
     end
     WORLD --> AGENT --> TASK --> WS --> RUN --> AI --> TOOLS
     TOOLS -->|result| TASK
@@ -118,8 +118,8 @@ human message ──▶ wakeup ──▶ THINKING ──▶ act (tools) ──�
 - Every run writes episodic + fact + obligation memories, so the next turn
   has continuity — and pending approvals are remembered, not retried.
 
-**28 tools** across tasks, messages, memory, wallets, world, company, events,
-approvals, plans, reviews, reports, escalations, and sessions.
+**34 tools** across tasks, messages, memory, wallets, world, company, events,
+approvals, plans, reviews, reports, escalations, sessions, and workspaces.
 
 ---
 
@@ -132,11 +132,12 @@ approvals, plans, reviews, reports, escalations, and sessions.
 | `packages/{shared,database,security}` | enums, `Money`, errors, config, JWT, RBAC, rate limits, sanitisation |
 | `packages/{economy,events,tasks,memory,world,company}` | ledger, event bus + audit, state machines, decay-ranked memory, dual clock |
 | `packages/{agents,orchestration,runtime}` | runtime loop, roles, capabilities, hierarchy, plans, delegation, reviews + rework budgets, reports, escalations, sessions |
-| `packages/{ai,tools}` | provider abstraction + `ModelRouter`, 28-tool registry + single enforcement point |
+| `packages/{ai,tools}` | provider abstraction + `ModelRouter`, 34-tool registry + single enforcement point |
 | `packages/simulation` | needs, skills, goals, activities, deterministic decision engine, world tick loop |
-| `database/` | Prisma SQLite schema (30+ models) + migrations + idempotent `seed.ts` |
-| `tests/` | 8 suites, **54 tests** — finance races, ledger proofs, review loops, permissions, API, simulation |
-| `docs/` | `ARCHITECTURE` · `SIMULATION_ENGINE` · `SECURITY` · `API` · `ROADMAP` · `AGENTWORLD_PHASE_3_ARCHITECTURE` |
+| `packages/workspace` | Phase 3 work environments — closed-root path guard, workspace lifecycle, members, archive/reap |
+| `database/` | Prisma SQLite schema (41 models) + migrations + idempotent `seed.ts` |
+| `tests/` | 9 suites, **62 tests** — finance races, ledger proofs, review loops, permissions, API, simulation |
+| `docs/` | `ARCHITECTURE` · `SIMULATION_ENGINE` · `SECURITY` · `API` · `ROADMAP` · `AGENTWORLD_PHASE_3_ARCHITECTURE` · `PHASE3-AUDIT` |
 
 ---
 
@@ -145,8 +146,8 @@ approvals, plans, reviews, reports, escalations, and sessions.
 | Phase | Scope | Status |
 |-------|-------|--------|
 | **1 — Core engine** | ledger, events, providers, tasks, memory, world, runtime, tools, approvals, API, seed, dashboard | ✅ complete |
-| **2 — Orchestration** | plans, delegation, capabilities, hierarchy, reviews + rework, reports, escalations, sessions, simulation engine, `ModelRouter` | 🔨 in progress |
-| **3 — Real workspace** | `AgentWorkspace`, process isolation, `terminal`/`fs`/`git` tools, `OpenCodeAdapter`, verification pipeline, live UI, 3D link | 📐 [designed](docs/AGENTWORLD_PHASE_3_ARCHITECTURE.md) |
+| **2 — Orchestration** | plans, delegation, capabilities, hierarchy, reviews + rework, reports, escalations, sessions, simulation engine, `ModelRouter` | ✅ complete |
+| **3 — Real workspace** | `AgentWorkspace`, process isolation, `terminal`/`fs`/`git` tools, `OpenCodeAdapter`, verification pipeline, live UI, 3D link | 🔨 [in progress](docs/PHASE3-AUDIT.md) |
 
 ---
 

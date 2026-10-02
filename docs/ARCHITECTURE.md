@@ -1,6 +1,8 @@
-# King World — Architecture
+# King World - Architecture
 
-Phase 1 builds the core engine that makes a Phase 2 city possible.
+Phases to date: Phase 1 core engine, Phase 2 orchestration (plans, sessions,
+reviews, reports, escalations), Phase 3 real workspaces + execution runtime
+(in progress, see `docs/PHASE3-AUDIT.md`).
 
 ## Monorepo
 
@@ -83,6 +85,39 @@ marks success/failure. The agent never re-derives arguments.
 `sendMessage` computes `notifyAgentId` (single-participant human threads) and
 publishes it on `MESSAGE_SENT`. The API subscribes at bootstrap and runs the
 recipient agent best-effort.
+
+## Orchestration (Phase 2)
+
+`packages/orchestration` coordinates work between agents: `plan.service`
+lifecycle with human-only approval, `delegation.service` (capability match +
+`workload` policy + anti name-branching, max re-delegations),
+`policy-engine.ts` (ALLOW / REQUIRE_APPROVAL / DENY as data), review
+submission with rework budgets and a self-review ban, reports, escalations
+(role recipients, human inbox), and decision conflicts. Every transition emits
+a typed event + audit row. `orchestrateAgentRun` (`apps/api/src/services`)
+wraps each run in an `AgentSession` so every execution is attributable.
+
+## Sessions (Phase 2/3)
+
+`packages/runtime/src/session.service.ts` owns `AgentSession`:
+INITIALIZING -> RUNNING <-> WAITING -> COMPLETED | FAILED | CANCELLED, with
+ownership rules (only the starter or a human may move it) and terminal
+finality (terminal states never reopen). Emits `SESSION_STARTED` /
+`SESSION_FINISHED`. Sessions are the attachment point for Phase 3 workspace
+and execution-backend fields.
+
+## Workspaces (Phase 3, in progress)
+
+`packages/workspace` models real work environments independent of simulation
+state: an approved on-disk root (default `<cwd>/workspaces`, gitignored) plus
+a `Workspace` row (path is unique and always inside the root) and
+`WorkspaceMember` rows (OWNER/MEMBER/READER). Invariants: closed roots (every
+path resolves inside the root or the call fails - `..`, absolute-path
+smuggling and symlink escapes are rejected server-side), explicit access
+(holder/member/permission, nothing else), no secrets in rows, archive-don't-
+vanish retirement. The simulation may know an agent is WORKING; the work
+itself happens here. Execution backends, terminal/fs/git tools and the async
+queue build on this (see `docs/AGENTWORLD_PHASE_3_ARCHITECTURE.md`).
 
 ## Database portability
 

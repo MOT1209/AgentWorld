@@ -13,6 +13,12 @@ import { eventRouter } from "../routes/event.routes.js";
 import { simulationRouter } from "../routes/simulation.routes.js";
 import { eventsRouter } from "../routes/events.routes.js";
 import { planRouter } from "../routes/plan.routes.js";
+import { sessionRouter } from "../routes/session.routes.js";
+import { reviewRouter } from "../routes/review.routes.js";
+import { reportRouter } from "../routes/report.routes.js";
+import { escalationRouter } from "../routes/escalation.routes.js";
+import { conflictRouter } from "../routes/conflict.routes.js";
+import { workspaceRouter } from "../routes/workspace.routes.js";
 
 export function registerRoutes(app: Express): void {
   app.use("/api/v1/auth", authRouter);
@@ -29,4 +35,10 @@ export function registerRoutes(app: Express): void {
   app.use("/api/v1/simulation", simulationRouter);
   app.use("/api/v1/events", eventsRouter);
   app.use("/api/v1/plans", planRouter);
+  app.use("/api/v1/sessions", sessionRouter);
+  app.use("/api/v1/reviews", reviewRouter);
+  app.use("/api/v1/reports", reportRouter);
+  app.use("/api/v1/escalations", escalationRouter);
+  app.use("/api/v1/conflicts", conflictRouter);
+  app.use("/api/v1/workspaces", workspaceRouter);
 }

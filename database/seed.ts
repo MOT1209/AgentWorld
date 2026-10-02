@@ -375,6 +375,57 @@ async function main(): Promise<void> {
     });
   }
 
+  // 11. Orchestration + workspace demo data (Phase 2/3 screens never empty)
+  const { createPlan, transitionPlan } = await import("../packages/orchestration/src/plan.service.js");
+  const { startSession, finishSession } = await import("../packages/runtime/src/session.service.js");
+  const { writeReport } = await import("../packages/orchestration/src/report.service.js");
+  const { syncHierarchyFromRoles } = await import("../packages/agents/src/hierarchy-sync.js");
+  const { createWorkspace } = await import("../packages/workspace/src/workspace.service.js");
+  const seedCtx = { actor: SYSTEM, correlationId };
+
+  if ((await prisma.plan.count({ where: { companyId: company.id } })) === 0) {
+    const plan = await createPlan(
+      prisma,
+      {
+        title: "First week operating plan",
+        objective: "Stand up treasury, survey the market, and establish the reporting rhythm.",
+        companyId: company.id,
+        milestones: ["Treasury funded", "Market surveyed", "First report filed"],
+        assumptions: ["Central Market is open", "Rashid is available"],
+        risks: ["Price volatility"],
+      },
+      { ...seedCtx, userId: owner.id },
+    );
+    await transitionPlan(prisma, plan.id, "ANALYZING", seedCtx);
+    await transitionPlan(prisma, plan.id, "READY", seedCtx);
+  }
+  if ((await prisma.agentSession.count()) === 0) {
+    const session = await startSession(
+      prisma,
+      { agentId: rashidId, trigger: "TASK_ASSIGNED", context: { note: "seed demo session" } },
+      seedCtx,
+    );
+    await finishSession(prisma, session.id, { status: "COMPLETED", result: "Seed demo run completed." }, seedCtx);
+  }
+  if ((await prisma.report.count()) === 0) {
+    await writeReport(
+      prisma,
+      { kind: "PROGRESS", summary: "Seed week one: treasury open, market survey underway.", payload: { workCompleted: ["treasury"] } },
+      { ...seedCtx, agentId: ahmadId },
+    );
+  }
+  const { created: hierarchyCreated } = await syncHierarchyFromRoles(prisma);
+  if (hierarchyCreated > 0) console.log(`seed: hierarchy synced (${hierarchyCreated} links)`);
+  const wsCount = await prisma.workspace.count();
+  if (wsCount === 0) {
+    try {
+      await createWorkspace(prisma, { name: "Rashid HQ Desk", agentId: rashidId, type: "PERSONAL" }, seedCtx);
+      console.log("seed: demo workspace created");
+    } catch (error) {
+      console.log(`seed: demo workspace skipped (${error instanceof Error ? error.message : String(error)})`);
+    }
+  }
+
   void ctx;
   console.log("seed: done");
 }

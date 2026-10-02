@@ -280,6 +280,10 @@ model Agent {
   escalationsReceived Escalation[]    @relation("EscalationToAgent")
   asSupervisor       AgentHierarchy[] @relation("HierarchySupervisor")
   asSubordinate      AgentHierarchy[] @relation("HierarchySubordinate")
+  workspaces         Workspace[]
+  workspaceMemberships WorkspaceMember[]
+  artifacts          Artifact[]
+  executions         ExecutionJob[]
 
   @@index([roleKey])
   @@index([worldId])
@@ -458,6 +462,7 @@ model Project {
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
   tasks   Task[]
+  workspaces Workspace[]
 
   @@unique([companyId, name])
   @@index([companyId])
@@ -527,6 +532,8 @@ model Task {
   sessions         AgentSession[]
   escalations      Escalation[]
   conflicts        DecisionConflict[]
+  artifacts        Artifact[]
+  executions       ExecutionJob[]
 
   @@index([status])
   @@index([priority])
@@ -671,7 +678,13 @@ model AgentSession {
 
   taskId String?
 
-  /// INITIALIZING | RUNNING | WAITING | COMPLETED | FAILED | CANCELLED
+  /// Phase 3: where this run executes. Null = legacy non-workspace run.
+  workspaceId String?
+  /// Execution backend id: opencode | local | mock.
+  backendId   String?
+
+  /// INITIALIZING | QUEUED | RUNNING | WAITING | COMPLETED | FAILED |
+  /// CANCELLED | TIMEOUT
   status String @default("INITIALIZING")
 
   /// JSON -- { trigger, taskType, planId, conversationId, capabilities }
@@ -687,12 +700,17 @@ model AgentSession {
   endedAt   DateTime?
   updatedAt DateTime @updatedAt
 
-  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
-  task  Task? @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  agent     Agent      @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  task      Task?      @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+
+  artifacts  Artifact[]
+  executions ExecutionJob[]
 
   @@index([agentId, status])
   @@index([status])
   @@index([taskId])
+  @@index([workspaceId])
   @@index([startedAt])
 }
 
@@ -1134,4 +1152,177 @@ model ToolInvocation {
   @@index([toolName])
   @@index([correlationId])
   @@index([createdAt])
+}
+
+// =============================================================================
+// WORKSPACES -- Phase 3: real work environments, independent of simulation
+// =============================================================================
+
+/// An agent's actual work environment. Independent from personality and
+/// simulation state: one primary workspace per agent, plus project and
+/// temporary execution workspaces. The simulation may know an agent is
+/// WORKING; the work itself happens here.
+model Workspace {
+  id   String @id @default(cuid())
+  name String
+
+  /// Primary holder. Null = shared/team workspace governed by members.
+  agentId   String?
+  projectId String?
+
+  /// PERSONAL | PROJECT | TEMPORARY | SHARED
+  type String @default("PERSONAL")
+  /// Absolute path, always under an approved root (enforced server-side).
+  path String @unique
+
+  /// CREATING | READY | BUSY | PAUSED | ERROR | ARCHIVED
+  status String @default("CREATING")
+
+  /// JSON -- { runtime, packageManager, commands, limits, ttlHours? }.
+  /// Never stores secrets; references only.
+  environment String @default("{}")
+
+  /// 3D mapping hook: the renderer consumes it, never the other way round.
+  workspaceLocationId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  agent   Agent?   @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  project Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  members WorkspaceMember[]
+
+  sessions   AgentSession[]
+  artifacts  Artifact[]
+  executions ExecutionJob[]
+
+  @@index([agentId])
+  @@index([projectId])
+  @@index([status])
+  @@index([type])
+}
+
+model WorkspaceMember {
+  id          String @id @default(cuid())
+  workspaceId String
+  agentId     String
+
+  /// OWNER | MEMBER | READER
+  role String @default("MEMBER")
+
+  createdAt DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  agent     Agent     @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, agentId])
+  @@index([agentId])
+}
+
+// =============================================================================
+// EXECUTION -- Phase 3: queued work, real processes, produced files
+// =============================================================================
+
+/// One unit of queued or running execution work (M5 queue + M3 backends).
+/// `command` is a JSON argv array -- never a shell string; the runtime spawns
+/// with shell:false and the policy layer decides what may run at all.
+model ExecutionJob {
+  id String @id @default(cuid())
+
+  /// COMMAND | VERIFY | BACKEND
+  kind String @default("COMMAND")
+  /// QUEUED | RUNNING | COMPLETED | FAILED | CANCELLED | TIMEOUT
+  status String @default("QUEUED")
+
+  /// Backend that will run it: opencode | local | mock.
+  backendId String?
+  /// JSON argv array. Security-critical: never a concatenated shell line.
+  command   String?
+  /// Absolute working directory; validated inside the workspace root server-side.
+  workingDir String?
+
+  workspaceId String?
+  sessionId   String?
+  taskId      String?
+  agentId     String?
+
+  priority    Int @default(0)
+  attempts    Int @default(0)
+  maxAttempts Int @default(1)
+  timeoutMs   Int @default(600000)
+
+  scheduledAt DateTime @default(now())
+  startedAt   DateTime?
+  finishedAt  DateTime?
+  exitCode    Int?
+  stdoutBytes Int @default(0)
+  stderrBytes Int @default(0)
+
+  /// JSON -- { exitCode, stdoutPath, stderrPath, durationMs, timedOut }.
+  /// Paths only; output is spooled to files under the workspace, not into rows.
+  result String?
+  error  String?
+  /// ErrorCategory value (TRANSIENT | CONFIGURATION | ... | UNKNOWN).
+  errorCategory String?
+
+  createdBy     String?
+  correlationId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workspace Workspace?     @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  session   AgentSession?  @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  task      Task?          @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  agent     Agent?         @relation(fields: [agentId], references: [id], onDelete: SetNull)
+
+  artifacts Artifact[]
+
+  @@index([status, scheduledAt])
+  @@index([workspaceId])
+  @@index([sessionId])
+  @@index([agentId])
+  @@index([taskId])
+  @@index([correlationId])
+}
+
+/// A file, log, report or other product registered for the dashboard.
+/// `path` is relative to the workspace root; the path guard re-validates it
+/// on read. Rows may outlive files (status MISSING), files never outlive rows.
+model Artifact {
+  id   String @id @default(cuid())
+  name String
+
+  /// FILE | LOG | REPORT | DIFF | OUTPUT
+  kind String @default("FILE")
+  /// Relative to the workspace root (never an absolute path outside it).
+  path       String
+  sizeBytes  Int    @default(0)
+  contentHash String?
+  mimeType   String?
+
+  /// PENDING | READY | MISSING | ARCHIVED
+  status String @default("READY")
+
+  workspaceId String?
+  sessionId   String?
+  taskId      String?
+  agentId     String?
+  executionId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workspace Workspace?     @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  session   AgentSession?  @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  task      Task?          @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  agent     Agent?         @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  execution ExecutionJob?  @relation(fields: [executionId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId])
+  @@index([sessionId])
+  @@index([taskId])
+  @@index([agentId])
+  @@index([executionId])
+  @@index([kind])
 }

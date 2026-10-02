@@ -77,9 +77,13 @@ export const PERMISSIONS = {
   SESSION_READ: "session.read",
   SESSION_START: "session.start",
 
-  // workspace (Phase 2)
+  // workspace (Phase 2 declared read/write; Phase 3 completes the set)
   WORKSPACE_READ: "workspace.read",
   WORKSPACE_WRITE: "workspace.write",
+  WORKSPACE_EXECUTE: "workspace.execute",
+  WORKSPACE_DELETE: "workspace.delete",
+  WORKSPACE_SHARE: "workspace.share",
+  WORKSPACE_ADMIN: "workspace.admin",
 
   // observability
   EVENT_READ: "event.read",

@@ -49,6 +49,9 @@ export const ROUTINE_ACTIONS: readonly string[] = [
   "agent.escalate",
   "session.start",
   "session.status",
+  "workspace.list",
+  "workspace.get",
+  "workspace.status",
 ];
 
 export const ACTION_RISK: Record<string, RiskLevel> = {
@@ -82,6 +85,12 @@ export const ACTION_RISK: Record<string, RiskLevel> = {
   "agent.escalate": "MEDIUM",
   "session.start": "LOW",
   "session.status": "LOW",
+  "workspace.create": "MEDIUM",
+  "workspace.list": "LOW",
+  "workspace.get": "LOW",
+  "workspace.status": "LOW",
+  "workspace.share": "MEDIUM",
+  "workspace.archive": "MEDIUM",
   "agent.create": "CRITICAL",
   "agent.delete": "CRITICAL",
   "agent.modify": "HIGH",

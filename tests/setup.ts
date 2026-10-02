@@ -101,11 +101,18 @@ try {
   await db.$executeRawUnsafe(`DROP TRIGGER IF EXISTS "transaction_is_immutable_update"`);
   await db.$executeRawUnsafe(`DROP TRIGGER IF EXISTS "transaction_is_immutable_delete"`);
   for (const table of [
+    // Phase 3 execution first: artifacts reference everything, jobs reference
+    // workspaces/sessions, and sessions now reference workspaces.
+    "Artifact",
+    "ExecutionJob",
+    "AgentSession",
+    // Phase 3 workspaces: members reference workspaces and agents.
+    "WorkspaceMember",
+    "Workspace",
     // Phase 2 orchestration tables first: they reference Task/Agent/User.
     "DecisionConflict",
     "Escalation",
     "AgentHierarchy",
-    "AgentSession",
     "Report",
     "TaskReview",
     "Plan",

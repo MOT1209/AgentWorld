@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api, getToken, setToken } from "./api.js";
 import { SimulationView } from "./SimulationView.js";
 
-type Section = "simulation" | "world" | "company" | "agents" | "tasks" | "chat" | "economy" | "approvals" | "activity";
+type Section = "simulation" | "world" | "company" | "agents" | "tasks" | "chat" | "economy" | "approvals" | "activity" | "plans" | "sessions" | "workspaces" | "escalations";
 
 const SECTIONS: Array<{ key: Section; label: string }> = [
   { key: "simulation", label: "Simulation" },
@@ -10,6 +10,10 @@ const SECTIONS: Array<{ key: Section; label: string }> = [
   { key: "company", label: "Company" },
   { key: "agents", label: "Agents" },
   { key: "tasks", label: "Tasks" },
+  { key: "plans", label: "Plans" },
+  { key: "sessions", label: "Sessions" },
+  { key: "workspaces", label: "Workspaces" },
+  { key: "escalations", label: "Escalations" },
   { key: "chat", label: "Communication" },
   { key: "economy", label: "Economy" },
   { key: "approvals", label: "Approvals" },
@@ -225,6 +229,10 @@ export default function App(): JSX.Element {
   const tasks = useFetch<{ items: unknown[] }>("/tasks", section === "tasks" ? token : null);
   const wallets = useFetch<unknown[]>("/economy/wallets", section === "economy" ? token : null);
   const activity = useFetch<unknown[]>("/logs/activity", section === "activity" ? token : null);
+  const plans = useFetch<{ items: unknown[] }>("/plans", section === "plans" ? token : null);
+  const sessions = useFetch<{ items: unknown[] }>("/sessions", section === "sessions" ? token : null);
+  const workspaces = useFetch<{ items: unknown[] }>("/workspaces", section === "workspaces" ? token : null);
+  const escalations = useFetch<{ items: unknown[] }>("/escalations/human", section === "escalations" ? token : null);
 
   if (token === null) {
     return (
@@ -275,6 +283,26 @@ export default function App(): JSX.Element {
         {section === "tasks" && (
           <Panel title="Tasks" error={tasks.error}>
             <DataTable rows={((tasks.data?.items ?? []) as unknown[]) as Array<Record<string, unknown>>} />
+          </Panel>
+        )}
+        {section === "plans" && (
+          <Panel title="Plans" error={plans.error}>
+            <DataTable rows={((plans.data?.items ?? []) as unknown[]) as Array<Record<string, unknown>>} />
+          </Panel>
+        )}
+        {section === "sessions" && (
+          <Panel title="Sessions" error={sessions.error}>
+            <DataTable rows={((sessions.data?.items ?? []) as unknown[]) as Array<Record<string, unknown>>} />
+          </Panel>
+        )}
+        {section === "workspaces" && (
+          <Panel title="Workspaces" error={workspaces.error}>
+            <DataTable rows={((workspaces.data?.items ?? []) as unknown[]) as Array<Record<string, unknown>>} />
+          </Panel>
+        )}
+        {section === "escalations" && (
+          <Panel title="Escalations awaiting a human" error={escalations.error}>
+            <DataTable rows={((escalations.data?.items ?? []) as unknown[]) as Array<Record<string, unknown>>} />
           </Panel>
         )}
         {section === "chat" && <ChatView token={token} />}

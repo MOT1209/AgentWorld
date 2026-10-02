@@ -4,7 +4,10 @@
 
 **Phase 1 goal:** build the *core engine* that makes a Phase 2 city possible. Not a demo.
 
-**Status of this document:** written at the end of the first working session. Everything under "Built" is on disk and typechecks. Everything under "Remaining" is not yet written.
+**Status of this document:** HISTORICAL - Phase 1 handover, written at the end
+of the first working session. Every item under "Remaining" has since shipped
+(Phases 1 and 2 complete; see `docs/ROADMAP.md`). Kept for context only; do
+not treat its status lines as current.
 
 ---
 

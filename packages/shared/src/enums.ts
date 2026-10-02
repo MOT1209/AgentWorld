@@ -256,13 +256,17 @@ export const PLAN_TRANSITIONS: Record<PlanStatus, readonly PlanStatus[]> = {
   CANCELLED: [],
 };
 
+// QUEUED/TIMEOUT are additive (Phase 3 execution): the parser accepts them,
+// existing rows keep their old values, and transitions stay explicit.
 export const SESSION_STATUSES = [
   "INITIALIZING",
+  "QUEUED",
   "RUNNING",
   "WAITING",
   "COMPLETED",
   "FAILED",
   "CANCELLED",
+  "TIMEOUT",
 ] as const;
 export const SessionStatusSchema = z.enum(SESSION_STATUSES);
 export type SessionStatus = z.infer<typeof SessionStatusSchema>;
@@ -337,6 +341,52 @@ export const ERROR_CATEGORIES = [
 ] as const;
 export const ErrorCategorySchema = z.enum(ERROR_CATEGORIES);
 export type ErrorCategory = z.infer<typeof ErrorCategorySchema>;
+
+// -- Workspaces (Phase 3) --------------------------------------------------------
+
+export const WORKSPACE_TYPES = ["PERSONAL", "PROJECT", "TEMPORARY", "SHARED"] as const;
+export const WorkspaceTypeSchema = z.enum(WORKSPACE_TYPES);
+export type WorkspaceType = z.infer<typeof WorkspaceTypeSchema>;
+
+export const WORKSPACE_STATUSES = [
+  "CREATING",
+  "READY",
+  "BUSY",
+  "PAUSED",
+  "ERROR",
+  "ARCHIVED",
+] as const;
+export const WorkspaceStatusSchema = z.enum(WORKSPACE_STATUSES);
+export type WorkspaceStatus = z.infer<typeof WorkspaceStatusSchema>;
+
+export const WORKSPACE_MEMBER_ROLES = ["OWNER", "MEMBER", "READER"] as const;
+export const WorkspaceMemberRoleSchema = z.enum(WORKSPACE_MEMBER_ROLES);
+export type WorkspaceMemberRole = z.infer<typeof WorkspaceMemberRoleSchema>;
+
+// -- Execution & artifacts (Phase 3) ------------------------------------------
+
+export const EXECUTION_STATUSES = [
+  "QUEUED",
+  "RUNNING",
+  "COMPLETED",
+  "FAILED",
+  "CANCELLED",
+  "TIMEOUT",
+] as const;
+export const ExecutionStatusSchema = z.enum(EXECUTION_STATUSES);
+export type ExecutionStatus = z.infer<typeof ExecutionStatusSchema>;
+
+export const EXECUTION_KINDS = ["COMMAND", "VERIFY", "BACKEND"] as const;
+export const ExecutionKindSchema = z.enum(EXECUTION_KINDS);
+export type ExecutionKind = z.infer<typeof ExecutionKindSchema>;
+
+export const ARTIFACT_KINDS = ["FILE", "LOG", "REPORT", "DIFF", "OUTPUT"] as const;
+export const ArtifactKindSchema = z.enum(ARTIFACT_KINDS);
+export type ArtifactKind = z.infer<typeof ArtifactKindSchema>;
+
+export const ARTIFACT_STATUSES = ["PENDING", "READY", "MISSING", "ARCHIVED"] as const;
+export const ArtifactStatusSchema = z.enum(ARTIFACT_STATUSES);
+export type ArtifactStatus = z.infer<typeof ArtifactStatusSchema>;
 
 // -- Observability -----------------------------------------------------------
 

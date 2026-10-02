@@ -19,6 +19,7 @@ import { reviewTools } from "./definitions/review-tools.js";
 import { reportTools } from "./definitions/report-tools.js";
 import { escalationTools } from "./definitions/escalation-tools.js";
 import { sessionTools } from "./definitions/session-tools.js";
+import { workspaceTools } from "./definitions/workspace-tools.js";
 import { ToolRegistry } from "./registry.js";
 
 export const BUILT_IN_TOOLS: AnyToolDefinition[] = [
@@ -35,6 +36,7 @@ export const BUILT_IN_TOOLS: AnyToolDefinition[] = [
   ...reportTools,
   ...escalationTools,
   ...sessionTools,
+  ...workspaceTools,
 ];
 
 export function createDefaultRegistry(): ToolRegistry {
@@ -58,3 +60,12 @@ export { reviewTools, reviewSubmitTool } from "./definitions/review-tools.js";
 export { reportTools, reportSubmitTool } from "./definitions/report-tools.js";
 export { escalationTools, escalateTool } from "./definitions/escalation-tools.js";
 export { sessionTools, sessionStartTool, sessionStatusTool } from "./definitions/session-tools.js";
+export {
+  workspaceTools,
+  workspaceCreateTool,
+  workspaceListTool,
+  workspaceGetTool,
+  workspaceStatusTool,
+  workspaceShareTool,
+  workspaceArchiveTool,
+} from "./definitions/workspace-tools.js";

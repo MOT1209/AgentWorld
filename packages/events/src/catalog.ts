@@ -70,6 +70,21 @@ export const EVENT_TYPES = {
   SESSION_STARTED: "SESSION_STARTED",
   SESSION_FINISHED: "SESSION_FINISHED",
 
+  // Workspaces (Phase 3). A renderer consumes these; it never drives them.
+  WORKSPACE_CREATED: "WORKSPACE_CREATED",
+  WORKSPACE_STATUS_CHANGED: "WORKSPACE_STATUS_CHANGED",
+  WORKSPACE_MEMBER_ADDED: "WORKSPACE_MEMBER_ADDED",
+  WORKSPACE_MEMBER_REMOVED: "WORKSPACE_MEMBER_REMOVED",
+
+  // Execution (Phase 3). Facts about queued/running work and what it produced;
+  // the queue and backends emit, nobody subscribes in order to cause these.
+  EXECUTION_QUEUED: "EXECUTION_QUEUED",
+  EXECUTION_STARTED: "EXECUTION_STARTED",
+  EXECUTION_FINISHED: "EXECUTION_FINISHED",
+  EXECUTION_CANCELLED: "EXECUTION_CANCELLED",
+  PROCESS_KILLED: "PROCESS_KILLED",
+  ARTIFACT_CREATED: "ARTIFACT_CREATED",
+
   // Tools
   TOOL_INVOKED: "TOOL_INVOKED",
   TOOL_DENIED: "TOOL_DENIED",
@@ -190,6 +205,23 @@ export interface EventPayloadMap {
   DECISION_CONFLICT_RESOLVED: { conflictId: string; resolution: string; resolvedByAgentId: string | null };
   SESSION_STARTED: { sessionId: string; agentId: string; trigger: string };
   SESSION_FINISHED: { sessionId: string; agentId: string; status: string };
+
+  WORKSPACE_CREATED: { workspaceId: string; name: string; agentId: string | null };
+  WORKSPACE_STATUS_CHANGED: { workspaceId: string; fromStatus: string; toStatus: string };
+  WORKSPACE_MEMBER_ADDED: { workspaceId: string; agentId: string; role: string };
+  WORKSPACE_MEMBER_REMOVED: { workspaceId: string; agentId: string };
+
+  EXECUTION_QUEUED: { executionId: string; workspaceId: string | null; backendId: string | null };
+  EXECUTION_STARTED: { executionId: string; backendId: string; sessionId: string | null };
+  EXECUTION_FINISHED: {
+    executionId: string;
+    status: string;
+    exitCode: number | null;
+    durationMs: number;
+  };
+  EXECUTION_CANCELLED: { executionId: string; reason: string };
+  PROCESS_KILLED: { executionId: string; pid: number | null; reason: string };
+  ARTIFACT_CREATED: { artifactId: string; workspaceId: string | null; kind: string; path: string };
 
   TOOL_INVOKED: { toolName: string; agentId: string | null; status: string; durationMs: number };
   TOOL_DENIED: { toolName: string; agentId: string | null; reason: string; requiredPermission: string | null };

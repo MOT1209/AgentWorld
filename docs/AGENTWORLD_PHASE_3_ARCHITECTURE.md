@@ -1,7 +1,8 @@
 # AgentWorld — Phase 3 Architecture
 
-**Status:** design document (Phase 3 §4). Written after inspecting Phase 1,
-Phase 2, and the cubefarm reference implementation.
+**Status:** design document (Phase 3 §4), reconciled against the tree during the
+M1 audit pass. Implementation status lives in `docs/PHASE3-AUDIT.md` §7 and
+`docs/ROADMAP.md`.
 **Rule:** simulation state and work execution state stay decoupled. A workspace
 failure never crashes the world — the task becomes FAILED/BLOCKED per policy,
 the failure becomes an event, the agent stays available for recovery.
@@ -25,8 +26,8 @@ the failure becomes an event, the agent stays available for recovery.
   `{content,toolCalls,finishReason,usage,providerId,model,latencyMs}`),
   adapters for OpenAI-compatible / Anthropic-compatible / Google / deterministic
   `mock`. `ProviderRegistry.require(id)` resolves + availability-checks.
-  Agents reference `providerId` as data. **No ModelRouter exists** (schema
-  comments reference one; Phase 3 builds it).
+  Agents reference `providerId` as data. `ModelRouter.routeModel`
+  (`packages/ai/src/router.ts`) picks a provider per configured rules.
 - **Agent runtime** (`packages/agents/src/runtime.ts`): think-act-observe loop
   over `runAgent({agentId,trigger,conversationId?,taskId?,userMessage?})`.
   The runtime holds **no DB handle**; its only capability is the injected
@@ -34,37 +35,61 @@ the failure becomes an event, the agent stays available for recovery.
   MAX_ITERATIONS`, persists reply as `Message`, writes 3 memories per run,
   rests to `IDLE` (or `WAITING` on approval). HTTP entry via
   `orchestrateAgentRun`; wakeup via `MESSAGE_SENT.notifyAgentId` subscription.
-- **Tools** (`packages/tools`, 19 built-ins): `ToolExecutor` enforces
+- **Tools** (`packages/tools`, 34 built-ins incl. 6 `workspace.*`):
+  `ToolExecutor` enforces
   lookup → audience → permission → Zod → approval → execute → audit.
   Every outcome writes `ToolInvocation`. Approval replay re-invokes frozen
   payloads exactly once (`claimForExecution` single-flight).
 - **Tasks / memory / world / company / approvals / API / dashboard / seed /
-  25 tests**: per `docs/ARCHITECTURE.md`. All green (`npm run verify`).
+  62 tests**: per `docs/ARCHITECTURE.md`. All green (`npm run verify`).
 
-### 1.2 Phase 2 — orchestration (schema-complete, service-partial)
+### 1.2 Phase 2 — orchestration (complete, tested)
 
 | Piece | State |
 |---|---|
 | `Plan` model + `plan.service.ts` (create/update/transition/human `approvePlan`) | ✅ service-complete |
 | `delegation.service.ts` (capable → active → least-busy, anti name-branching, max 3 re-delegations) + `workload.ts` (pure capacity/load policy) | ✅ service-complete |
 | `capabilities.ts` (task.type ↔ agent capability match) | ✅ pure, wired into delegation |
-| `hierarchy.ts` (escalation chains, cycle guard) | ⚠️ pure only — does **not** read/write `AgentHierarchy` rows |
+| `hierarchy.ts` (escalation chains, cycle guard) + `hierarchy-sync.ts` (roles → `AgentHierarchy` rows) | ✅ pure policy + row sync |
 | `policy-engine.ts` (ALLOW/REQUIRE_APPROVAL/DENY verdicts as data) | ✅ engine-complete, caller-wired |
-| `AgentSession`, `TaskReview`, `Report`, `Escalation`, `AgentHierarchy`, `DecisionConflict` models | ⚠️ **schema-only, no services, no emitters** |
-| `PLAN_*/SESSION_*/TASK_REVIEWED/REPORT_WRITTEN/ESCALATION_*/DECISION_CONFLICT_*` event types | ⚠️ catalogue-only, no publishers |
-| New permissions (`plan.*`, `task.review`, `report.create`, `agent.escalate`, `session.read/start`, `workspace.read/write`) | ✅ strings exist; `workspace.*` has **no model/service** |
-| Role allow-lists reference `plan.create/update/list/get`, `review.submit`, `report.submit`, `agent.escalate`, `session.start/status` | ⚠️ **no `ToolDefinition` exists** — `specsFor` silently filters them, models never see them |
-| `ACTION_RISK` missing `task.detail`, `memory.forget`, `wallet.statement`, `approval.list/get/decide` | ⚠️ unknown tools default to HIGH → wrongly approval-gated |
+| `AgentSession`, `TaskReview`, `Report`, `Escalation`, `AgentHierarchy`, `DecisionConflict` models | ✅ services + emitters (`session.service`, review/report/escalation/conflict services) |
+| `PLAN_*/SESSION_*/TASK_REVIEWED/REPORT_WRITTEN/ESCALATION_*/DECISION_CONFLICT_*` event types | ✅ published by the services |
+| Permissions (`plan.*`, `task.review`, `report.create`, `agent.escalate`, `session.read/start`, `workspace.*`) | ✅ strings + RBAC grants; `workspace.*` now has model/service/tools |
+| Role allow-lists reference `plan.*`, `review.submit`, `report.submit`, `agent.escalate`, `session.*`, `workspace.*` | ✅ matching `ToolDefinition`s registered in `BUILT_IN_TOOLS` |
+| `ACTION_RISK` coverage | ✅ complete for all 34 tools; routine list keeps LOW/LOW-risk tools approval-free |
+| REST: `/plans`, `/sessions`, `/reviews`, `/reports`, `/escalations`, `/conflicts` | ✅ registered in `config/routes.ts` |
 
-### 1.3 What the master prompt assumes but does NOT exist here
+### 1.3 What the master prompt assumes but still does NOT exist here
 
-No 3D environment, no GitHub integration, no OpenCode adapter, no workspace
-system, no terminal/filesystem tools, no browser tooling. These exist in
-**cubefarm** (reference implementation, inspected at
-`github.com/leonvanzyl/cubefarm`), not in this repo. Phase 3 ports the
-*patterns*, not the code, and wraps them in AgentWorld's permission/approval/
-audit layer (cubefarm's trust model — prompt-based rules + auto-approve-all —
-is explicitly **not** adopted; see §6).
+No 3D environment (contract hooks only: `workspaceLocationId`), no GitHub
+integration, no OpenCode adapter, no terminal/filesystem/git tools, no
+execution queue/backends, no artifacts, no browser tooling. The **workspace
+system itself now exists** (models, migration, closed-root path guard,
+`packages/workspace` service, `workspace.*` tools, `/workspaces` REST).
+Reference implementation for the missing patterns: **cubefarm**
+(`github.com/leonvanzyl/cubefarm`); Phase 3 ports the *patterns*, not the
+code, and wraps them in AgentWorld's permission/approval/audit layer
+(cubefarm's trust model — prompt-based rules + auto-approve-all — is
+explicitly **not** adopted; see §6).
+
+### 1.4 Current state vs Phase 3 target
+
+| Subsystem | Current state | Phase 3 target |
+|---|---|---|
+| Workspace models/service | ✅ `Workspace`/`WorkspaceMember`, migration, `packages/workspace` | + tests (lifecycle, escape attacks), TTL reap wired |
+| Path guard | ✅ `resolveInRoot` (normalize → resolve → realpath → inside-root) | + proven by attack tests in every fs/terminal/git tool |
+| Workspace tools | ✅ 6 (`workspace.create/list/get/status/share/archive`) | + `/workspaces/:id/files` browsing |
+| Session ↔ workspace | ❌ no linkage | `AgentSession.workspaceId`/`backendId` |
+| Artifacts | ❌ none | `Artifact` model + registry (produced by runs) |
+| Execution backends | ❌ none | `ExecutionBackend` = OpenCode / local / mock |
+| Command policy | ❌ none | `CommandPolicy` SAFE/RESTRICTED/REQUIRES_APPROVAL/BLOCKED, argv-only |
+| Process manager | ❌ none | spawn/kill/timeout/output caps/orphan cleanup |
+| Queue | ❌ inline only | `ExecutionJob` rows + in-process worker in `main.ts` |
+| fs/terminal/git tools | ❌ none | ~14 new tools via `ToolExecutor` |
+| Verification pipeline | ❌ none | detect scripts → run tests → `Report{kind:"EXECUTION"}` → review |
+| API | ✅ `/sessions`, `/workspaces` (no file browsing) | + `/executions` (enqueue/list/logs) |
+| Dashboard | ❌ no workspace/execution views | workspaces + sessions + executions + inspector fields |
+| OpenCode smoke | ❌ never invoked | one documented live run (skip-if-absent) |
 
 ---
 

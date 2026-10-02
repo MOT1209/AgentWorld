@@ -100,6 +100,42 @@ Every response carries `correlationId`; errors are `{ code, message, correlation
 - `GET /plans/:id` — plan plus `allowedTransitions`
 - `POST /plans/:id/approve` — **human-only** (`plan.approve`); READY → EXECUTING. Never exposed as a tool: agents propose, humans sign off.
 
+## Sessions (Phase 2/3)
+
+- `GET /sessions?agentId=&taskId=&status=&take=&skip=`
+- `GET /sessions/:id`
+- `POST /sessions {agentId, providerId?, model?, taskId?, trigger?, context?}` — 201, emits `SESSION_STARTED`
+- `POST /sessions/:id/finish {status: COMPLETED|FAILED|CANCELLED, result?, error?}` — terminal finality, emits `SESSION_FINISHED`
+
+## Reviews (Phase 2)
+
+- `POST /reviews` — `review.submit` service path (APPROVED | NEEDS_CHANGES | REJECTED | ESCALATE)
+- `GET /reviews/task/:taskId`, `GET /reviews/:id`
+
+## Reports (Phase 2)
+
+- `POST /reports` — kinds: `PROGRESS | TASK | EXECUTION | REVIEW | ERROR`
+- `GET /reports?taskId=&planId=&kind=`, `GET /reports/:id`
+
+## Escalations (Phase 2)
+
+- `POST /escalations`, `GET /escalations?status=&fromAgentId=&toAgentId=&category=&taskId=`, `GET /escalations/human`
+- `GET /escalations/:id`, `POST /escalations/:id/ack`, `POST /escalations/:id/resolve {outcome, resolution}`
+
+## Decision conflicts (Phase 2)
+
+- `POST /conflicts`, `GET /conflicts?status=&taskId=&planId=`, `GET /conflicts/:id`
+- `POST /conflicts/:id/resolve {resolution, decision}`
+
+## Workspaces (Phase 3, in progress)
+
+- `POST /workspaces {name, agentId?, projectId?, type?, dir?, environment?}`
+- `GET /workspaces?agentId=&projectId=&type=&status=&take=&skip=`
+- `GET /workspaces/:id`
+- `POST /workspaces/:id/status {status}` — CREATING|READY|BUSY|PAUSED|ERROR|ARCHIVED
+- `POST /workspaces/:id/share {agentId, role}`, `POST /workspaces/:id/unshare {agentId}`
+- `POST /workspaces/:id/archive`, `POST /workspaces/reap` — TTL sweeper
+
 ## Tools & logs
 
 - `GET /tools/catalogue`, `GET /tools/invocations?agentId=&toolName=&status=`, `GET /tools/providers`

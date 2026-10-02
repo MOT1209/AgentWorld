@@ -71,3 +71,5 @@ export {
   type BlueprintContext,
   type CreateBlueprintInput,
 } from "./blueprints.js";
+
+export { syncHierarchyFromRoles, type HierarchySyncResult } from "./hierarchy-sync.js";
