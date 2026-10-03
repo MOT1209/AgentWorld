@@ -3,6 +3,7 @@ import {
   claimForExecution,
   markExecutionFailed,
   markExecutionSucceeded,
+  markExecutionUncertain,
   readApprovalPayload,
 } from "../../../../packages/approvals/src/index.js";
 import { logger, type ActorRef } from "../../../../packages/shared/src/index.js";
@@ -51,7 +52,11 @@ export async function replayApprovedRequest(
     });
     if (result.status === "SUCCESS") {
       await markExecutionSucceeded(prisma, requestId);
+    } else if (result.sideEffectsPossible === true) {
+      // Failed inside the handler: do not release the claim (could double-execute).
+      await markExecutionUncertain(prisma, requestId, result.error ?? result.status);
     } else {
+      // Refused before anything ran (validation, permission): safe to retry.
       await markExecutionFailed(prisma, requestId, result.error ?? result.status);
     }
     return {
@@ -62,7 +67,8 @@ export async function replayApprovedRequest(
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    await markExecutionFailed(prisma, requestId, message);
+    // An exception escaping the executor gives no guarantee about side effects.
+    await markExecutionUncertain(prisma, requestId, message);
     throw error;
   }
 }

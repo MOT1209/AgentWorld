@@ -314,6 +314,43 @@ describe("git tools", () => {
   });
 });
 
+describe("terminal.kill authorization", () => {
+  it("lets only someone with access to the owning workspace stop an execution", async () => {
+    const owner = await createTestAgent({ name: "Kill Owner" });
+    const stranger = await createTestAgent({ name: "Kill Stranger" });
+    const bench = await tempWorkspace(owner.id);
+    try {
+      const running = terminalProcesses.exec({
+        workspaceId: bench.workspaceId,
+        command: ["node", "-e", "setInterval(() => {}, 1000)"],
+        cwd: bench.root,
+        env: filterEnv(),
+        timeoutMs: 60_000,
+        maxBytes: 1024,
+      });
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      const live = terminalProcesses.liveInWorkspace(bench.workspaceId);
+      expect(live.length).toBe(1);
+      const id = live[0] as string;
+      expect(id).toMatch(/^tex_[0-9a-f]{16}$/);
+
+      // Same permissions, but not the holder or a member of this workspace.
+      const intruder = executorWith(EXEC_PERMS, stranger.id);
+      const denied = await intruder.executor.invoke("terminal.kill", { executionId: id }, intruder.ctx);
+      expect(denied.status).toBe("ERROR");
+      expect(terminalProcesses.liveInWorkspace(bench.workspaceId).length).toBe(1);
+
+      const holder = executorWith(EXEC_PERMS, owner.id);
+      const allowed = await holder.executor.invoke("terminal.kill", { executionId: id }, holder.ctx);
+      expect(allowed.status).toBe("SUCCESS");
+      await running;
+      expect(terminalProcesses.liveCount).toBe(0);
+    } finally {
+      bench.cleanup();
+    }
+  });
+});
+
 describe("command runner seam", () => {
   it("routes through the local runner by default and selects docker on request", async () => {
     const { getCommandRunner } = await import("../packages/tools/src/command-runner.js");

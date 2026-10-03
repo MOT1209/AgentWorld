@@ -16,6 +16,10 @@ export function createApp(): Express {
   const config = getConfig();
 
   app.disable("x-powered-by");
+  // Behind N reverse proxies req.ip would otherwise be the proxy for everyone,
+  // putting all users in one rate-limit bucket. Too HIGH a value lets clients
+  // spoof their IP via X-Forwarded-For, so it is an explicit hop count.
+  if (config.trustProxy > 0) app.set("trust proxy", config.trustProxy);
   app.use(helmet());
   app.use(
     cors({
