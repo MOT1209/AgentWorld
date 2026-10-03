@@ -10,6 +10,8 @@ import { spawn, type ChildProcess } from "node:child_process";
 
 export interface SpawnOptions {
   workspaceId: string;
+  /** Caller-chosen id (a container backend names its container after it). */
+  executionId?: string;
   command: string[];
   cwd: string;
   env: Record<string, string>;
@@ -50,7 +52,7 @@ export class ProcessManager {
   async exec(options: SpawnOptions): Promise<SpawnResult> {
     if (options.command.length === 0) throw new Error("Empty command");
     const startedAt = Date.now();
-    const executionId = `tex_${Date.now().toString(36)}_${(this.counter += 1)}`;
+    const executionId = options.executionId ?? `tex_${Date.now().toString(36)}_${(this.counter += 1)}`;
     const [binary, ...args] = options.command as [string, ...string[]];
 
     const child = spawn(binary, args, {
@@ -59,6 +61,9 @@ export class ProcessManager {
       stdio: ["ignore", "pipe", "pipe"],
       shell: false,
       windowsHide: true,
+      // Own process group (POSIX) so a timeout/kill reaches grandchildren too
+      // (npm -> node -> ...), not just the direct child.
+      detached: process.platform !== "win32",
     });
 
     return new Promise<SpawnResult>((resolve) => {
@@ -145,6 +150,10 @@ export class ProcessManager {
     return true;
   }
 
+  has(executionId: string): boolean {
+    return this.live.has(executionId);
+  }
+
   liveInWorkspace(workspaceId: string): string[] {
     const ids: string[] = [];
     for (const [id, record] of this.live) {
@@ -154,6 +163,15 @@ export class ProcessManager {
   }
 
   private terminate(record: LiveProcess, signal: "SIGTERM" | "SIGKILL"): void {
+    const pid = record.child.pid;
+    try {
+      if (process.platform !== "win32" && pid !== undefined) {
+        process.kill(-pid, signal);
+        return;
+      }
+    } catch {
+      // Group already gone or not signalable; fall back to the direct child.
+    }
     try {
       record.child.kill(signal);
     } catch {

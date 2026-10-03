@@ -18,7 +18,7 @@
   <img src="https://img.shields.io/badge/Phase_1-complete-brightgreen" alt="Phase 1 complete" />
   <img src="https://img.shields.io/badge/Phase_2-complete-brightgreen" alt="Phase 2 complete" />
   <img src="https://img.shields.io/badge/Phase_3-in_progress-blue" alt="Phase 3 in progress" />
-  <img src="https://img.shields.io/badge/tests-62_passing-brightgreen" alt="62 tests passing" />
+  <img src="https://img.shields.io/badge/tests-140_passing-brightgreen" alt="140 tests passing" />
   <img src="https://img.shields.io/badge/verify-typecheck_%E2%80%A2_lint_%E2%80%A2_test_%E2%80%A2_build-blue" alt="verify pipeline" />
   <img src="https://img.shields.io/badge/keys-zero_required-black" alt="zero API keys needed" />
 </p>

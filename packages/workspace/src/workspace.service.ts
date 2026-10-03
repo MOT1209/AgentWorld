@@ -16,7 +16,7 @@
  *     row but leaves the directory on disk and says so in the audit trail.
  */
 import { existsSync, mkdirSync, realpathSync } from "node:fs";
-import { normalize, resolve, sep } from "node:path";
+import { dirname, normalize, resolve, sep } from "node:path";
 import {
   WorkspaceMemberRoleSchema,
   WorkspaceStatusSchema,
@@ -81,31 +81,45 @@ function has(ctx: WorkspaceActorContext, permission: Permission): boolean {
 
 /**
  * Joins segments under root and proves the result stays inside it.
- * Throws validationError on `..` escapes, absolute smuggling, and
- * symlink escapes (checked when the target already exists).
+ * Throws validationError on `..` escapes, absolute smuggling (POSIX, UNC and
+ * drive-letter forms on every platform), and symlink escapes.
+ *
+ * Symlinks are checked against the nearest EXISTING ancestor, so a path that
+ * does not exist yet (a write target) cannot be created through a link that
+ * points outside the root.
  */
 export function resolveInRoot(root: string, ...segments: string[]): string {
   const base = resolve(root);
+  const joined = segments.join("/");
   const candidate = resolve(base, ...segments.map((s) => normalize(s)));
   if (candidate !== base && !candidate.startsWith(base + sep)) {
     throw validationError("Path escapes the workspace root", { candidate });
   }
-  if (/(^|[\\/])\.\.([\\/]|$)/.test(segments.join("/"))) {
+  if (/(^|[\\/])\.\.([\\/]|$)/.test(joined)) {
     throw validationError("Parent-directory references are not allowed in workspace paths");
   }
-  try {
-    if (existsSync(candidate)) {
-      const real = realpathSync(candidate);
-      if (real !== base && !real.startsWith(base + sep)) {
-        throw validationError("Path resolves outside the workspace root");
-      }
-      return real;
-    }
-  } catch (error) {
-    if (error instanceof Error && error.message.includes("outside the workspace root")) throw error;
-    // Missing path: nothing to resolve yet; the prefix check above stands.
+  if (segments.some((s) => /^[a-zA-Z]:/.test(s) || s.startsWith("\\\\"))) {
+    throw validationError("Drive-letter and UNC paths are not allowed in workspace paths");
   }
-  return candidate;
+
+  let realBase = base;
+  try {
+    realBase = realpathSync(base);
+  } catch {
+    // Root not created yet (createWorkspace resolves before mkdir).
+  }
+
+  let probe = candidate;
+  while (!existsSync(probe)) {
+    const parent = dirname(probe);
+    if (parent === probe) return candidate;
+    probe = parent;
+  }
+  const real = realpathSync(probe);
+  if (real !== realBase && !real.startsWith(realBase + sep)) {
+    throw validationError("Path resolves outside the workspace root");
+  }
+  return probe === candidate ? real : candidate;
 }
 
 export async function requireWorkspace(db: DbClient, workspaceId: string): Promise<Workspace> {

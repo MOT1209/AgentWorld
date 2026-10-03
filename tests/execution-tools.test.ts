@@ -220,7 +220,7 @@ describe("terminal execution", () => {
         workspaceId: bench.workspaceId,
         command: ["node", "-e", "setInterval(() => {}, 1000)"],
         cwd: bench.root,
-        env: {},
+        env: filterEnv(),
         timeoutMs: 60_000,
         maxBytes: 1024,
       });
@@ -310,6 +310,23 @@ describe("git tools", () => {
       expect(diff.status).toBe("SUCCESS");
     } finally {
       bench.cleanup();
+    }
+  });
+});
+
+describe("command runner seam", () => {
+  it("routes through the local runner by default and selects docker on request", async () => {
+    const { getCommandRunner } = await import("../packages/tools/src/command-runner.js");
+    const { resetConfigCache } = await import("../packages/shared/src/index.js");
+    expect(getCommandRunner().backend).toBe("local");
+
+    process.env.EXEC_SANDBOX = "docker";
+    resetConfigCache();
+    try {
+      expect(getCommandRunner().backend).toBe("docker");
+    } finally {
+      delete process.env.EXEC_SANDBOX;
+      resetConfigCache();
     }
   });
 });

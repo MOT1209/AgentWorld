@@ -68,6 +68,14 @@ const EnvSchema = z.object({
   APPROVAL_TTL_HOURS: int(24, 1),
 
   WORLD_TIME_SCALE: int(60, 1),
+
+  EXEC_SANDBOX: z.enum(["local", "docker"]).default("local"),
+  EXEC_DOCKER_IMAGE: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._/:@-]*$/, "invalid image reference").default("kingworld-sandbox:1"),
+  // Empty = the owner of the workspace directory (must not be root). Otherwise "uid:gid".
+  EXEC_DOCKER_USER: z.string().regex(/^([0-9]+:[0-9]+)?$/, "must be uid:gid").default(""),
+  EXEC_DOCKER_MEMORY: z.string().regex(/^[0-9]+[kmg]$/i, "e.g. 512m").default("512m"),
+  EXEC_DOCKER_CPUS: z.string().regex(/^[0-9]+(\.[0-9]+)?$/, "e.g. 1 or 0.5").default("1"),
+  EXEC_DOCKER_PIDS: int(256, 16, 4096),
 });
 
 export type RawConfig = z.infer<typeof EnvSchema>;
@@ -91,6 +99,10 @@ export interface AppConfig {
   agent: { maxToolIterations: number; requestTimeoutMs: number };
   approvals: { enabled: boolean; spendThresholdMinor: number; ttlHours: number };
   world: { timeScale: number };
+  exec: {
+    sandbox: "local" | "docker";
+    docker: { image: string; user: string; memory: string; cpus: string; pids: number };
+  };
 }
 
 const DEV_ONLY_SECRET = "dev-only-insecure-secret-change-me";
@@ -172,6 +184,16 @@ function load(): AppConfig {
       ttlHours: raw.APPROVAL_TTL_HOURS,
     },
     world: { timeScale: raw.WORLD_TIME_SCALE },
+    exec: {
+      sandbox: raw.EXEC_SANDBOX,
+      docker: {
+        image: raw.EXEC_DOCKER_IMAGE,
+        user: raw.EXEC_DOCKER_USER,
+        memory: raw.EXEC_DOCKER_MEMORY,
+        cpus: raw.EXEC_DOCKER_CPUS,
+        pids: raw.EXEC_DOCKER_PIDS,
+      },
+    },
     // Surfaced by hasAnyProviderKey callers; kept out of the object shape to
     // avoid it being read as configuration.
     ...(hasAnyProviderKey ? {} : {}),
@@ -204,6 +226,7 @@ export function redactedConfig(config: AppConfig = getConfig()): Record<string, 
     },
     agent: config.agent,
     world: config.world,
+    exec: config.exec,
     providers: {
       defaultProviderId: config.providers.defaultProviderId,
       openaiCompatible: { enabled: config.providers.openaiCompatible.enabled },
