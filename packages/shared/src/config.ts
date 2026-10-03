@@ -69,7 +69,8 @@ const EnvSchema = z.object({
 
   WORLD_TIME_SCALE: int(60, 1),
 
-  EXEC_SANDBOX: z.enum(["local", "docker"]).default("local"),
+  // No schema default: production defaults to docker, everything else to local.
+  EXEC_SANDBOX: z.enum(["local", "docker"]).optional(),
   EXEC_DOCKER_IMAGE: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._/:@-]*$/, "invalid image reference").default("kingworld-sandbox:1"),
   // Empty = the owner of the workspace directory (must not be root). Otherwise "uid:gid".
   EXEC_DOCKER_USER: z.string().regex(/^([0-9]+:[0-9]+)?$/, "must be uid:gid").default(""),
@@ -185,7 +186,7 @@ function load(): AppConfig {
     },
     world: { timeScale: raw.WORLD_TIME_SCALE },
     exec: {
-      sandbox: raw.EXEC_SANDBOX,
+      sandbox: raw.EXEC_SANDBOX ?? (isProduction ? "docker" : "local"),
       docker: {
         image: raw.EXEC_DOCKER_IMAGE,
         user: raw.EXEC_DOCKER_USER,

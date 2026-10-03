@@ -17,6 +17,7 @@ docker build -t kingworld-sandbox:1 docker/sandbox
 EXEC_SANDBOX=docker
 EXEC_DOCKER_USER=10001:10001   # or empty = owner of the workspace dir (never root)
 ```
+`EXEC_SANDBOX` defaults to `docker` when `NODE_ENV=production` and to `local` otherwise.
 The workspace directory must be writable by that uid. The server **refuses to
 start** if Docker or the image is missing, and never falls back to the host.
 
@@ -26,4 +27,5 @@ start** if Docker or the image is missing, and never falls back to the host.
 - A container does not stop an agent from leaking workspace data through the
   output of its own commands; that needs a separate policy.
 - Never mount the Docker socket into anything the agent can reach.
-- `local` (the default) is for development and tests only.
+- `local` (the default outside production) is for development and tests only. Forcing
+  `EXEC_SANDBOX=local` in production is allowed but logs a warning at boot.
