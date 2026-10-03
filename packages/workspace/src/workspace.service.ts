@@ -91,15 +91,15 @@ function has(ctx: WorkspaceActorContext, permission: Permission): boolean {
 export function resolveInRoot(root: string, ...segments: string[]): string {
   const base = resolve(root);
   const joined = segments.join("/");
-  if (segments.some((s) => /^[a-zA-Z]:/.test(s) || s.startsWith("\\\\"))) {
-    throw validationError("Drive-letter and UNC paths are not allowed in workspace paths");
-  }
   const candidate = resolve(base, ...segments.map((s) => normalize(s)));
   if (candidate !== base && !candidate.startsWith(base + sep)) {
     throw validationError("Path escapes the workspace root", { candidate });
   }
   if (/(^|[\\/])\.\.([\\/]|$)/.test(joined)) {
     throw validationError("Parent-directory references are not allowed in workspace paths");
+  }
+  if (segments.some((s) => /^[a-zA-Z]:/.test(s) || s.startsWith("\\\\"))) {
+    throw validationError("Drive-letter and UNC paths are not allowed in workspace paths");
   }
 
   let realBase = base;

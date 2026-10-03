@@ -27,9 +27,17 @@ function run(cwd: string, command: string[], timeoutMs = 20_000, maxBytes = 65_5
   return runner.exec({ workspaceId: "w", command, cwd, env: filterEnv(), timeoutMs, maxBytes });
 }
 
-afterAll(() => {
+// Files the container created belong to uid 10001, which a non-root host user
+// (the CI runner) cannot delete. Empty each workspace through the sandbox
+// itself first, then remove the (host-owned) directory.
+afterAll(async () => {
+  if (available) {
+    for (const dir of dirs) {
+      await run(dir, ["sh", "-c", "rm -rf /work/* /work/.[!.]* /work/..?* 2>/dev/null; true"], 20_000).catch(() => undefined);
+    }
+  }
   for (const dir of dirs) rmSync(dir, { recursive: true, force: true });
-});
+}, 120_000);
 
 describe.skipIf(!available)("docker sandbox", () => {
   it("runs as the unprivileged user in /work and writes through to the workspace", async () => {
