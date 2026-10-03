@@ -99,5 +99,11 @@ export interface ToolExecutionResult {
   summary?: string;
   error?: string;
   approvalRequestId?: string;
+  /**
+   * True when the failure came from inside the tool handler, so effects may
+   * have partly happened. Validation, permission and approval failures happen
+   * before anything runs and leave this unset.
+   */
+  sideEffectsPossible?: boolean;
   durationMs: number;
 }

@@ -7,6 +7,7 @@
  * the table immediately; history lives in ToolInvocation rows, not here.
  */
 import { spawn, type ChildProcess } from "node:child_process";
+import { randomBytes } from "node:crypto";
 
 export interface SpawnOptions {
   workspaceId: string;
@@ -43,7 +44,6 @@ const KILL_GRACE_MS = 5000;
 
 export class ProcessManager {
   private readonly live = new Map<string, LiveProcess>();
-  private counter = 0;
 
   get liveCount(): number {
     return this.live.size;
@@ -52,7 +52,7 @@ export class ProcessManager {
   async exec(options: SpawnOptions): Promise<SpawnResult> {
     if (options.command.length === 0) throw new Error("Empty command");
     const startedAt = Date.now();
-    const executionId = options.executionId ?? `tex_${Date.now().toString(36)}_${(this.counter += 1)}`;
+    const executionId = options.executionId ?? `tex_${randomBytes(8).toString("hex")}`;
     const [binary, ...args] = options.command as [string, ...string[]];
 
     const child = spawn(binary, args, {
@@ -148,6 +148,11 @@ export class ProcessManager {
     record.killTimer = setTimeout(() => this.terminate(record, "SIGKILL"), KILL_GRACE_MS);
     record.killTimer.unref?.();
     return true;
+  }
+
+  /** Workspace that owns a live execution, or null when it is not live. */
+  workspaceOf(executionId: string): string | null {
+    return this.live.get(executionId)?.workspaceId ?? null;
   }
 
   has(executionId: string): boolean {

@@ -115,7 +115,22 @@ export const terminalKillTool: ToolDefinition<{ executionId: string }> = {
   requiredPermission: PERMISSIONS.WORKSPACE_EXECUTE,
   risk: "LOW",
   async execute(context, input) {
-    const killed = getCommandRunner().kill(input.executionId);
+    const runner = getCommandRunner();
+    // Only someone who can write the owning workspace may stop its processes;
+    // knowing an execution id is not authorization.
+    const workspaceId = runner.workspaceOf(input.executionId);
+    if (workspaceId === null) throw notFound("Live execution", input.executionId);
+    const workspace = await requireWorkspace(context.db, workspaceId);
+    if (!(await canWriteWorkspace(context.db, workspace, {
+      actor: context.actor,
+      correlationId: context.correlationId,
+      permissions: context.permissions,
+      ...(context.agentId !== undefined ? { agentId: context.agentId } : {}),
+    }))) {
+      // Same answer as "not live" so ids of other workspaces cannot be probed.
+      throw notFound("Live execution", input.executionId);
+    }
+    const killed = runner.kill(input.executionId);
     if (!killed) throw notFound("Live execution", input.executionId);
     return {
       data: { executionId: input.executionId, killed: true },

@@ -222,6 +222,24 @@ export async function markExecutionFailed(
   });
 }
 
+/**
+ * The handler failed after it started, so effects may have partly happened.
+ * The claim is KEPT: re-running a non-idempotent action (a transfer, a
+ * publish) could duplicate it. A human must inspect and file a new request.
+ */
+export async function markExecutionUncertain(
+  db: DbClient,
+  requestId: string,
+  error: string,
+): Promise<void> {
+  await db.approvalRequest.update({
+    where: { id: requestId },
+    data: {
+      executionError: `Execution may have partially completed; not retryable. ${error}`.slice(0, 2_000),
+    },
+  });
+}
+
 export async function markExecutionSucceeded(db: DbClient, requestId: string): Promise<void> {
   await db.approvalRequest.update({
     where: { id: requestId },

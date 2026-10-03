@@ -21,6 +21,8 @@ export interface CommandRunner {
   /** SIGTERM-then-SIGKILL (or the backend's equivalent). True when it was live. */
   kill(executionId: string): boolean;
   liveInWorkspace(workspaceId: string): string[];
+  /** Workspace that owns a live execution (for authorization), or null. */
+  workspaceOf(executionId: string): string | null;
   readonly liveCount: number;
 }
 
@@ -34,6 +36,7 @@ export function localRunner(manager: ProcessManager = terminalProcesses): Comman
     exec: (options) => manager.exec(options),
     kill: (executionId) => manager.kill(executionId),
     liveInWorkspace: (workspaceId) => manager.liveInWorkspace(workspaceId),
+    workspaceOf: (executionId) => manager.workspaceOf(executionId),
     get liveCount() {
       return manager.liveCount;
     },

@@ -44,6 +44,8 @@ const EnvSchema = z.object({
   BCRYPT_ROUNDS: int(12, 10, 15),
 
   CORS_ORIGINS: csv,
+  // Number of reverse proxies in front of the API (req.ip / rate limits). 0 = none.
+  TRUST_PROXY: int(0, 0, 10),
 
   SEED_OWNER_EMAIL: z.string().email().default("king@kingworld.local"),
   SEED_OWNER_PASSWORD: z.string().min(10).default("KingWorld!2026"),
@@ -90,6 +92,7 @@ export interface AppConfig {
   jwt: { secret: string; expiresIn: string };
   bcryptRounds: number;
   corsOrigins: string[];
+  trustProxy: number;
   seed: { ownerEmail: string; ownerPassword: string };
   providers: {
     defaultProviderId: string;
@@ -155,6 +158,7 @@ function load(): AppConfig {
     jwt: { secret, expiresIn: raw.JWT_EXPIRES_IN },
     bcryptRounds: raw.BCRYPT_ROUNDS,
     corsOrigins: raw.CORS_ORIGINS,
+    trustProxy: raw.TRUST_PROXY,
     seed: { ownerEmail: raw.SEED_OWNER_EMAIL, ownerPassword: raw.SEED_OWNER_PASSWORD },
     providers: {
       defaultProviderId,

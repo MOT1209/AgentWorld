@@ -12,6 +12,7 @@
  *    fallback to running the command on the host
  */
 import { execFile, type ExecFileException } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { statSync } from "node:fs";
 import { ProcessManager, type SpawnOptions, type SpawnResult } from "./process-manager.js";
 import type { CommandRunner } from "./command-runner.js";
@@ -55,7 +56,6 @@ function dockerCli(args: string[], timeoutMs = 15_000): Promise<{ code: number |
 export class DockerRunner implements CommandRunner {
   readonly backend = "docker" as const;
   private readonly manager = new ProcessManager();
-  private counter = 0;
 
   constructor(private readonly settings: DockerRunnerSettings) {}
 
@@ -65,6 +65,10 @@ export class DockerRunner implements CommandRunner {
 
   liveInWorkspace(workspaceId: string): string[] {
     return this.manager.liveInWorkspace(workspaceId);
+  }
+
+  workspaceOf(executionId: string): string | null {
+    return this.manager.workspaceOf(executionId);
   }
 
   /** Startup check: the daemon answers and the sandbox image exists locally. */
@@ -128,7 +132,7 @@ export class DockerRunner implements CommandRunner {
   }
 
   async exec(options: SpawnOptions): Promise<SpawnResult> {
-    const executionId = options.executionId ?? `tex_${Date.now().toString(36)}_${(this.counter += 1)}`;
+    const executionId = options.executionId ?? `tex_${randomBytes(8).toString("hex")}`;
     const name = `kw-${executionId}`;
     const started = Date.now();
     let args: string[];
