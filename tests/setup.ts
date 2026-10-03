@@ -20,25 +20,26 @@ const databaseDir = join(root, "database");
 const migrationsDir = join(databaseDir, "migrations");
 
 function resolveTestDbUrl(): { url: string; filePath: string } {
-  // An explicit TEST_DATABASE_URL is honored verbatim (e.g. CI pinning).
-  // Otherwise the file is stable per OS process (pid): re-executions inside
-  // one run reuse it idempotently via the DROP loop below, while concurrent
-  // runs (two sessions, watch + single, sharded CI) get different pids and
-  // can never share -- or delete -- each other's database. Stale files from
-  // dead runs are reaped by age (a live run's file is always fresh); nothing
-  // ever deletes a file it did not create in this process.
+  // Setup runs once per test file inside the same forked process, and the
+  // Prisma engine of an earlier file keeps its SQLite handle open. Deleting
+  // and recreating the SAME path therefore makes SQLite report
+  // SQLITE_READONLY_DBMOVED (code 1032) for later files. Every setup run
+  // gets its own file instead; an explicit TEST_DATABASE_URL only supplies
+  // the base name.
+  const unique = `${process.pid}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   const explicit = (process.env.TEST_DATABASE_URL ?? "").trim();
   if (explicit !== "") {
     const match = /^file:(.+)$/.exec(explicit);
     const relative = (match?.[1] ?? "./test.db").replace(/^\.\//, "");
-    const filePath = join(databaseDir, relative);
+    const withSuffix = relative.replace(/(\.db)?$/, `-${unique}.db`);
+    const filePath = join(databaseDir, withSuffix);
     return { url: `file:${filePath}`, filePath };
   }
-  const ownBase = `test-${process.pid}.db`;
+  const ownBase = `test-${unique}.db`;
   try {
     const cutoff = Date.now() - 2 * 60 * 60 * 1000;
     for (const entry of readdirSync(databaseDir)) {
-      if (!/^test-\d+\.db(-journal|-wal|-shm)?$/.test(entry)) continue;
+      if (!/^test-.*\.db(-journal|-wal|-shm)?$/.test(entry)) continue;
       if (entry === ownBase) continue;
       try {
         const statPath = join(databaseDir, entry);

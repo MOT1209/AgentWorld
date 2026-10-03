@@ -220,7 +220,7 @@ describe("terminal execution", () => {
         workspaceId: bench.workspaceId,
         command: ["node", "-e", "setInterval(() => {}, 1000)"],
         cwd: bench.root,
-        env: {},
+        env: filterEnv(),
         timeoutMs: 60_000,
         maxBytes: 1024,
       });

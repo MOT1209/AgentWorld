@@ -2,15 +2,14 @@ import express, { type Express } from "express";
 import cors from "cors";
 import helmet from "helmet";
 import { getConfig } from "../../../packages/shared/src/index.js";
+// Agent runs are started explicitly by the routes that accept a human message
+// (agent chat, conversation send). There is deliberately no event-bus wakeup:
+// it ran the agent a second time per message and bypassed the run rate limit.
 import { correlationMiddleware } from "./middleware/correlation.js";
 import { errorHandler, notFoundHandler } from "./middleware/error-handler.js";
 import { defaultRateLimit } from "./middleware/rate-limit.js";
 import { registerRoutes } from "./config/routes.js";
-import { prisma, databaseHealth } from "../../../packages/database/src/index.js";
-import { eventBus, EVENT_TYPES } from "../../../packages/events/src/index.js";
-import { getCorrelationId } from "./middleware/correlation.js";
-import { orchestrateAgentRun } from "./services/agent-orchestrator.js";
-import type { Request } from "express";
+import { databaseHealth } from "../../../packages/database/src/index.js";
 
 export function createApp(): Express {
   const app = express();
@@ -46,31 +45,4 @@ export function createApp(): Express {
   app.use(notFoundHandler);
   app.use(errorHandler);
   return app;
-}
-
-export function subscribeAgentWakeup(): void {
-  eventBus.subscribe(EVENT_TYPES.MESSAGE_SENT, (event) => {
-    try {
-      const payload = event.payload as { notifyAgentId?: string | null; conversationId?: string };
-      const notifyAgentId = typeof payload.notifyAgentId === "string" ? payload.notifyAgentId : null;
-      if (notifyAgentId === null) return;
-      const conversationId = typeof payload.conversationId === "string" ? payload.conversationId : undefined;
-      const fakeReq = { correlationId: event.correlationId } as unknown as Request;
-      void orchestrateAgentRun(
-        {
-          agentId: notifyAgentId,
-          trigger: "CHAT",
-          ...(conversationId !== undefined ? { conversationId } : {}),
-        },
-        fakeReq,
-      ).catch((error: unknown) => {
-        // Wakeup is best-effort; the run is recorded in the DB.
-        console.error("Agent wakeup failed", error);
-      });
-    } catch {
-      // Never let a subscriber break publishing.
-    }
-  });
-  void prisma;
-  void getCorrelationId;
 }

@@ -59,6 +59,9 @@ export class ProcessManager {
       stdio: ["ignore", "pipe", "pipe"],
       shell: false,
       windowsHide: true,
+      // Own process group (POSIX) so a timeout/kill reaches grandchildren too
+      // (npm -> node -> ...), not just the direct child.
+      detached: process.platform !== "win32",
     });
 
     return new Promise<SpawnResult>((resolve) => {
@@ -154,6 +157,15 @@ export class ProcessManager {
   }
 
   private terminate(record: LiveProcess, signal: "SIGTERM" | "SIGKILL"): void {
+    const pid = record.child.pid;
+    try {
+      if (process.platform !== "win32" && pid !== undefined) {
+        process.kill(-pid, signal);
+        return;
+      }
+    } catch {
+      // Group already gone or not signalable; fall back to the direct child.
+    }
     try {
       record.child.kill(signal);
     } catch {

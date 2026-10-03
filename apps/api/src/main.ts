@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { createApp, subscribeAgentWakeup } from "./app.js";
+import { createApp } from "./app.js";
 import { getConfig, logger, redactedConfig } from "../../../packages/shared/src/index.js";
 import { connectDatabase, disconnectDatabase } from "../../../packages/database/src/index.js";
 import { getSimulationEngine } from "../../../packages/simulation/src/index.js";
@@ -11,7 +11,6 @@ async function main(): Promise<void> {
   log.info("Starting King World API", { action: "api.start", ...redactedConfig(config) });
 
   await connectDatabase();
-  subscribeAgentWakeup();
 
   // The simulation heartbeat only advances a world whose status is RUNNING; a
   // paused or stopped world costs nothing but a timer tick.
