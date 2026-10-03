@@ -5,10 +5,12 @@
  * implementation is the host-local `ProcessManager`; the container backend
  * (see the isolation plan, phase 2) plugs in here without touching the tools.
  *
- * Fail closed: asking for a backend that does not exist throws instead of
- * quietly falling back to running on the host.
+ * Fail closed: with EXEC_SANDBOX=docker a missing daemon/image stops the server
+ * at boot and any later docker problem is an error result, never a quiet
+ * fallback to running on the host.
  */
 import { getConfig, logger } from "../../shared/src/index.js";
+import { DockerRunner } from "./docker-runner.js";
 import { terminalProcesses, type ProcessManager, type SpawnOptions, type SpawnResult } from "./process-manager.js";
 
 export type { SpawnOptions, SpawnResult };
@@ -40,13 +42,13 @@ export function localRunner(manager: ProcessManager = terminalProcesses): Comman
 
 const local = localRunner();
 
+let docker: DockerRunner | null = null;
+
 export function getCommandRunner(): CommandRunner {
-  const { sandbox } = getConfig().exec;
+  const { sandbox, docker: settings } = getConfig().exec;
   if (sandbox === "docker") {
-    throw new Error(
-      "EXEC_SANDBOX=docker is configured but the container backend is not implemented yet. " +
-        "Refusing to fall back to running agent commands on the host.",
-    );
+    docker ??= new DockerRunner(settings);
+    return docker;
   }
   if (getConfig().isProduction && !warnedLocalInProduction) {
     warnedLocalInProduction = true;
@@ -57,4 +59,10 @@ export function getCommandRunner(): CommandRunner {
     );
   }
   return local;
+}
+
+/** Call at boot: with EXEC_SANDBOX=docker the server refuses to start if Docker or the image is missing. */
+export async function verifyCommandRunner(): Promise<void> {
+  const runner = getCommandRunner();
+  if (runner instanceof DockerRunner) await runner.verify();
 }

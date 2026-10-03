@@ -10,6 +10,8 @@ import { spawn, type ChildProcess } from "node:child_process";
 
 export interface SpawnOptions {
   workspaceId: string;
+  /** Caller-chosen id (a container backend names its container after it). */
+  executionId?: string;
   command: string[];
   cwd: string;
   env: Record<string, string>;
@@ -50,7 +52,7 @@ export class ProcessManager {
   async exec(options: SpawnOptions): Promise<SpawnResult> {
     if (options.command.length === 0) throw new Error("Empty command");
     const startedAt = Date.now();
-    const executionId = `tex_${Date.now().toString(36)}_${(this.counter += 1)}`;
+    const executionId = options.executionId ?? `tex_${Date.now().toString(36)}_${(this.counter += 1)}`;
     const [binary, ...args] = options.command as [string, ...string[]];
 
     const child = spawn(binary, args, {
@@ -146,6 +148,10 @@ export class ProcessManager {
     record.killTimer = setTimeout(() => this.terminate(record, "SIGKILL"), KILL_GRACE_MS);
     record.killTimer.unref?.();
     return true;
+  }
+
+  has(executionId: string): boolean {
+    return this.live.has(executionId);
   }
 
   liveInWorkspace(workspaceId: string): string[] {
