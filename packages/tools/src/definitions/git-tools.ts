@@ -19,7 +19,7 @@ import {
 import type { DbClient } from "../../../database/src/index.js";
 import type { ToolDefinition, ToolExecutionContext } from "../types.js";
 import type { Workspace } from "../../../database/src/types.js";
-import { terminalProcesses } from "../process-manager.js";
+import { getCommandRunner } from "../command-runner.js";
 import { filterEnv } from "../command-policy.js";
 
 const GIT_HARDENING = [
@@ -58,7 +58,7 @@ async function forWrite(db: DbClient, context: ToolExecutionContext, workspaceId
 }
 
 async function git(workspace: Workspace, args: string[]): Promise<{ exitCode: number | null; stdout: string; stderr: string }> {
-  const result = await terminalProcesses.exec({
+  const result = await getCommandRunner().exec({
     workspaceId: workspace.id,
     // Repo-local config is agent-writable (fs.write can touch .git/config), so
     // neutralise the settings that make git launch programs on its own.

@@ -12,7 +12,7 @@ import { PERMISSIONS } from "../../../security/src/permissions.js";
 import { forbidden, notFound } from "../../../shared/src/index.js";
 import { canWriteWorkspace, requireWorkspace } from "../../../workspace/src/index.js";
 import { evaluateCommand, filterEnv, type WorkspacePolicyOverride } from "../command-policy.js";
-import { terminalProcesses } from "../process-manager.js";
+import { getCommandRunner } from "../command-runner.js";
 import type { ToolDefinition } from "../types.js";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
@@ -80,7 +80,7 @@ export const terminalExecTool: ToolDefinition<{
       throw forbidden(verdict.reason, { workspaceId: workspace.id, command: input.argv[0] });
     }
 
-    const result = await terminalProcesses.exec({
+    const result = await getCommandRunner().exec({
       workspaceId: workspace.id,
       command: input.argv,
       cwd: workspace.path,
@@ -115,7 +115,7 @@ export const terminalKillTool: ToolDefinition<{ executionId: string }> = {
   requiredPermission: PERMISSIONS.WORKSPACE_EXECUTE,
   risk: "LOW",
   async execute(context, input) {
-    const killed = terminalProcesses.kill(input.executionId);
+    const killed = getCommandRunner().kill(input.executionId);
     if (!killed) throw notFound("Live execution", input.executionId);
     return {
       data: { executionId: input.executionId, killed: true },

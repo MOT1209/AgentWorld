@@ -68,6 +68,8 @@ const EnvSchema = z.object({
   APPROVAL_TTL_HOURS: int(24, 1),
 
   WORLD_TIME_SCALE: int(60, 1),
+
+  EXEC_SANDBOX: z.enum(["local", "docker"]).default("local"),
 });
 
 export type RawConfig = z.infer<typeof EnvSchema>;
@@ -91,6 +93,7 @@ export interface AppConfig {
   agent: { maxToolIterations: number; requestTimeoutMs: number };
   approvals: { enabled: boolean; spendThresholdMinor: number; ttlHours: number };
   world: { timeScale: number };
+  exec: { sandbox: "local" | "docker" };
 }
 
 const DEV_ONLY_SECRET = "dev-only-insecure-secret-change-me";
@@ -172,6 +175,7 @@ function load(): AppConfig {
       ttlHours: raw.APPROVAL_TTL_HOURS,
     },
     world: { timeScale: raw.WORLD_TIME_SCALE },
+    exec: { sandbox: raw.EXEC_SANDBOX },
     // Surfaced by hasAnyProviderKey callers; kept out of the object shape to
     // avoid it being read as configuration.
     ...(hasAnyProviderKey ? {} : {}),
@@ -204,6 +208,7 @@ export function redactedConfig(config: AppConfig = getConfig()): Record<string, 
     },
     agent: config.agent,
     world: config.world,
+    exec: config.exec,
     providers: {
       defaultProviderId: config.providers.defaultProviderId,
       openaiCompatible: { enabled: config.providers.openaiCompatible.enabled },

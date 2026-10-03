@@ -313,3 +313,20 @@ describe("git tools", () => {
     }
   });
 });
+
+describe("command runner seam", () => {
+  it("routes through the local runner by default and fails closed for docker", async () => {
+    const { getCommandRunner } = await import("../packages/tools/src/command-runner.js");
+    const { resetConfigCache } = await import("../packages/shared/src/index.js");
+    expect(getCommandRunner().backend).toBe("local");
+
+    process.env.EXEC_SANDBOX = "docker";
+    resetConfigCache();
+    try {
+      expect(() => getCommandRunner()).toThrow(/not implemented yet/);
+    } finally {
+      delete process.env.EXEC_SANDBOX;
+      resetConfigCache();
+    }
+  });
+});
