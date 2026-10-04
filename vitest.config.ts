@@ -7,9 +7,11 @@ export default defineConfig({
     include: ["tests/**/*.test.ts"],
     setupFiles: ["tests/setup.ts"],
     // Financial ledger + ledger-adjacent suites must not run concurrently
-    // against the same SQLite file. Everything runs in a single fork.
+    // against the same SQLite file. A single fork worker with no file
+    // parallelism keeps every suite serial in one process (vitest 5 replaced
+    // the old poolOptions.forks.singleFork with maxWorkers + fileParallelism).
     pool: "forks",
-    poolOptions: { forks: { singleFork: true } },
+    maxWorkers: 1,
     fileParallelism: false,
     testTimeout: 30_000,
     hookTimeout: 60_000,
