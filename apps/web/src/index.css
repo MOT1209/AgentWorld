@@ -1,3 +1,6 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+/* The dashboard uses stock utility classes only — no custom theme or plugins.
+   Point the v4 scanner at the same content globs the old config declared. */
+@source "../index.html";
+@source "./**/*.{ts,tsx}";
