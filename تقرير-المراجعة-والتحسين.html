@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>تقرير مراجعة AgentWorld</title>
+<style>
+  :root{
+    --bg:#0f1117; --panel:#171a22; --panel2:#1d212b; --border:#2a2f3a;
+    --text:#e8eaed; --muted:#9aa3b2; --accent:#6ea8fe; --accent2:#c792ea;
+    --ok:#3fb950; --warn:#d29922; --bad:#f85149; --chip:#222734;
+    --grad:linear-gradient(135deg,#6ea8fe,#c792ea);
+  }
+  @media (prefers-color-scheme: light){
+    :root:not([data-theme="dark"]){
+      --bg:#f6f7f9; --panel:#ffffff; --panel2:#f0f2f5; --border:#e1e4e9;
+      --text:#1b1f27; --muted:#5a6472; --accent:#1f6feb; --accent2:#8a4fff;
+      --chip:#eef1f5;
+    }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font-family:"Segoe UI",Tahoma,system-ui,-apple-system,sans-serif;line-height:1.75}
+  .wrap{max-width:1040px;margin:0 auto;padding:16px}
+  header.hero{background:var(--panel);border:1px solid var(--border);border-radius:16px;
+    padding:28px 24px;margin-top:20px;position:relative;overflow:hidden}
+  header.hero::before{content:"";position:absolute;inset:0;background:var(--grad);opacity:.08}
+  .crown{font-size:34px}
+  h1{margin:.2em 0;font-size:clamp(24px,4vw,34px);background:var(--grad);
+    -webkit-background-clip:text;background-clip:text;color:transparent}
+  .sub{color:var(--muted);font-size:15px}
+  .meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+  .chip{background:var(--chip);border:1px solid var(--border);border-radius:999px;
+    padding:4px 12px;font-size:12.5px;color:var(--muted)}
+  .verdict{display:inline-block;margin-top:14px;padding:6px 16px;border-radius:10px;
+    font-weight:700;background:rgba(63,185,80,.14);color:var(--ok);border:1px solid rgba(63,185,80,.35)}
+  h2{margin:34px 0 12px;font-size:21px;display:flex;align-items:center;gap:10px}
+  h2 .bar{width:5px;height:22px;border-radius:3px;background:var(--grad)}
+  h3{margin:22px 0 8px;font-size:16.5px;color:var(--text)}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:18px 20px;margin:12px 0}
+  p{margin:.5em 0}
+  .grid{display:grid;gap:12px}
+  @media(min-width:680px){.grid.cols2{grid-template-columns:1fr 1fr}.grid.cols4{grid-template-columns:repeat(4,1fr)}}
+  .stat{background:var(--panel2);border:1px solid var(--border);border-radius:12px;padding:14px;text-align:center}
+  .stat .n{font-size:26px;font-weight:800}
+  .stat .l{font-size:12.5px;color:var(--muted)}
+  table{width:100%;border-collapse:collapse;font-size:14px;margin:6px 0}
+  th,td{text-align:right;padding:10px 12px;border-bottom:1px solid var(--border);vertical-align:top}
+  th{color:var(--muted);font-weight:600;font-size:13px;background:var(--panel2)}
+  tr:last-child td{border-bottom:none}
+  code{background:var(--chip);padding:1px 6px;border-radius:5px;font-size:12.5px;
+    font-family:"Cascadia Code",Consolas,monospace;direction:ltr;display:inline-block}
+  .pill{font-size:11.5px;font-weight:700;padding:2px 9px;border-radius:999px;white-space:nowrap}
+  .p-ok{background:rgba(63,185,80,.15);color:var(--ok)}
+  .p-warn{background:rgba(210,153,34,.15);color:var(--warn)}
+  .p-bad{background:rgba(248,81,73,.15);color:var(--bad)}
+  .p-info{background:rgba(110,168,254,.15);color:var(--accent)}
+  ul{margin:.4em 0;padding-inline-start:22px}
+  li{margin:.3em 0}
+  .finding{border-inline-start:4px solid var(--border);padding-inline-start:14px;margin:16px 0}
+  .finding.hi{border-color:var(--bad)}
+  .finding.me{border-color:var(--warn)}
+  .finding.lo{border-color:var(--accent)}
+  .finding h3{margin-top:0;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .lbl{font-size:12px;color:var(--muted)}
+  .ev{background:var(--panel2);border-radius:8px;padding:8px 12px;font-size:13px;margin:6px 0}
+  footer{color:var(--muted);font-size:13px;text-align:center;margin:40px 0 20px;
+    border-top:1px solid var(--border);padding-top:18px}
+  .toc{display:flex;flex-wrap:wrap;gap:8px}
+  .toc a{color:var(--accent);text-decoration:none;background:var(--chip);
+    border:1px solid var(--border);border-radius:8px;padding:5px 12px;font-size:13px}
+  .de{color:var(--muted);font-size:12.5px;font-style:italic}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <div class="crown">👑</div>
+    <h1>تقرير مراجعة وتحسين مشروع AgentWorld</h1>
+    <div class="sub">مراجعة فنية شاملة لشركة رقمية محاكاة يعمل بها وكلاء ذكاء اصطناعي — بنية، أمان، جودة، وخارطة تحسين.</div>
+    <div class="meta">
+      <span class="chip">📅 تاريخ المراجعة: 2026-10-04</span>
+      <span class="chip">🌿 الفرع: claude/practical-tesla-wnrz1d</span>
+      <span class="chip">📦 18 حزمة + تطبيقان (API/Web)</span>
+      <span class="chip">📏 ~28,054 سطر TS/TSX</span>
+    </div>
+    <div class="verdict">✅ الحكم العام: مشروع ناضج وعالي الجودة — جاهز للتطوير، مع إصلاحات صغيرة موصى بها</div>
+  </header>
+
+  <div class="card">
+    <div class="toc">
+      <a href="#summary">الملخص التنفيذي</a>
+      <a href="#verify">نتائج التحقق الفعلية</a>
+      <a href="#strengths">نقاط القوة</a>
+      <a href="#findings">الملاحظات والتحسينات</a>
+      <a href="#roadmap">خارطة الطريق</a>
+      <a href="#method">المنهجية</a>
+    </div>
+  </div>
+
+  <!-- ملخص -->
+  <h2 id="summary"><span class="bar"></span>الملخص التنفيذي</h2>
+  <div class="card">
+    <p><b>AgentWorld</b> محاكاة لشركة رقمية يحمل فيها وكلاء الذكاء الاصطناعي وظائف وأموالاً وهويات وذاكرة، ويتصرفون حصراً عبر «أدوات» تمرّ بنقطة تنفيذ واحدة (صلاحية ← تحقق Zod ← موافقة ← تدقيق). الكود نظيف ومنظّم كـ monorepo، والاختبارات والـ CI قويّة.</p>
+    <p class="de">Deutsch: AgentWorld ist eine Simulation eines digitalen Unternehmens, in dem KI-Agenten über einen einzigen, abgesicherten Werkzeug-Ausführungspfad handeln. Der Code ist sauber, gut strukturiert und durch Tests und CI gut abgesichert.</p>
+    <div class="grid cols4" style="margin-top:14px">
+      <div class="stat"><div class="n" style="color:var(--ok)">149</div><div class="l">اختبار ناجح (12 متخطّى)</div></div>
+      <div class="stat"><div class="n" style="color:var(--accent)">47</div><div class="l">أداة معرّفة</div></div>
+      <div class="stat"><div class="n" style="color:var(--accent2)">38</div><div class="l">نموذج Prisma</div></div>
+      <div class="stat"><div class="n" style="color:var(--warn)">11</div><div class="l">ثغرة في أدوات التطوير</div></div>
+    </div>
+    <p style="margin-top:14px"><b>الخلاصة بإيجاز:</b> البنية سليمة ولا تحتاج إعادة هيكلة جذرية. أهم ثلاث أولويات: <b>(1)</b> تصحيح انحراف التوثيق عن الواقع، <b>(2)</b> خطة ترقية التبعيّات المصابة بثغرات، <b>(3)</b> تقسيم حزمة الواجهة (bundle) وتوثيق الاختبارات المتخطّاة.</p>
+  </div>
+
+  <!-- التحقق -->
+  <h2 id="verify"><span class="bar"></span>نتائج التحقق الفعلية (تم تشغيلها فعلاً)</h2>
+  <div class="card">
+    <p>شُغّلت خطوة <code>npm run verify</code> كاملة بعد تثبيت التبعيّات وتوليد Prisma. هذه نتائج فعلية لا منقولة من الوثائق:</p>
+    <table>
+      <tr><th>الخطوة</th><th>النتيجة</th><th>التفاصيل</th></tr>
+      <tr><td><code>typecheck</code> (tsc)</td><td><span class="pill p-ok">نجح</span></td><td>بلا أخطاء بعد <code>npm install</code> + <code>prisma generate</code></td></tr>
+      <tr><td><code>lint</code> (eslint)</td><td><span class="pill p-ok">نجح</span></td><td>نظيف تماماً، بلا تحذيرات</td></tr>
+      <tr><td><code>test</code> (vitest)</td><td><span class="pill p-ok">نجح</span></td><td>149 ناجح / 12 متخطّى (161 إجمالاً) خلال ≈21 ثانية</td></tr>
+      <tr><td><code>build</code> (api+web)</td><td><span class="pill p-ok">نجح</span></td><td>بناء API عبر tsc وWeb عبر Vite — تحذير حجم الحزمة فقط</td></tr>
+      <tr><td><code>npm audit</code></td><td><span class="pill p-warn">11 ثغرة</span></td><td>3 متوسطة + 8 عالية، كلها في أدوات التطوير/البناء وليست في وقت التشغيل الإنتاجي</td></tr>
+    </table>
+    <p class="de">Deutsch: Die komplette Verify-Pipeline (Typecheck, Lint, Tests, Build) läuft grün; nur <code>npm audit</code> meldet 11 Schwachstellen, sämtlich in Dev-/Build-Werkzeugen, nicht in Produktionsabhängigkeiten.</p>
+  </div>
+
+  <!-- القوة -->
+  <h2 id="strengths"><span class="bar"></span>نقاط القوة المؤكَّدة</h2>
+  <div class="grid cols2">
+    <div class="card">
+      <h3>🏛️ معمارية نظيفة</h3>
+      <ul>
+        <li>Monorepo واضح: 18 حزمة بمسؤوليات منفصلة + تطبيقا API/Web.</li>
+        <li>TypeScript صارم، ESM، استيراد صريح بامتداد <code>.js</code>.</li>
+        <li>نقطة تنفيذ أدوات <b>واحدة</b> (<code>ToolExecutor</code>) لا يتجاوزها أي مسار.</li>
+        <li>السلوك من <code>roleKey</code> لا من الاسم — لا وجود لـ <code>if(agent.name===…)</code>.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>💰 دفتر مالي محكم</h3>
+      <ul>
+        <li>قيَم بوحدات صحيحة (<code>Money</code>) — حظر العوائم (floats).</li>
+        <li>قيد مزدوج + ذرّية + منع السحب على المكشوف + idempotency.</li>
+        <li>عدم قابلية التعديل عبر مُشغّلات SQLite، وقفل تفاؤلي بالإصدار.</li>
+        <li><code>verifyLedger()</code> يعيد تشغيل الدفتر ويثبت توازن كل رصيد.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>🔒 أمان مطبّق بالطبقات</h3>
+      <ul>
+        <li>حارس مسار مغلق الجذر (منع <code>..</code> والروابط الرمزية).</li>
+        <li>سياسة أوامر (argv فقط، <code>shell:false</code>)، وصندوق رمل Docker.</li>
+        <li>RBAC + إعادة تشغيل الموافقات + تدقيق لكل عملية.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>🧪 انضباط هندسي</h3>
+      <ul>
+        <li><b>صفر</b> استخدام لـ <code>as any</code>، وديون تقنية ضئيلة جداً.</li>
+        <li>كل <code>eslint-disable</code> مبرّر، و<code>console</code> محصور في المُسجّل.</li>
+        <li>CI بمصفوفة (ubuntu/windows × Node 20/22) + بناء صورة الصندوق.</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- الملاحظات -->
+  <h2 id="findings"><span class="bar"></span>الملاحظات والتحسينات (مرتّبة بالأولوية)</h2>
+
+  <h3>🔴 أولوية عالية</h3>
+
+  <div class="card">
+    <div class="finding hi">
+      <h3>1. انحراف التوثيق عن الواقع <span class="pill p-bad">عالية</span></h3>
+      <p>أرقام README والوثائق لا تطابق الشجرة الفعلية؛ هذا يضلّل المساهمين ويضعف الثقة بالتوثيق.</p>
+      <div class="ev">
+        README: شارة «140 اختبار» و«62 tests» و«41 models» و«34 tools».<br>
+        الواقع: 161 اختباراً (149 ناجح)، 38 نموذجاً، 47 تعريف أداة، 18 حزمة (الوثيقة تقول 17).
+      </div>
+      <p><b>التوصية:</b> توليد الأرقام آلياً أو تحديثها يدوياً، وإضافة فحص CI اختياري يقارن العدّ المُعلن بالفعلي. تصحيح شارة الاختبارات في README.</p>
+    </div>
+
+    <div class="finding hi">
+      <h3>2. ثغرات التبعيّات <span class="pill p-bad">عالية</span></h3>
+      <p>11 ثغرة (3 متوسطة، 8 عالية). جميعها في سلسلة أدوات التطوير لا في الإنتاج، فالخطر العملي منخفض لكنه يجب أن يُتتبّع لا أن يُتجاهل.</p>
+      <div class="ev">
+        <code>vitest/@vitest/mocker</code> (Path Traversal) · <code>braces→chokidar→tailwindcss</code> (DoS) · <code>deepmerge-ts→@prisma/config→prisma</code> (stack exhaustion).
+      </div>
+      <p><b>التوصية:</b> خطة ترقية مُجدولة — <code>vitest</code> و<code>tailwindcss</code> و<code>prisma</code> ترقيات كبرى (breaking). رقّي على فرع منفصل وشغّل <code>verify</code>. لا تستخدم <code>audit fix --force</code> عشوائياً.</p>
+    </div>
+
+    <div class="finding hi">
+      <h3>3. اختبارات حدود الحاوية لا تُشغَّل محلياً <span class="pill p-bad">عالية</span></h3>
+      <p>الـ12 اختباراً المتخطّاة هي مجموعة <code>docker-sandbox</code> (تُتخطّى عبر <code>skipIf(!available)</code> حين غياب Docker). أي أن أخطر مسار أماني — حدود الصندوق — لا يُختبر إلا في CI على Linux.</p>
+      <p><b>التوصية:</b> توثيق شروط التخطّي بوضوح في README، والتأكيد أن مرحلة Docker في CI إلزامية وليست <code>continue-on-error</code>، وإضافة تذكير في مخرجات <code>npm test</code> بعدد المتخطّى وسببه.</p>
+    </div>
+  </div>
+
+  <h3>🟡 أولوية متوسطة</h3>
+  <div class="card">
+    <div class="finding me">
+      <h3>4. حزمة الواجهة ضخمة بلا تقسيم <span class="pill p-warn">متوسطة</span></h3>
+      <div class="ev">chunk واحد بحجم <b>638 KB</b> (172 KB مضغوط) — تحذير Vite صريح. غالباً بسبب three.js في <code>SimulationView</code>.</div>
+      <p><b>التوصية:</b> <code>manualChunks</code> لعزل three.js، و<code>React.lazy</code> لتحميل مشهد المحاكاة عند الطلب فقط.</p>
+    </div>
+    <div class="finding me">
+      <h3>5. تسمية ملفات مسارات ملتبسة <span class="pill p-warn">متوسطة</span></h3>
+      <div class="ev"><code>event.routes.ts</code> (يخدم <code>/logs</code>) مقابل <code>events.routes.ts</code> (يخدم <code>/events</code> SSE) — ملفان مختلفان باسمين شبه متطابقين.</div>
+      <p><b>التوصية:</b> إعادة تسمية الأول إلى <code>logs.routes.ts</code> ومتغيّره <code>logsRouter</code> لإزالة اللبس.</p>
+    </div>
+    <div class="finding me">
+      <h3>6. ملفات كبيرة مرشّحة للتقسيم <span class="pill p-warn">متوسطة</span></h3>
+      <div class="ev"><code>skill.routes.ts</code> = 911 سطراً، <code>enums.ts</code> = 652، <code>engine.ts</code> = 633.</div>
+      <p><b>التوصية:</b> تقسيم <code>skill.routes.ts</code> حسب المورد/الإجراء إلى وحدات أصغر لتحسين القابلية للصيانة.</p>
+    </div>
+    <div class="finding me">
+      <h3>7. تناقض في العلامة التجارية للاسم <span class="pill p-warn">متوسطة</span></h3>
+      <div class="ev"><code>package.json</code>: «king-world» · README: «AgentWorld» · CI: «King World CI» · حِزم <code>@kingworld/*</code>.</div>
+      <p><b>التوصية:</b> توحيد الاسم عبر المستودع (الاسم المعروض، الحزم، الوثائق) لتفادي الالتباس.</p>
+    </div>
+  </div>
+
+  <h3>🔵 أولوية منخفضة</h3>
+  <div class="card">
+    <div class="finding lo">
+      <h3>8. عتبات تغطية غير مفروضة في CI <span class="pill p-info">منخفضة</span></h3>
+      <p><code>test:coverage</code> موجود لكنه غير مربوط ببوابة في CI. أضف حدّاً أدنى للتغطية على الحزم الحرجة (economy, tools, security).</p>
+    </div>
+    <div class="finding lo">
+      <h3>9. تجربة الإعداد الأولى هشّة <span class="pill p-info">منخفضة</span></h3>
+      <p><code>db:migrate:deploy</code> يفشل بخطأ <code>getConfig</code> عند غياب <code>.env</code>. رغم أن README يذكر <code>cp .env.example .env</code>، يُفضّل رسالة خطأ أوضح توجّه المستخدم للخطوة الناقصة.</p>
+    </div>
+    <div class="finding lo">
+      <h3>10. قابلية التوسّع — كاتب SQLite الوحيد <span class="pill p-info">منخفضة</span></h3>
+      <p>SQLite ممتاز للمحاكاة والتطوير، لكنه كاتب واحد. إن استهدف المشروع تزامناً عالياً مستقبلاً، جرّد طبقة الوصول لتدعم Postgres خلف نفس Prisma.</p>
+    </div>
+  </div>
+
+  <!-- خارطة الطريق -->
+  <h2 id="roadmap"><span class="bar"></span>خارطة طريق التحسين المقترحة</h2>
+  <div class="card">
+    <table>
+      <tr><th>المدى</th><th>الإجراءات</th></tr>
+      <tr><td><b>فوري (أيام)</b></td><td>تصحيح أرقام التوثيق والشارات · توثيق شروط تخطّي الاختبارات · إعادة تسمية <code>event.routes.ts</code>.</td></tr>
+      <tr><td><b>قصير (أسبوعان)</b></td><td>فرع ترقية التبعيّات (vitest/tailwind/prisma) · تقسيم حزمة الواجهة و<code>React.lazy</code> · توحيد اسم العلامة.</td></tr>
+      <tr><td><b>متوسط</b></td><td>تقسيم الملفات الكبيرة · عتبات تغطية في CI · استكمال قائمة «تعريف الإنجاز» للمرحلة 3 (راجع <code>docs/PHASE3-AUDIT.md</code>).</td></tr>
+      <tr><td><b>بعيد</b></td><td>تجريد طبقة قاعدة البيانات لدعم Postgres · مراجعة أمنية مستقلة لمسار تنفيذ الأوامر/الصندوق قبل أي نشر إنتاجي.</td></tr>
+    </table>
+    <p class="de">Deutsch: Kurzfristig Doku-Zahlen korrigieren und Routen-Datei umbenennen; mittelfristig Abhängigkeiten aktualisieren, das Web-Bundle aufteilen und Coverage-Schwellen in der CI erzwingen; langfristig Postgres-Option und ein unabhängiges Security-Review des Ausführungspfads.</p>
+  </div>
+
+  <!-- المنهجية -->
+  <h2 id="method"><span class="bar"></span>المنهجية والحدود</h2>
+  <div class="card">
+    <p>اعتمد التقرير على فحص الشجرة فعلياً وتشغيل الأدوات، لا على نقل ادعاءات الوثائق:</p>
+    <ul>
+      <li>تثبيت التبعيّات، توليد Prisma، ثم تشغيل <code>typecheck/lint/test/build/audit</code> كاملة.</li>
+      <li>مسح الديون التقنية (<code>as any</code>، <code>TODO</code>، <code>console</code>، <code>eslint-disable</code>).</li>
+      <li>قياس أحجام الملفات/الحزم وعدّ الأدوات والنماذج والاختبارات برمجياً.</li>
+    </ul>
+    <p><b>حدود:</b> لم يتوفّر Docker في بيئة المراجعة، فلم تُشغَّل اختبارات حدود الحاوية محلياً (تعمل في CI). لم تُجرَ مراجعة أمنية عدائية متعمّقة لكل مسار — وهي موصى بها كبند مستقل.</p>
+  </div>
+
+  <footer>
+    تقرير مراجعة AgentWorld · أُعدّ آلياً بناءً على فحص الكود وتشغيل خط التحقق · 2026-10-04
+  </footer>
+
+</div>
+</body>
+</html>
