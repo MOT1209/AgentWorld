@@ -5,16 +5,17 @@
 Historical snapshot at Phase 1 close; current totals in brackets.
 
 - Monorepo + strict toolchain (typecheck, lint, test, build)
-- SQLite schema (27 models) + ledger immutability triggers [now 41 models]
+- SQLite schema (27 models) + ledger immutability triggers [now 38 models]
 - Integer-minor-unit money, single-writer ledger, `verifyLedger`
 - Event bus + audit log, typed catalogue (~45 events) [now ~80 types]
 - Swappable AI providers + deterministic mock + `ModelRouter`
 - Tasks (state machine, dependencies, cycle detection), memory (4 kinds, decay),
   world (dual clock), company, approvals (freeze + single-flight replay)
 - Agent runtime (think-act-observe) + 4 role profiles + 19 tools
-  [now 34 tools]
+  [now 49 tools]
 - REST API (auth, RBAC, approvals replay, agent wakeup), seed, 25 tests
-  [now 62 tests], operator dashboard, docs
+  [now 161 tests: 149 passing + 12 Docker-sandbox skipped when Docker is absent],
+  operator dashboard, docs
 
 ## Phase 2 (done): orchestration
 

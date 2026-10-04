@@ -18,7 +18,7 @@
   <img src="https://img.shields.io/badge/Phase_1-complete-brightgreen" alt="Phase 1 complete" />
   <img src="https://img.shields.io/badge/Phase_2-complete-brightgreen" alt="Phase 2 complete" />
   <img src="https://img.shields.io/badge/Phase_3-in_progress-blue" alt="Phase 3 in progress" />
-  <img src="https://img.shields.io/badge/tests-140_passing-brightgreen" alt="140 tests passing" />
+  <img src="https://img.shields.io/badge/tests-149_passing-brightgreen" alt="149 tests passing" />
   <img src="https://img.shields.io/badge/verify-typecheck_%E2%80%A2_lint_%E2%80%A2_test_%E2%80%A2_build-blue" alt="verify pipeline" />
   <img src="https://img.shields.io/badge/keys-zero_required-black" alt="zero API keys needed" />
 </p>
@@ -38,7 +38,7 @@ flowchart TB
         WS[Workspace]
         RUN[AgentRuntime]
         AI[AI Provider]
-        TOOLS[34 tools]
+        TOOLS[49 tools]
     end
     WORLD --> AGENT --> TASK --> WS --> RUN --> AI --> TOOLS
     TOOLS -->|result| TASK
@@ -118,8 +118,9 @@ human message ──▶ wakeup ──▶ THINKING ──▶ act (tools) ──�
 - Every run writes episodic + fact + obligation memories, so the next turn
   has continuity — and pending approvals are remembered, not retried.
 
-**34 tools** across tasks, messages, memory, wallets, world, company, events,
-approvals, plans, reviews, reports, escalations, sessions, and workspaces.
+**49 tools** across tasks, messages, memory, wallets, world, company, events,
+approvals, plans, reviews, reports, escalations, sessions, workspaces, and the
+Phase 3 execution surface (`fs.*`, `terminal.*`, `git.*`).
 
 ---
 
@@ -132,11 +133,11 @@ approvals, plans, reviews, reports, escalations, sessions, and workspaces.
 | `packages/{shared,database,security}` | enums, `Money`, errors, config, JWT, RBAC, rate limits, sanitisation |
 | `packages/{economy,events,tasks,memory,world,company}` | ledger, event bus + audit, state machines, decay-ranked memory, dual clock |
 | `packages/{agents,orchestration,runtime}` | runtime loop, roles, capabilities, hierarchy, plans, delegation, reviews + rework budgets, reports, escalations, sessions |
-| `packages/{ai,tools}` | provider abstraction + `ModelRouter`, 34-tool registry + single enforcement point |
+| `packages/{ai,tools}` | provider abstraction + `ModelRouter`, 49-tool registry + single enforcement point |
 | `packages/simulation` | needs, skills, goals, activities, deterministic decision engine, world tick loop |
 | `packages/workspace` | Phase 3 work environments — closed-root path guard, workspace lifecycle, members, archive/reap |
-| `database/` | Prisma SQLite schema (41 models) + migrations + idempotent `seed.ts` |
-| `tests/` | 9 suites, **62 tests** — finance races, ledger proofs, review loops, permissions, API, simulation |
+| `database/` | Prisma SQLite schema (38 models) + migrations + idempotent `seed.ts` |
+| `tests/` | 17 suites, **161 tests** (149 passing, 12 Docker-sandbox tests skipped when Docker is absent) — finance races, ledger proofs, review loops, permissions, API, simulation, sandbox |
 | `docs/` | `ARCHITECTURE` · `SIMULATION_ENGINE` · `SECURITY` · `API` · `ROADMAP` · `AGENTWORLD_PHASE_3_ARCHITECTURE` · `PHASE3-AUDIT` |
 
 ---
