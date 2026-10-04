@@ -6,10 +6,10 @@ import { requirePermission } from "../middleware/require-permission.js";
 import { PERMISSIONS } from "../../../../packages/security/src/permissions.js";
 import { getCorrelationId } from "../middleware/correlation.js";
 
-export const eventRouter: Router = Router();
-eventRouter.use(authenticate);
+export const logsRouter: Router = Router();
+logsRouter.use(authenticate);
 
-eventRouter.get(
+logsRouter.get(
   "/events",
   requirePermission(PERMISSIONS.EVENT_READ),
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
@@ -36,7 +36,7 @@ eventRouter.get(
   },
 );
 
-eventRouter.get(
+logsRouter.get(
   "/activity",
   requirePermission(PERMISSIONS.EVENT_READ),
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {

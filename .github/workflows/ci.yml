@@ -34,6 +34,7 @@ jobs:
         run: |
           docker build -t kingworld-sandbox:1 docker/sandbox
           echo "TEST_DOCKER_IMAGE=kingworld-sandbox:1" >> "$GITHUB_ENV"
+      - run: npm run check:docs
       - run: npm run typecheck
       - run: npm run lint
       - run: npm run test

@@ -117,7 +117,11 @@ function load(): AppConfig {
     const issues = parsed.error.issues
       .map((i) => `  - ${i.path.join(".") || "(root)"}: ${i.message}`)
       .join("\n");
-    throw new Error(`Invalid environment configuration:\n${issues}`);
+    throw new Error(
+      `Invalid environment configuration:\n${issues}\n\n` +
+        "Hint: if this is a fresh checkout, copy the example env file first:\n" +
+        "  cp .env.example .env",
+    );
   }
   const raw: RawConfig = parsed.data;
 

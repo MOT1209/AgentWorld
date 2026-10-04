@@ -25,6 +25,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "doctor": "tsx scripts/doctor.ts",
+    "check:docs": "tsx scripts/check-doc-counts.ts",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:migrate:deploy": "prisma migrate deploy",

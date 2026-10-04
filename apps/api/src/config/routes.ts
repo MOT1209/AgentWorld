@@ -9,7 +9,7 @@ import { memoryRouter } from "../routes/memory.routes.js";
 import { economyRouter } from "../routes/economy.routes.js";
 import { approvalRouter } from "../routes/approval.routes.js";
 import { toolRouter } from "../routes/tool.routes.js";
-import { eventRouter } from "../routes/event.routes.js";
+import { logsRouter } from "../routes/logs.routes.js";
 import { simulationRouter } from "../routes/simulation.routes.js";
 import { eventsRouter } from "../routes/events.routes.js";
 import { planRouter } from "../routes/plan.routes.js";
@@ -32,7 +32,7 @@ export function registerRoutes(app: Express): void {
   app.use("/api/v1/economy", economyRouter);
   app.use("/api/v1/approvals", approvalRouter);
   app.use("/api/v1/tools", toolRouter);
-  app.use("/api/v1/logs", eventRouter);
+  app.use("/api/v1/logs", logsRouter);
   app.use("/api/v1/simulation", simulationRouter);
   app.use("/api/v1/events", eventsRouter);
   app.use("/api/v1/plans", planRouter);

@@ -1,7 +1,14 @@
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useState } from "react";
 import { api, getToken, setToken } from "./api.js";
-import { SimulationView } from "./SimulationView.js";
-import { SkillsView } from "./SkillsView.js";
+
+// Lazily loaded so the heavy three.js dependency (SimulationView) and the
+// skills view are only fetched when their tab is first opened.
+const SimulationView = lazy(() =>
+  import("./SimulationView.js").then((m) => ({ default: m.SimulationView })),
+);
+const SkillsView = lazy(() =>
+  import("./SkillsView.js").then((m) => ({ default: m.SkillsView })),
+);
 
 type Section = "simulation" | "world" | "company" | "agents" | "tasks" | "chat" | "economy" | "approvals" | "activity" | "plans" | "sessions" | "workspaces" | "escalations" | "skills";
 
@@ -266,6 +273,7 @@ export default function App(): JSX.Element {
         ))}
       </nav>
       <main className="mx-auto max-w-6xl p-4">
+        <Suspense fallback={<p className="text-sm text-gray-500">Loading…</p>}>
         {section === "simulation" && <SimulationView token={token} />}
         {section === "world" && (
           <Panel title="World snapshot" error={world.error}>
@@ -320,6 +328,7 @@ export default function App(): JSX.Element {
             <DataTable rows={(activity.data ?? []) as Array<Record<string, unknown>>} />
           </Panel>
         )}
+        </Suspense>
       </main>
     </div>
   );
