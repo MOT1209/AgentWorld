@@ -1,5 +1,11 @@
 # AgentWorld — Phase 3 Architecture
 
+**Correction (authoritative):** OpenCode is an **execution backend**, not an
+`AIProvider`. Wherever this document says `OpenCodeAdapter implements AIProvider`,
+read `OpenCodeExecutionBackend implements ExecutionBackend`
+(`packages/execution/src/backends/opencode.ts`). `docs/ARCHITECTURE.md` and
+`docs/SECURITY.md` describe the implemented design.
+
 **Status:** design document (Phase 3 §4), reconciled against the tree during the
 M1 audit pass. Implementation status lives in `docs/PHASE3-AUDIT.md` §7 and
 `docs/ROADMAP.md`.
@@ -61,9 +67,11 @@ the failure becomes an event, the agent stays available for recovery.
 
 ### 1.3 What the master prompt assumes but still does NOT exist here
 
-No 3D environment (contract hooks only: `workspaceLocationId`), no GitHub
-integration, no OpenCode adapter, no terminal/filesystem/git tools, no
-execution queue/backends, no artifacts, no browser tooling. The **workspace
+Still absent: 3D environment (contract hooks only: `workspaceLocationId`),
+GitHub integration, `git.push/pull` tools (push is approval-held through
+`terminal.exec`), browser tooling. Since this section was written the terminal,
+filesystem and git tools, the execution queue/backends, artifacts and the
+OpenCode backend have landed. The **workspace
 system itself now exists** (models, migration, closed-root path guard,
 `packages/workspace` service, `workspace.*` tools, `/workspaces` REST).
 Reference implementation for the missing patterns: **cubefarm**
@@ -189,10 +197,10 @@ agents' memories, provider secrets).
 ## 4. Provider integration (§§15–17)
 
 - `AIProvider` stays the seam; vendor SDKs never touch the domain.
-- `OpenCodeAdapter implements AIProvider` (§15): launches a session with
+- `OpenCodeExecutionBackend implements ExecutionBackend` (§15, *not* an `AIProvider`): launches a session with
   context + workspace + task + allowed tools, streams output, captures
   result/errors, terminates. OpenCode-specific logic lives **only** in
-  `packages/ai/src/providers/opencode.ts`, mirroring cubefarm's per-CLI
+  `packages/execution/src/backends/opencode.ts`, mirroring cubefarm's per-CLI
   modules (`clis.ts` pattern).
 - `ModelRouter` (§§16–17, new `packages/ai/src/router.ts`): request
   `{provider?, model?, capability, latency, reasoning}` → ranked providers →
@@ -326,8 +334,8 @@ simulation and runtime stay authoritative (§44).
    + `WORKSPACE_*` events + API + tests.
 3. `ExecutionContext` builder + `AgentSession` lifecycle service.
 4. `terminal.*` + `CommandPolicy` + `ProcessManager` + fs/git tools + tests.
-5. `OpenCodeAdapter` (+ mock-backed `LocalAdapter` for CI) behind
-   `AIProvider`; ModelRouter fallback.
+5. `OpenCodeExecutionBackend` (+ `mock`/`local` backends for CI) behind
+   `ExecutionBackend`.
 6. Verification pipeline + `ExecutionResult` + review handoff + retry policy.
 7. API (`/workspaces`, `/sessions`, `/executions`) + dashboard Workspace
    section + Inspector fields.

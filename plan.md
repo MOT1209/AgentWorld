@@ -272,7 +272,7 @@ Keep `VITE_API_BASE_URL` public-only; the token goes in memory or `sessionStorag
 | Approval policy + service | DONE |
 | HTTP API | **DONE** |
 | Seed data | **DONE** |
-| Tests | **DONE (25 tests, all passing)** |
+| Tests | **DONE (see README badge; `npm run verify`)** |
 | Dashboard | **DONE** |
 | Docs | **DONE** |
 | Lint clean | **DONE (0 errors)** |
@@ -294,3 +294,10 @@ Keep `VITE_API_BASE_URL` public-only; the token goes in memory or `sessionStorag
 6. `apps/web`
 7. `docs/`
 8. `npm run verify`, then the Phase 1 checklist
+
+
+---
+
+## Status update (Phase 3)
+
+Phase 1 and 2 are complete. Phase 3 (real workspace + execution runtime) has landed: workspaces, artifacts, guarded async execution queue and worker, mock/local/OpenCode backends, fs/terminal/git/execution tools, verification -> `Report{kind:"EXECUTION"}` -> review handoff, REST + dashboard. Current counts: 38 models, 55 tools, 19 packages. See `docs/ROADMAP.md` and `docs/PHASE3-AUDIT.md`. The city layer is intentionally not started.

@@ -6,7 +6,7 @@ import { z } from "zod";
 import { prisma } from "../../../../packages/database/src/index.js";
 import {
   buildVerificationReport,
-  cancelQueuedExecution,
+  cancelExecution,
   enqueueExecution,
 } from "../../../../packages/execution/src/index.js";
 import { canWriteWorkspace, requireWorkspace } from "../../../../packages/workspace/src/index.js";
@@ -40,6 +40,7 @@ const EnqueueSchema = z.object({
   timeoutMs: z.number().int().min(100).max(3_600_000).optional(),
   priority: z.number().int().min(-100).max(100).optional(),
   maxAttempts: z.number().int().min(1).max(10).optional(),
+  idempotencyKey: z.string().min(1).max(200).optional(),
 });
 
 executionRouter.post(
@@ -83,6 +84,7 @@ executionRouter.post(
         ...(body.timeoutMs !== undefined ? { timeoutMs: body.timeoutMs } : {}),
         ...(body.priority !== undefined ? { priority: body.priority } : {}),
         ...(body.maxAttempts !== undefined ? { maxAttempts: body.maxAttempts } : {}),
+        ...(body.idempotencyKey !== undefined ? { idempotencyKey: body.idempotencyKey } : {}),
       });
       res.status(201).json({ data: { job }, correlationId: getCorrelationId(req) });
     } catch (error) {
@@ -168,13 +170,20 @@ executionRouter.post(
     try {
       const principal = getPrincipal(req);
       const jobId = req.params.id as string;
-      const result = await cancelQueuedExecution(prisma, jobId, "Cancelled via API", {
+      const result = await cancelExecution(prisma, jobId, "Cancelled via API", {
         actor: principalToActor(principal),
         correlationId: getCorrelationId(req),
       });
       if (result === "missing") throw notFound("ExecutionJob", jobId);
-      if (result === "busy") throw conflict("Execution job is no longer queued");
-      res.json({ data: { cancelled: true }, correlationId: getCorrelationId(req) });
+      if (result === "busy") {
+        throw conflict("Execution job is neither queued nor running in this server");
+      }
+      // "cancelling": a running job got the abort signal; the runner settles
+      // the row as CANCELLED when the child actually exits.
+      res.status(result === "cancelling" ? 202 : 200).json({
+        data: { cancelled: true, stopping: result === "cancelling" },
+        correlationId: getCorrelationId(req),
+      });
     } catch (error) {
       next(error);
     }
@@ -214,7 +223,7 @@ function assertSpooled(path: string, jobId: string, suffix: ".stdout.log" | ".st
 }
 
 executionRouter.get(
-  "/:id/output",
+  ["/:id/output", "/:id/logs"],
   requirePermission(PERMISSIONS.WORKSPACE_READ),
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {

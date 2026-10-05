@@ -9,9 +9,11 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import type { DbClient } from "../../database/src/index.js";
 import type { ExecutionJob, Report } from "../../database/src/types.js";
-import { notFound, validationError } from "../../shared/src/index.js";
+import { newCorrelationId, notFound, SYSTEM_ACTOR, validationError } from "../../shared/src/index.js";
+import { eventBus, EVENT_TYPES } from "../../events/src/index.js";
+import { updateTask } from "../../tasks/src/index.js";
 import { getWorkspace, type WorkspaceActorContext } from "../../workspace/src/index.js";
-import { writeReport, type ReportActorContext } from "../../orchestration/src/index.js";
+import { raiseEscalation, writeReport, type ReportActorContext } from "../../orchestration/src/index.js";
 import { enqueueExecution } from "./queue.js";
 
 export interface VerificationCommand {
@@ -104,6 +106,16 @@ export async function enqueueVerification(
     });
     jobs.push(job);
   }
+  if (jobs.length > 0) {
+    await eventBus.publishAndDispatch(db, {
+      type: EVENT_TYPES.VERIFICATION_STARTED,
+      actor: ctx.actor,
+      correlationId: ctx.correlationId ?? newCorrelationId(),
+      targetType: "Workspace",
+      targetId: workspaceId,
+      payload: { workspaceId, jobIds: jobs.map((job) => job.id) },
+    });
+  }
   return { workspaceId, commands, jobs };
 }
 
@@ -138,6 +150,7 @@ export async function buildVerificationReport(
       kind: "EXECUTION",
       summary: `Verification ${passed}/${total} checks passed`,
       payload: {
+        verified: failing.length === 0,
         workCompleted: `${total} verification command(s) executed`,
         workRemaining:
           failing.length > 0 ? `${failing.length} failing check(s) must be fixed` : "None",
@@ -167,5 +180,69 @@ export async function buildVerificationReport(
     },
     ctx,
   );
+
+  const correlationId = ctx.correlationId ?? newCorrelationId();
+  await eventBus.publishAndDispatch(db, {
+    type: failing.length === 0 ? EVENT_TYPES.VERIFICATION_FINISHED : EVENT_TYPES.VERIFICATION_FAILED,
+    actor: ctx.actor,
+    correlationId,
+    targetType: "Report",
+    targetId: report.id,
+    payload: { workspaceId, reportId: report.id, passed, total },
+  });
+  if (options?.taskId !== undefined && options.taskId !== null) {
+    await handOffToReview(db, options.taskId, failing.length === 0, report.id, correlationId);
+  }
   return report;
+}
+
+/**
+ * Review handoff. A green report moves the task RUNNING -> REVIEWING so a
+ * reviewer (never the author) can judge it. A red report leaves the task with
+ * its assignee to fix and retry, but the loop is bounded by the task's own
+ * `maxRetries`: past it the task fails and a REPEATED_FAILURE escalation goes up.
+ */
+async function handOffToReview(
+  db: DbClient,
+  taskId: string,
+  passed: boolean,
+  reportId: string,
+  correlationId: string,
+): Promise<void> {
+  const task = await db.task.findUnique({ where: { id: taskId } });
+  if (task === null || task.status !== "RUNNING") return;
+  const ctx = { actor: SYSTEM_ACTOR, correlationId };
+
+  if (passed) {
+    await updateTask(db, taskId, { status: "REVIEWING", metadata: { executionReportId: reportId } }, ctx);
+    return;
+  }
+  const reports = await db.report.findMany({ where: { taskId, kind: "EXECUTION" }, select: { payload: true } });
+  const failures = reports.filter((row) => {
+    try {
+      return (JSON.parse(row.payload) as { verified?: boolean }).verified === false;
+    } catch {
+      return false;
+    }
+  }).length;
+  if (failures <= task.maxRetries) return;
+
+  await updateTask(
+    db,
+    taskId,
+    { status: "FAILED", error: "Verification failed repeatedly", metadata: { executionReportId: reportId } },
+    ctx,
+  );
+  if (task.assigneeAgentId !== null) {
+    await raiseEscalation(
+      db,
+      {
+        fromAgentId: task.assigneeAgentId,
+        category: "REPEATED_FAILURE",
+        detail: `Verification failed ${failures} times for task ${taskId} (latest report ${reportId}).`,
+        taskId,
+      },
+      ctx,
+    );
+  }
 }

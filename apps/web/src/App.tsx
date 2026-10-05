@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api, getToken, setToken } from "./api.js";
 import { SimulationView } from "./SimulationView.js";
 import { SkillsView } from "./SkillsView.js";
+import { ExecutionsView, WorkspacesView } from "./ExecutionView.js";
 
 type Section = "simulation" | "world" | "company" | "agents" | "tasks" | "chat" | "economy" | "approvals" | "activity" | "plans" | "sessions" | "workspaces" | "executions" | "escalations" | "skills";
 
@@ -234,8 +235,6 @@ export default function App(): JSX.Element {
   const activity = useFetch<unknown[]>("/logs/activity", section === "activity" ? token : null);
   const plans = useFetch<{ items: unknown[] }>("/plans", section === "plans" ? token : null);
   const sessions = useFetch<{ items: unknown[] }>("/sessions", section === "sessions" ? token : null);
-  const workspaces = useFetch<{ items: unknown[] }>("/workspaces", section === "workspaces" ? token : null);
-  const executions = useFetch<{ items: unknown[] }>("/executions", section === "executions" ? token : null);
   const escalations = useFetch<{ items: unknown[] }>("/escalations/human", section === "escalations" ? token : null);
 
   if (token === null) {
@@ -299,16 +298,8 @@ export default function App(): JSX.Element {
             <DataTable rows={((sessions.data?.items ?? []) as unknown[]) as Array<Record<string, unknown>>} />
           </Panel>
         )}
-        {section === "workspaces" && (
-          <Panel title="Workspaces" error={workspaces.error}>
-            <DataTable rows={((workspaces.data?.items ?? []) as unknown[]) as Array<Record<string, unknown>>} />
-          </Panel>
-        )}
-        {section === "executions" && (
-          <Panel title="Execution jobs" error={executions.error}>
-            <DataTable rows={((executions.data?.items ?? []) as unknown[]) as Array<Record<string, unknown>>} />
-          </Panel>
-        )}
+        {section === "workspaces" && <WorkspacesView />}
+        {section === "executions" && <ExecutionsView />}
         {section === "escalations" && (
           <Panel title="Escalations awaiting a human" error={escalations.error}>
             <DataTable rows={((escalations.data?.items ?? []) as unknown[]) as Array<Record<string, unknown>>} />

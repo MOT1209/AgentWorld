@@ -37,6 +37,39 @@ Agent tools declare `requiredPermission` + `risk`; anything `HIGH`/`CRITICAL`
 or on the always-approve list (`agent.create`, `wallet.withdraw`, …) is
 withheld pending a human.
 
+## Execution runtime (Phase 3)
+
+- **One gate for every job.** `enqueueExecution` is the only creation path
+  (REST, tools, verification). It requires a usable workspace for any
+  non-mock backend, forces the working directory inside the workspace root
+  (relative, absolute, drive and UNC forms rejected; the realpath of the
+  longest existing ancestor is checked, so a not-yet-created file under a
+  symlink or a nested symlink chain cannot escape), and runs CommandPolicy.
+  DENY is always refused; REQUIRE_APPROVAL is refused unless the approval flow
+  cleared it, so the REST API cannot clear approvals. The runner re-checks DENY
+  and the working directory right before spawning, so a row written around the
+  gate still cannot run.
+- **No shell.** Commands are argv arrays spawned with `shell: false`; shell
+  metacharacters are inert data. Unknown commands, inline-code interpreters and
+  arguments pointing outside the workspace require approval.
+- **Environment allow-list.** Child processes get a fixed allow-list; any key
+  that looks like a secret is dropped even if declared.
+- **Bounded.** Timeout, output cap, concurrency cap, bounded retries (TRANSIENT
+  only). Cancellation kills the whole process tree (`taskkill /T` on Windows,
+  process group on POSIX).
+- **Isolation.** `terminal.*` and `execution.*` answer "not found" for another
+  workspace's processes and jobs, so ids cannot be probed. Artifacts store
+  root-relative paths, re-validated on registration; rows hold no contents.
+- **OpenCode is a backend, not an AI provider.** It receives the workspace and
+  an approved prompt, never secrets or policy; prompt-driven runs always need
+  human approval. The binary is named only in
+  `packages/execution/src/backends/opencode.ts` and `OPENCODE_COMMAND`.
+- **Recovery.** Jobs left RUNNING by a crash are requeued (attempts left) or
+  failed (`SYSTEM`) at worker start and by a periodic sweep.
+
+Tests: `tests/security-m4.test.ts`, `tests/execution-tools-m1.test.ts`,
+`tests/execution-m2.test.ts`, `tests/execution-tools.test.ts`.
+
 ## Approval policy
 
 `evaluateApproval` combines action risk, declared risk, and spend threshold

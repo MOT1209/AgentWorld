@@ -5,6 +5,7 @@ import {
   createWorkspace,
   defaultWorkspaceRoot,
   getWorkspace,
+  listArtifacts,
   listWorkspaceFiles,
   listWorkspaces,
   reapExpiredWorkspaces,
@@ -126,6 +127,29 @@ workspaceRouter.get(
       const rel = typeof req.query.path === "string" ? req.query.path : "";
       const files = await listWorkspaceFiles(prisma, req.params.id as string, rel, ctx);
       res.json({ data: { files }, correlationId: getCorrelationId(req) });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+workspaceRouter.get(
+  "/:id/artifacts",
+  requirePermission(PERMISSIONS.WORKSPACE_READ),
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const ctx = actorCtx(req);
+      // getWorkspace enforces read access (404/403) before any artifact row is returned.
+      const workspace = await getWorkspace(prisma, req.params.id as string, ctx);
+      const q = req.query as Record<string, string | undefined>;
+      const items = await listArtifacts(prisma, {
+        workspaceId: workspace.id,
+        ...(q.executionId !== undefined ? { executionId: q.executionId } : {}),
+        ...(q.kind !== undefined ? { kind: q.kind } : {}),
+        ...(q.take !== undefined ? { take: Number(q.take) || 50 } : {}),
+        ...(q.skip !== undefined ? { skip: Number(q.skip) || 0 } : {}),
+      });
+      res.json({ data: { items }, correlationId: getCorrelationId(req) });
     } catch (error) {
       next(error);
     }

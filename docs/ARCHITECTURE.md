@@ -106,7 +106,7 @@ finality (terminal states never reopen). Emits `SESSION_STARTED` /
 `SESSION_FINISHED`. Sessions are the attachment point for Phase 3 workspace
 and execution-backend fields.
 
-## Workspaces (Phase 3, in progress)
+## Workspaces (Phase 3)
 
 `packages/workspace` models real work environments independent of simulation
 state: an approved on-disk root (default `<cwd>/workspaces`, gitignored) plus
@@ -116,8 +116,31 @@ path resolves inside the root or the call fails - `..`, absolute-path
 smuggling and symlink escapes are rejected server-side), explicit access
 (holder/member/permission, nothing else), no secrets in rows, archive-don't-
 vanish retirement. The simulation may know an agent is WORKING; the work
-itself happens here. Execution backends, terminal/fs/git tools and the async
-queue build on this (see `docs/AGENTWORLD_PHASE_3_ARCHITECTURE.md`).
+itself happens here.
+
+## Execution runtime (Phase 3)
+
+```text
+Task -> Plan -> AgentSession -> Workspace
+  -> ExecutionJob (QUEUED)          created ONLY by enqueueExecution (guarded)
+  -> worker claims (QUEUED->RUNNING, atomic updateMany)
+  -> ExecutionBackend: mock | local | opencode     (shell-free argv, capped, timed)
+  -> spooled stdout/stderr + LOG artifacts
+  -> verification (detected scripts only) -> Report{kind:"EXECUTION"}
+  -> task RUNNING -> REVIEWING   (green)  |  stays with assignee (red, bounded by maxRetries)
+```
+
+Execution never runs in an HTTP handler or a simulation tick: both only
+enqueue. A failed job is a domain event (`EXECUTION_FAILED`) and a task state,
+never a crash. Events: `EXECUTION_QUEUED` (job created) / `CLAIMED` / `STARTED` /
+`FINISHED` / `FAILED` / `CANCELLED` / `RECOVERED`, `PROCESS_STARTED` /
+`EXITED` / `KILLED`, `ARTIFACT_CREATED`, `VERIFICATION_STARTED` / `FINISHED` /
+`FAILED`. Event payloads carry operational metadata only (binary name, never
+arguments or prompts).
+
+Running it: backend `mock` (offline, CI), `local` (real argv processes) or
+`opencode` (needs the CLI; binary name from `OPENCODE_COMMAND`). Live smoke:
+`OPENCODE_SMOKE=1 npx vitest run tests/opencode-smoke.test.ts`.
 
 ## Database portability
 
