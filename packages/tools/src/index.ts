@@ -23,6 +23,7 @@ import { workspaceTools } from "./definitions/workspace-tools.js";
 import { terminalTools } from "./definitions/terminal-tools.js";
 import { fsTools } from "./definitions/fs-tools.js";
 import { gitTools } from "./definitions/git-tools.js";
+import { executionTools } from "./definitions/execution-tools.js";
 import { ToolRegistry } from "./registry.js";
 
 export const BUILT_IN_TOOLS: AnyToolDefinition[] = [
@@ -43,6 +44,7 @@ export const BUILT_IN_TOOLS: AnyToolDefinition[] = [
   ...terminalTools,
   ...fsTools,
   ...gitTools,
+  ...executionTools,
 ];
 
 export function createDefaultRegistry(): ToolRegistry {
@@ -75,7 +77,7 @@ export {
   workspaceShareTool,
   workspaceArchiveTool,
 } from "./definitions/workspace-tools.js";
-export { terminalTools, terminalExecTool, terminalKillTool } from "./definitions/terminal-tools.js";
+export { terminalTools, terminalExecTool, terminalKillTool, terminalStatusTool } from "./definitions/terminal-tools.js";
 export {
   fsTools,
   fsListTool,
@@ -89,9 +91,17 @@ export {
 export {
   gitTools,
   gitStatusTool,
+  gitAddTool,
   gitBranchTool,
   gitCheckoutTool,
   gitDiffTool,
   gitLogTool,
   gitCommitTool,
 } from "./definitions/git-tools.js";
+export {
+  executionTools,
+  executionCreateTool,
+  executionGetTool,
+  executionListTool,
+  executionCancelTool,
+} from "./definitions/execution-tools.js";

@@ -1268,6 +1268,9 @@ model ExecutionJob {
   createdBy     String?
   correlationId String?
 
+  /// Caller-supplied; a retried create with the same key returns this row.
+  idempotencyKey String? @unique
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

@@ -8,6 +8,8 @@
  */
 import { spawn, type ChildProcess } from "node:child_process";
 
+const IS_WINDOWS = process.platform === "win32";
+
 export interface SpawnOptions {
   workspaceId: string;
   command: string[];
@@ -15,6 +17,8 @@ export interface SpawnOptions {
   env: Record<string, string>;
   timeoutMs: number;
   maxBytes: number;
+  /** Aborting kills the whole process tree and marks the result `cancelled`. */
+  signal?: AbortSignal;
 }
 
 export interface SpawnResult {
@@ -25,6 +29,7 @@ export interface SpawnResult {
   stderr: string;
   truncated: boolean;
   timedOut: boolean;
+  cancelled: boolean;
   durationMs: number;
 }
 
@@ -59,6 +64,8 @@ export class ProcessManager {
       stdio: ["ignore", "pipe", "pipe"],
       shell: false,
       windowsHide: true,
+      // POSIX: own process group so the whole tree can be signalled at once.
+      detached: !IS_WINDOWS,
     });
 
     return new Promise<SpawnResult>((resolve) => {
@@ -66,6 +73,7 @@ export class ProcessManager {
       let stderr = "";
       let truncated = false;
       let timedOut = false;
+      let cancelled = false;
       let settled = false;
 
       const record: LiveProcess = {
@@ -81,6 +89,15 @@ export class ProcessManager {
       // The timeout must never hold the event loop open on its own.
       record.timer.unref?.();
       this.live.set(executionId, record);
+
+      const onAbort = (): void => {
+        cancelled = true;
+        this.terminate(record, "SIGKILL");
+      };
+      if (options.signal !== undefined) {
+        if (options.signal.aborted) onAbort();
+        else options.signal.addEventListener("abort", onAbort, { once: true });
+      }
 
       const append = (store: "out" | "err", chunk: Buffer): void => {
         if (truncated) return;
@@ -114,6 +131,7 @@ export class ProcessManager {
           stderr: stderr + `\nspawn error: ${error.message}`,
           truncated,
           timedOut,
+          cancelled,
           durationMs: Date.now() - startedAt,
         });
       });
@@ -129,6 +147,7 @@ export class ProcessManager {
           stderr,
           truncated,
           timedOut,
+          cancelled,
           durationMs: Date.now() - startedAt,
         });
       });
@@ -145,6 +164,18 @@ export class ProcessManager {
     return true;
   }
 
+  /** Snapshot of one live process, or null once it has finished. */
+  status(executionId: string): { executionId: string; workspaceId: string; command: string[]; runningMs: number } | null {
+    const record = this.live.get(executionId);
+    if (record === undefined) return null;
+    return {
+      executionId,
+      workspaceId: record.workspaceId,
+      command: record.command,
+      runningMs: Date.now() - record.startedAt,
+    };
+  }
+
   liveInWorkspace(workspaceId: string): string[] {
     const ids: string[] = [];
     for (const [id, record] of this.live) {
@@ -153,11 +184,28 @@ export class ProcessManager {
     return ids;
   }
 
+  /**
+   * Kills the process AND its children. `npm test` is a wrapper around the
+   * real worker; killing only the wrapper would leave orphans running.
+   */
   private terminate(record: LiveProcess, signal: "SIGTERM" | "SIGKILL"): void {
+    const pid = record.child.pid;
     try {
-      record.child.kill(signal);
+      if (pid !== undefined && IS_WINDOWS) {
+        spawn("taskkill", ["/pid", String(pid), "/T", "/F"], { stdio: "ignore", windowsHide: true, shell: false })
+          .on("error", () => record.child.kill(signal))
+          .unref();
+      } else if (pid !== undefined) {
+        process.kill(-pid, signal);
+      } else {
+        record.child.kill(signal);
+      }
     } catch {
-      // Already gone; close handler settles the promise.
+      try {
+        record.child.kill(signal);
+      } catch {
+        // Already gone; close handler settles the promise.
+      }
     }
   }
 

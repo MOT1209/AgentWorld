@@ -16,7 +16,7 @@
  *     row but leaves the directory on disk and says so in the audit trail.
  */
 import { existsSync, mkdirSync, realpathSync } from "node:fs";
-import { normalize, resolve, sep } from "node:path";
+import { dirname, normalize, resolve, sep } from "node:path";
 import {
   WorkspaceMemberRoleSchema,
   WorkspaceStatusSchema,
@@ -93,19 +93,25 @@ export function resolveInRoot(root: string, ...segments: string[]): string {
   if (/(^|[\\/])\.\.([\\/]|$)/.test(segments.join("/"))) {
     throw validationError("Parent-directory references are not allowed in workspace paths");
   }
-  try {
-    if (existsSync(candidate)) {
-      const real = realpathSync(candidate);
-      if (real !== base && !real.startsWith(base + sep)) {
-        throw validationError("Path resolves outside the workspace root");
-      }
-      return real;
-    }
-  } catch (error) {
-    if (error instanceof Error && error.message.includes("outside the workspace root")) throw error;
-    // Missing path: nothing to resolve yet; the prefix check above stands.
+  // Realpath the longest existing ancestor: a not-yet-created file under a
+  // symlinked directory must not slip past the lexical prefix check.
+  let probe = candidate;
+  while (!existsSync(probe)) {
+    const parent = dirname(probe);
+    if (parent === probe) return candidate;
+    probe = parent;
   }
-  return candidate;
+  let real: string;
+  try {
+    real = realpathSync(probe);
+  } catch {
+    throw validationError("Path cannot be resolved inside the workspace root");
+  }
+  const realBase = existsSync(base) ? realpathSync(base) : base;
+  if (real !== realBase && !real.startsWith(realBase + sep)) {
+    throw validationError("Path resolves outside the workspace root");
+  }
+  return probe === candidate ? real : candidate;
 }
 
 export async function requireWorkspace(db: DbClient, workspaceId: string): Promise<Workspace> {

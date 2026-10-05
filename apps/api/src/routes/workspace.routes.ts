@@ -5,6 +5,7 @@ import {
   createWorkspace,
   defaultWorkspaceRoot,
   getWorkspace,
+  listWorkspaceFiles,
   listWorkspaces,
   reapExpiredWorkspaces,
   setWorkspaceStatus,
@@ -12,6 +13,7 @@ import {
   unshareWorkspace,
   workspaceEnvironment,
 } from "../../../../packages/workspace/src/index.js";
+import { enqueueVerification } from "../../../../packages/execution/src/index.js";
 import { getPrincipal, authenticate } from "../middleware/authenticate.js";
 import { requirePermission } from "../middleware/require-permission.js";
 import { PERMISSIONS } from "../../../../packages/security/src/permissions.js";
@@ -107,6 +109,38 @@ workspaceRouter.get(
       const workspace = await getWorkspace(prisma, req.params.id as string, ctx);
       res.json({
         data: { workspace: { ...workspace, environment: workspaceEnvironment(workspace) } },
+        correlationId: getCorrelationId(req),
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+workspaceRouter.get(
+  "/:id/files",
+  requirePermission(PERMISSIONS.WORKSPACE_READ),
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const ctx = actorCtx(req);
+      const rel = typeof req.query.path === "string" ? req.query.path : "";
+      const files = await listWorkspaceFiles(prisma, req.params.id as string, rel, ctx);
+      res.json({ data: { files }, correlationId: getCorrelationId(req) });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+workspaceRouter.post(
+  "/:id/verify",
+  requirePermission(PERMISSIONS.WORKSPACE_EXECUTE),
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const ctx = actorCtx(req);
+      const result = await enqueueVerification(prisma, req.params.id as string, ctx);
+      res.status(202).json({
+        data: { workspaceId: result.workspaceId, commands: result.commands, jobs: result.jobs },
         correlationId: getCorrelationId(req),
       });
     } catch (error) {

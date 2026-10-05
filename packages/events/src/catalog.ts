@@ -82,8 +82,16 @@ export const EVENT_TYPES = {
   EXECUTION_STARTED: "EXECUTION_STARTED",
   EXECUTION_FINISHED: "EXECUTION_FINISHED",
   EXECUTION_CANCELLED: "EXECUTION_CANCELLED",
+  EXECUTION_CLAIMED: "EXECUTION_CLAIMED",
+  EXECUTION_FAILED: "EXECUTION_FAILED",
+  EXECUTION_RECOVERED: "EXECUTION_RECOVERED",
+  PROCESS_STARTED: "PROCESS_STARTED",
+  PROCESS_EXITED: "PROCESS_EXITED",
   PROCESS_KILLED: "PROCESS_KILLED",
   ARTIFACT_CREATED: "ARTIFACT_CREATED",
+  VERIFICATION_STARTED: "VERIFICATION_STARTED",
+  VERIFICATION_FINISHED: "VERIFICATION_FINISHED",
+  VERIFICATION_FAILED: "VERIFICATION_FAILED",
 
   // Tools
   TOOL_INVOKED: "TOOL_INVOKED",
@@ -234,6 +242,14 @@ export interface EventPayloadMap {
     durationMs: number;
   };
   EXECUTION_CANCELLED: { executionId: string; reason: string };
+  EXECUTION_CLAIMED: { executionId: string; attempt: number };
+  EXECUTION_FAILED: { executionId: string; status: string; error: string | null; errorCategory: string | null };
+  EXECUTION_RECOVERED: { executionId: string; outcome: "REQUEUED" | "FAILED"; reason: string };
+  PROCESS_STARTED: { executionId: string; backendId: string; command: string | null };
+  PROCESS_EXITED: { executionId: string; exitCode: number | null; signal: string | null; timedOut: boolean; durationMs: number };
+  VERIFICATION_STARTED: { workspaceId: string; jobIds: string[] };
+  VERIFICATION_FINISHED: { workspaceId: string | null; reportId: string; passed: number; total: number };
+  VERIFICATION_FAILED: { workspaceId: string | null; reportId: string; passed: number; total: number };
   PROCESS_KILLED: { executionId: string; pid: number | null; reason: string };
   ARTIFACT_CREATED: { artifactId: string; workspaceId: string | null; kind: string; path: string };
 

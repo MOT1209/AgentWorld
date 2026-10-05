@@ -68,6 +68,11 @@ const EnvSchema = z.object({
   APPROVAL_TTL_HOURS: int(24, 1),
 
   WORLD_TIME_SCALE: int(60, 1),
+
+  // Execution runtime (Phase 3). OPENCODE_COMMAND names the binary for the
+  // opencode backend — the ONLY config reference to it besides that backend.
+  EXECUTION_BACKEND: z.enum(["local", "mock", "opencode"]).default("local"),
+  OPENCODE_COMMAND: z.string().min(1).default("opencode"),
 });
 
 export type RawConfig = z.infer<typeof EnvSchema>;
@@ -91,6 +96,7 @@ export interface AppConfig {
   agent: { maxToolIterations: number; requestTimeoutMs: number };
   approvals: { enabled: boolean; spendThresholdMinor: number; ttlHours: number };
   world: { timeScale: number };
+  execution: { defaultBackend: "local" | "mock" | "opencode"; openCodeCommand: string };
 }
 
 const DEV_ONLY_SECRET = "dev-only-insecure-secret-change-me";
@@ -172,6 +178,10 @@ function load(): AppConfig {
       ttlHours: raw.APPROVAL_TTL_HOURS,
     },
     world: { timeScale: raw.WORLD_TIME_SCALE },
+    execution: {
+      defaultBackend: raw.EXECUTION_BACKEND,
+      openCodeCommand: raw.OPENCODE_COMMAND,
+    },
     // Surfaced by hasAnyProviderKey callers; kept out of the object shape to
     // avoid it being read as configuration.
     ...(hasAnyProviderKey ? {} : {}),
@@ -204,6 +214,7 @@ export function redactedConfig(config: AppConfig = getConfig()): Record<string, 
     },
     agent: config.agent,
     world: config.world,
+    execution: config.execution,
     providers: {
       defaultProviderId: config.providers.defaultProviderId,
       openaiCompatible: { enabled: config.providers.openaiCompatible.enabled },

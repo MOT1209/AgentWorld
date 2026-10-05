@@ -17,3 +17,8 @@ export {
   type CreateWorkspaceInput,
   type ListWorkspacesQuery,
 } from "./workspace.service.js";
+export {
+  listWorkspaceFiles,
+  type WorkspaceFileEntry,
+  type WorkspaceFileListing,
+} from "./fs.service.js";

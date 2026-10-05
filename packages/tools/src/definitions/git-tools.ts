@@ -7,6 +7,7 @@
  * merging stays a human act). Everything runs with argv (no shell) inside
  * the workspace directory, bounded like any terminal execution.
  */
+import { relative } from "node:path";
 import { z } from "zod";
 import { PERMISSIONS, type Permission } from "../../../security/src/permissions.js";
 import { forbidden, validationError } from "../../../shared/src/index.js";
@@ -14,6 +15,7 @@ import {
   canReadWorkspace,
   canWriteWorkspace,
   requireWorkspace,
+  resolveInRoot,
   type WorkspaceActorContext,
 } from "../../../workspace/src/index.js";
 import type { DbClient } from "../../../database/src/index.js";
@@ -165,6 +167,26 @@ export const gitLogTool: ToolDefinition<{ workspaceId: string; limit?: number }>
   },
 };
 
+export const gitAddTool: ToolDefinition<{ workspaceId: string; paths: string[] }> = {
+  name: "git.add",
+  description: "Stage specific workspace paths for the next commit.",
+  inputSchema: z.object({
+    workspaceId: z.string().min(1),
+    paths: z.array(z.string().min(1).max(500)).min(1).max(100),
+  }),
+  requiredPermission: PERMISSIONS.WORKSPACE_WRITE,
+  risk: "LOW",
+  async execute(context, input) {
+    const workspace = await forWrite(context.db, context, input.workspaceId);
+    // Every path must resolve inside the workspace (no traversal, no symlink escape),
+    // then goes after `--` so it can never be parsed as an option.
+    const relPaths = input.paths.map((path) => relative(workspace.path, resolveInRoot(workspace.path, path)) || ".");
+    const result = await git(workspace, ["add", "--", ...relPaths]);
+    assertGitOk(workspace, result, "add");
+    return { data: { staged: relPaths }, summary: `Staged ${relPaths.length} path(s)` };
+  },
+};
+
 export const gitCommitTool: ToolDefinition<{ workspaceId: string; message: string; addAll?: boolean }> = {
   name: "git.commit",
   description:
@@ -198,4 +220,4 @@ export const gitCommitTool: ToolDefinition<{ workspaceId: string; message: strin
   },
 };
 
-export const gitTools = [gitStatusTool, gitBranchTool, gitCheckoutTool, gitDiffTool, gitLogTool, gitCommitTool];
+export const gitTools = [gitStatusTool, gitAddTool, gitBranchTool, gitCheckoutTool, gitDiffTool, gitLogTool, gitCommitTool];

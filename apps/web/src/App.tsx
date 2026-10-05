@@ -3,7 +3,7 @@ import { api, getToken, setToken } from "./api.js";
 import { SimulationView } from "./SimulationView.js";
 import { SkillsView } from "./SkillsView.js";
 
-type Section = "simulation" | "world" | "company" | "agents" | "tasks" | "chat" | "economy" | "approvals" | "activity" | "plans" | "sessions" | "workspaces" | "escalations" | "skills";
+type Section = "simulation" | "world" | "company" | "agents" | "tasks" | "chat" | "economy" | "approvals" | "activity" | "plans" | "sessions" | "workspaces" | "executions" | "escalations" | "skills";
 
 const SECTIONS: Array<{ key: Section; label: string }> = [
   { key: "simulation", label: "Simulation" },
@@ -14,6 +14,7 @@ const SECTIONS: Array<{ key: Section; label: string }> = [
   { key: "plans", label: "Plans" },
   { key: "sessions", label: "Sessions" },
   { key: "workspaces", label: "Workspaces" },
+  { key: "executions", label: "Executions" },
   { key: "escalations", label: "Escalations" },
   { key: "skills", label: "Skills" },
   { key: "chat", label: "Communication" },
@@ -234,6 +235,7 @@ export default function App(): JSX.Element {
   const plans = useFetch<{ items: unknown[] }>("/plans", section === "plans" ? token : null);
   const sessions = useFetch<{ items: unknown[] }>("/sessions", section === "sessions" ? token : null);
   const workspaces = useFetch<{ items: unknown[] }>("/workspaces", section === "workspaces" ? token : null);
+  const executions = useFetch<{ items: unknown[] }>("/executions", section === "executions" ? token : null);
   const escalations = useFetch<{ items: unknown[] }>("/escalations/human", section === "escalations" ? token : null);
 
   if (token === null) {
@@ -300,6 +302,11 @@ export default function App(): JSX.Element {
         {section === "workspaces" && (
           <Panel title="Workspaces" error={workspaces.error}>
             <DataTable rows={((workspaces.data?.items ?? []) as unknown[]) as Array<Record<string, unknown>>} />
+          </Panel>
+        )}
+        {section === "executions" && (
+          <Panel title="Execution jobs" error={executions.error}>
+            <DataTable rows={((executions.data?.items ?? []) as unknown[]) as Array<Record<string, unknown>>} />
           </Panel>
         )}
         {section === "escalations" && (

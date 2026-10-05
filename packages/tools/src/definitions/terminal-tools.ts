@@ -10,7 +10,7 @@
 import { z } from "zod";
 import { PERMISSIONS } from "../../../security/src/permissions.js";
 import { forbidden, notFound } from "../../../shared/src/index.js";
-import { canWriteWorkspace, requireWorkspace } from "../../../workspace/src/index.js";
+import { canReadWorkspace, canWriteWorkspace, requireWorkspace } from "../../../workspace/src/index.js";
 import { evaluateCommand, filterEnv, type WorkspacePolicyOverride } from "../command-policy.js";
 import { terminalProcesses } from "../process-manager.js";
 import type { ToolDefinition } from "../types.js";
@@ -108,6 +108,27 @@ export const terminalExecTool: ToolDefinition<{
   },
 };
 
+async function requireLiveAccess(
+  context: Parameters<ToolDefinition<{ executionId: string }>["execute"]>[0],
+  executionId: string,
+  mode: "read" | "write",
+): Promise<NonNullable<ReturnType<typeof terminalProcesses.status>>> {
+  const live = terminalProcesses.status(executionId);
+  if (live === null) throw notFound("Live execution", executionId);
+  const workspace = await requireWorkspace(context.db, live.workspaceId);
+  const ctx = {
+    actor: context.actor,
+    correlationId: context.correlationId,
+    permissions: context.permissions,
+    ...(context.agentId !== undefined ? { agentId: context.agentId } : {}),
+  };
+  const allowed =
+    mode === "read" ? await canReadWorkspace(context.db, workspace, ctx) : await canWriteWorkspace(context.db, workspace, ctx);
+  // Same answer as "unknown" so ids of other workspaces' processes are not probeable.
+  if (!allowed) throw notFound("Live execution", executionId);
+  return live;
+}
+
 export const terminalKillTool: ToolDefinition<{ executionId: string }> = {
   name: "terminal.kill",
   description: "Stop one of your running terminal executions by id.",
@@ -115,8 +136,8 @@ export const terminalKillTool: ToolDefinition<{ executionId: string }> = {
   requiredPermission: PERMISSIONS.WORKSPACE_EXECUTE,
   risk: "LOW",
   async execute(context, input) {
-    const killed = terminalProcesses.kill(input.executionId);
-    if (!killed) throw notFound("Live execution", input.executionId);
+    await requireLiveAccess(context, input.executionId, "write");
+    terminalProcesses.kill(input.executionId);
     return {
       data: { executionId: input.executionId, killed: true },
       summary: `Execution ${input.executionId} signalled to stop`,
@@ -124,4 +145,19 @@ export const terminalKillTool: ToolDefinition<{ executionId: string }> = {
   },
 };
 
-export const terminalTools = [terminalExecTool, terminalKillTool];
+export const terminalStatusTool: ToolDefinition<{ executionId: string }> = {
+  name: "terminal.status",
+  description: "Check whether one of your terminal executions is still running.",
+  inputSchema: z.object({ executionId: z.string().min(1).max(120) }),
+  requiredPermission: PERMISSIONS.WORKSPACE_READ,
+  risk: "LOW",
+  async execute(context, input) {
+    const live = await requireLiveAccess(context, input.executionId, "read");
+    return {
+      data: { executionId: live.executionId, running: true, runningMs: live.runningMs, command: live.command[0] ?? null },
+      summary: `Running for ${live.runningMs}ms`,
+    };
+  },
+};
+
+export const terminalTools = [terminalExecTool, terminalKillTool, terminalStatusTool];
