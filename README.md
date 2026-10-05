@@ -14,13 +14,11 @@
   memories — and answer for what they do.</b>
 </p>
 
-<!-- check-docs: models=38 tools=55 packages=19 -->
-
 <p align="center">
   <img src="https://img.shields.io/badge/Phase_1-complete-brightgreen" alt="Phase 1 complete" />
   <img src="https://img.shields.io/badge/Phase_2-complete-brightgreen" alt="Phase 2 complete" />
   <img src="https://img.shields.io/badge/Phase_3-execution_runtime_landed-blue" alt="Phase 3 execution runtime landed" />
-  <img src="https://img.shields.io/badge/tests-170_passing-brightgreen" alt="170 tests passing" />
+  <img src="https://img.shields.io/badge/tests-149_passing-brightgreen" alt="149 tests passing" />
   <img src="https://img.shields.io/badge/verify-typecheck_%E2%80%A2_lint_%E2%80%A2_test_%E2%80%A2_build-blue" alt="verify pipeline" />
   <img src="https://img.shields.io/badge/keys-zero_required-black" alt="zero API keys needed" />
 </p>
@@ -135,13 +133,13 @@ terminal, git, executions, and skills.
 | `packages/{shared,database,security}` | enums, `Money`, errors, config, JWT, RBAC, rate limits, sanitisation |
 | `packages/{economy,events,tasks,memory,world,company}` | ledger, event bus + audit, state machines, decay-ranked memory, dual clock |
 | `packages/{agents,orchestration,runtime}` | runtime loop, roles, capabilities, hierarchy, plans, delegation, reviews + rework budgets, reports, escalations, sessions |
-| `packages/{ai,tools}` | provider abstraction + `ModelRouter`, 34-tool registry + single enforcement point |
+| `packages/{ai,tools}` | provider abstraction + `ModelRouter`, 55-tool registry + single enforcement point |
 | `packages/simulation` | needs, skills, goals, activities, deterministic decision engine, world tick loop |
 | `packages/workspace` | Phase 3 work environments — closed-root path guard, workspace lifecycle, members, file browsing, archive/reap |
 | `packages/execution` | Phase 3 execution runtime — `ExecutionBackend` (mock/local/OpenCode), guarded idempotent queue, non-blocking worker, spooled output, orphan recovery, verification pipeline |
 | `packages/skills` | external skill manifests — trust, security analysis, prompt-injection screening, installer, lockfile |
 | `database/` | Prisma SQLite schema (38 models) + migrations + idempotent `seed.ts` |
-| `tests/` | 18 suites, **170+ tests** — finance races, ledger proofs, review loops, permissions, API, simulation, path escapes, queue/worker, backends |
+| `tests/` | 17 suites, **161 tests** (149 passing, 12 Docker-sandbox tests skipped when Docker is absent) — finance races, ledger proofs, review loops, permissions, API, simulation, sandbox |
 | `docs/` | `ARCHITECTURE` · `SIMULATION_ENGINE` · `SECURITY` · `API` · `ROADMAP` · `AGENTWORLD_PHASE_3_ARCHITECTURE` · `PHASE3-AUDIT` |
 
 ---

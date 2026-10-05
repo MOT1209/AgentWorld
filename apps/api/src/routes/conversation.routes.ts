@@ -10,6 +10,7 @@ import {
   markConversationRead,
 } from "../../../../packages/agents/src/communication.service.js";
 import { getPrincipal, authenticate } from "../middleware/authenticate.js";
+import { agentRunRateLimit } from "../middleware/rate-limit.js";
 import { requirePermission } from "../middleware/require-permission.js";
 import { PERMISSIONS } from "../../../../packages/security/src/permissions.js";
 import { principalToActor } from "../../../../packages/security/src/rbac.js";
@@ -103,6 +104,7 @@ const SendMessageSchema = z.object({
 conversationRouter.post(
   "/:id/messages",
   requirePermission(PERMISSIONS.MESSAGE_SEND),
+  agentRunRateLimit(),
   validate("body", SendMessageSchema),
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {

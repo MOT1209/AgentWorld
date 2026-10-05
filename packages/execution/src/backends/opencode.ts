@@ -50,6 +50,12 @@ export class OpenCodeExecutionBackend implements ExecutionBackend {
     if (prompt === "") {
       throw new Error("OpenCode backend requires a non-empty prompt");
     }
+    // OpenCode needs the network and the operator's model credentials, so it
+    // can only run on the host. With the Docker sandbox on, that would be a
+    // silent hole in the isolation: refuse instead (fail closed).
+    if (getConfig().exec.sandbox === "docker") {
+      throw new Error("The OpenCode backend runs on the host and is disabled while EXEC_SANDBOX=docker");
+    }
     const argv = buildOpenCodeArgv(this.command, prompt);
     const result = await this.manager.exec({
       workspaceId: request.workspaceId ?? "",

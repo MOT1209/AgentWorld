@@ -21,9 +21,16 @@ import {
 import type { DbClient } from "../../../database/src/index.js";
 import type { ToolDefinition, ToolExecutionContext } from "../types.js";
 import type { Workspace } from "../../../database/src/types.js";
-import { terminalProcesses } from "../process-manager.js";
+import { getCommandRunner } from "../command-runner.js";
 import { filterEnv } from "../command-policy.js";
 
+const GIT_HARDENING = [
+  "-c", "core.hooksPath=/dev/null",
+  "-c", "core.fsmonitor=false",
+  "-c", "core.pager=cat",
+  "-c", "protocol.ext.allow=never",
+  "-c", "core.sshCommand=false",
+] as const;
 const GIT_TIMEOUT_MS = 30_000;
 const GIT_MAX_BYTES = 65_536;
 
@@ -53,9 +60,11 @@ async function forWrite(db: DbClient, context: ToolExecutionContext, workspaceId
 }
 
 async function git(workspace: Workspace, args: string[]): Promise<{ exitCode: number | null; stdout: string; stderr: string }> {
-  const result = await terminalProcesses.exec({
+  const result = await getCommandRunner().exec({
     workspaceId: workspace.id,
-    command: ["git", ...args],
+    // Repo-local config is agent-writable (fs.write can touch .git/config), so
+    // neutralise the settings that make git launch programs on its own.
+    command: ["git", ...GIT_HARDENING, ...args],
     cwd: workspace.path,
     env: filterEnv(),
     timeoutMs: GIT_TIMEOUT_MS,

@@ -1,14 +1,15 @@
 /**
- * Local process backend — runs the job's argv directly through the shared
- * ProcessManager: no shell, capped output, hard timeout, kill grace. The
+ * Local process backend — runs the job's argv through the shared CommandRunner
+ * (host process, or a throwaway Docker container when EXEC_SANDBOX=docker, so
+ * queued jobs get the same isolation as terminal.exec): no shell, capped
+ * output, hard timeout, kill grace. The
  * runner guarantees `cwd` is a real directory before calling `run`.
  */
-import { ProcessManager } from "../../../tools/src/process-manager.js";
+import { getCommandRunner } from "../../../tools/src/command-runner.js";
 import type { ExecutionBackend, ExecutionRequest, ExecutionResult } from "../backend.js";
 
 export class LocalProcessBackend implements ExecutionBackend {
   readonly id = "local" as const;
-  private readonly manager = new ProcessManager();
 
   async isAvailable(): Promise<boolean> {
     // The backend runs argv under the same Node runtime that runs the API.
@@ -29,7 +30,7 @@ export class LocalProcessBackend implements ExecutionBackend {
         durationMs: 0,
       };
     }
-    const result = await this.manager.exec({
+    const result = await getCommandRunner().exec({
       workspaceId: request.workspaceId ?? "",
       command: argv,
       cwd: request.cwd,

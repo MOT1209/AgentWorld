@@ -44,6 +44,8 @@ const EnvSchema = z.object({
   BCRYPT_ROUNDS: int(12, 10, 15),
 
   CORS_ORIGINS: csv,
+  // Number of reverse proxies in front of the API (req.ip / rate limits). 0 = none.
+  TRUST_PROXY: int(0, 0, 10),
 
   SEED_OWNER_EMAIL: z.string().email().default("king@kingworld.local"),
   SEED_OWNER_PASSWORD: z.string().min(10).default("KingWorld!2026"),
@@ -73,6 +75,14 @@ const EnvSchema = z.object({
   // opencode backend — the ONLY config reference to it besides that backend.
   EXECUTION_BACKEND: z.enum(["local", "mock", "opencode"]).default("local"),
   OPENCODE_COMMAND: z.string().min(1).default("opencode"),
+  // No schema default: production defaults to docker, everything else to local.
+  EXEC_SANDBOX: z.enum(["local", "docker"]).optional(),
+  EXEC_DOCKER_IMAGE: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._/:@-]*$/, "invalid image reference").default("kingworld-sandbox:1"),
+  // Empty = the owner of the workspace directory (must not be root). Otherwise "uid:gid".
+  EXEC_DOCKER_USER: z.string().regex(/^([0-9]+:[0-9]+)?$/, "must be uid:gid").default(""),
+  EXEC_DOCKER_MEMORY: z.string().regex(/^[0-9]+[kmg]$/i, "e.g. 512m").default("512m"),
+  EXEC_DOCKER_CPUS: z.string().regex(/^[0-9]+(\.[0-9]+)?$/, "e.g. 1 or 0.5").default("1"),
+  EXEC_DOCKER_PIDS: int(256, 16, 4096),
 });
 
 export type RawConfig = z.infer<typeof EnvSchema>;
@@ -86,6 +96,7 @@ export interface AppConfig {
   jwt: { secret: string; expiresIn: string };
   bcryptRounds: number;
   corsOrigins: string[];
+  trustProxy: number;
   seed: { ownerEmail: string; ownerPassword: string };
   providers: {
     defaultProviderId: string;
@@ -97,6 +108,10 @@ export interface AppConfig {
   approvals: { enabled: boolean; spendThresholdMinor: number; ttlHours: number };
   world: { timeScale: number };
   execution: { defaultBackend: "local" | "mock" | "opencode"; openCodeCommand: string };
+  exec: {
+    sandbox: "local" | "docker";
+    docker: { image: string; user: string; memory: string; cpus: string; pids: number };
+  };
 }
 
 const DEV_ONLY_SECRET = "dev-only-insecure-secret-change-me";
@@ -107,7 +122,11 @@ function load(): AppConfig {
     const issues = parsed.error.issues
       .map((i) => `  - ${i.path.join(".") || "(root)"}: ${i.message}`)
       .join("\n");
-    throw new Error(`Invalid environment configuration:\n${issues}`);
+    throw new Error(
+      `Invalid environment configuration:\n${issues}\n\n` +
+        "Hint: if this is a fresh checkout, copy the example env file first:\n" +
+        "  cp .env.example .env",
+    );
   }
   const raw: RawConfig = parsed.data;
 
@@ -148,6 +167,7 @@ function load(): AppConfig {
     jwt: { secret, expiresIn: raw.JWT_EXPIRES_IN },
     bcryptRounds: raw.BCRYPT_ROUNDS,
     corsOrigins: raw.CORS_ORIGINS,
+    trustProxy: raw.TRUST_PROXY,
     seed: { ownerEmail: raw.SEED_OWNER_EMAIL, ownerPassword: raw.SEED_OWNER_PASSWORD },
     providers: {
       defaultProviderId,
@@ -182,6 +202,16 @@ function load(): AppConfig {
       defaultBackend: raw.EXECUTION_BACKEND,
       openCodeCommand: raw.OPENCODE_COMMAND,
     },
+    exec: {
+      sandbox: raw.EXEC_SANDBOX ?? (isProduction ? "docker" : "local"),
+      docker: {
+        image: raw.EXEC_DOCKER_IMAGE,
+        user: raw.EXEC_DOCKER_USER,
+        memory: raw.EXEC_DOCKER_MEMORY,
+        cpus: raw.EXEC_DOCKER_CPUS,
+        pids: raw.EXEC_DOCKER_PIDS,
+      },
+    },
     // Surfaced by hasAnyProviderKey callers; kept out of the object shape to
     // avoid it being read as configuration.
     ...(hasAnyProviderKey ? {} : {}),
@@ -215,6 +245,7 @@ export function redactedConfig(config: AppConfig = getConfig()): Record<string, 
     agent: config.agent,
     world: config.world,
     execution: config.execution,
+    exec: config.exec,
     providers: {
       defaultProviderId: config.providers.defaultProviderId,
       openaiCompatible: { enabled: config.providers.openaiCompatible.enabled },

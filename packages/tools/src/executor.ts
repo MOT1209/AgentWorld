@@ -174,7 +174,7 @@ export class ToolExecutor {
         correlationId: context.correlationId,
         error: message,
       });
-      return this.fail(name, rawArguments, context, message, started);
+      return this.fail(name, rawArguments, context, message, started, true);
     }
   }
 
@@ -321,10 +321,17 @@ export class ToolExecutor {
     context: ToolExecutionContext,
     error: string,
     started: number,
+    sideEffectsPossible = false,
   ): Promise<ToolExecutionResult> {
     const durationMs = Date.now() - started;
     await this.record(context, name, rawArguments, "ERROR", { durationMs, error });
-    return { status: "ERROR", toolName: name, error, durationMs };
+    return {
+      status: "ERROR",
+      toolName: name,
+      error,
+      durationMs,
+      ...(sideEffectsPossible ? { sideEffectsPossible: true } : {}),
+    };
   }
 
   private async record(

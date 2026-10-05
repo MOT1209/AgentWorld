@@ -13,6 +13,13 @@ M1 audit pass. Implementation status lives in `docs/PHASE3-AUDIT.md` §7 and
 failure never crashes the world — the task becomes FAILED/BLOCKED per policy,
 the failure becomes an event, the agent stays available for recovery.
 
+> **Current totals (as of 2026-10-04):** the baseline figures in §1 below (34
+> tools, 62 tests) describe the pre–Phase-3 M1 snapshot this document was
+> written against. After the Phase 3 execution tools landed the tree now has
+> **55 tools, 38 models, and 161 tests (149 passing + 12 Docker-sandbox skipped
+> when Docker is absent)**. The inline §1 numbers are left intact as the
+> historical design baseline; they are not a claim about the current tree.
+
 ---
 
 ## 1. Current architecture (what exists)

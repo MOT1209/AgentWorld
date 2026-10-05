@@ -53,6 +53,34 @@ function matchesAny(argv: string[], patterns: readonly string[]): string | null 
   return null;
 }
 
+/**
+ * Approval patterns match as ordered tokens, not as a string prefix, so global
+ * options in between cannot hide the verb: `git -C . push`, `git --no-pager
+ * push` and `npm --registry x publish` all still match `git push` /
+ * `npm publish`. Over-matching (e.g. `git commit -m push`) only adds a human
+ * look, which is the safe direction.
+ */
+function matchesVerbs(argv: string[], patterns: readonly string[]): string | null {
+  const lowered = argv.map((part) => part.toLowerCase());
+  for (const raw of patterns) {
+    const words = raw.toLowerCase().split(/\s+/).filter(Boolean);
+    const [bin, ...verbs] = words;
+    if (bin === undefined || lowered[0] !== bin) continue;
+    let cursor = 1;
+    let ok = true;
+    for (const verb of verbs) {
+      const at = lowered.indexOf(verb, cursor);
+      if (at === -1) {
+        ok = false;
+        break;
+      }
+      cursor = at + 1;
+    }
+    if (ok) return raw;
+  }
+  return null;
+}
+
 /** Never approvable. Matched before anything else, built-ins first. */
 const BUILT_IN_DENY = [
   "rm -rf /",
@@ -84,7 +112,24 @@ const BUILT_IN_APPROVE = [
   "terraform destroy",
   "docker push",
   "gh pr merge",
+  // Fetch-and-run or network-reaching verbs: code from outside the workspace.
+  "npx",
+  "npm exec",
+  "npm x",
+  "pnpm dlx",
+  "pnpm exec",
+  "yarn dlx",
+  "bunx",
+  "git clone",
+  "git fetch",
+  "git pull",
+  "git remote",
+  "git submodule",
+  "git config",
 ] as const;
+
+/** `find` can run commands (-exec) or delete (-delete); `xargs` always runs one. */
+const EXEC_CAPABLE_FLAGS = new Set(["-exec", "-execdir", "-ok", "-okdir", "-delete", "-fprint", "-fprintf"]);
 
 /**
  * Routine, workspace-bounded work that runs without a human: navigation and
@@ -106,7 +151,24 @@ const BUILT_IN_SAFE = new Set([
 /** Runtimes that accept code as an argument rather than a file. */
 const INLINE_CODE_RUNTIMES = new Set(["node", "python", "python3", "bun", "deno"]);
 /** Flags that turn the next argv element into executable code. */
-const INLINE_CODE_FLAGS = new Set(["-e", "-p", "-c", "-r", "--eval", "--print", "eval"]);
+const INLINE_CODE_FLAGS = new Set(["-e", "-p", "-c", "-r", "--eval", "--print", "--require", "--import", "eval"]);
+const SCRIPT_FILE = /\.(m?js|cjs|ts|mts|py)$/i;
+
+/**
+ * True when an inline-code flag appears anywhere before the script file, so
+ * `node --no-warnings -e ...` and bundled short flags like `python3 -Ic ...`
+ * are caught, not just a flag in argv[1].
+ */
+function hasInlineCode(argv: readonly string[]): boolean {
+  for (const raw of argv.slice(1)) {
+    const part = raw.toLowerCase();
+    if (SCRIPT_FILE.test(part)) return false;
+    if (INLINE_CODE_FLAGS.has(part)) return true;
+    if (part.startsWith("--eval=") || part.startsWith("--print=") || part.startsWith("--require=")) return true;
+    if (/^-[a-z]*[ecp]$/.test(part)) return true;
+  }
+  return false;
+}
 
 /** True when an argument is a path that can leave the workspace root. */
 function pointsOutsideWorkspace(argv: readonly string[]): boolean {
@@ -131,7 +193,7 @@ export function evaluateCommand(argv: string[], override?: WorkspacePolicyOverri
   if (builtInDeny !== null) {
     return { verdict: "DENY", reason: `Destructive command '${builtInDeny}' is never allowed.`, risk: "CRITICAL" };
   }
-  const customApprove = matchesAny(argv, override?.approve ?? []);
+  const customApprove = matchesAny(argv, override?.approve ?? []) ?? matchesVerbs(argv, override?.approve ?? []);
   if (customApprove !== null) {
     return {
       verdict: "REQUIRE_APPROVAL",
@@ -139,7 +201,7 @@ export function evaluateCommand(argv: string[], override?: WorkspacePolicyOverri
       risk: "HIGH",
     };
   }
-  const builtInApprove = matchesAny(argv, BUILT_IN_APPROVE);
+  const builtInApprove = matchesVerbs(argv, BUILT_IN_APPROVE);
   if (builtInApprove !== null) {
     return {
       verdict: "REQUIRE_APPROVAL",
@@ -155,11 +217,24 @@ export function evaluateCommand(argv: string[], override?: WorkspacePolicyOverri
     };
   }
   const binary = (argv[0] ?? "").toLowerCase();
-  const inlineFlag = argv[1]?.toLowerCase();
-  if (INLINE_CODE_RUNTIMES.has(binary) && inlineFlag !== undefined && INLINE_CODE_FLAGS.has(inlineFlag)) {
+  if (INLINE_CODE_RUNTIMES.has(binary) && hasInlineCode(argv)) {
     return {
       verdict: "REQUIRE_APPROVAL",
-      reason: `Interpreter '${argv[0]}' with inline code (${argv[1]}) requires human approval.`,
+      reason: `Interpreter '${argv[0]}' with inline code requires human approval.`,
+      risk: "HIGH",
+    };
+  }
+  if (binary === "git" && argv.slice(1).some((part) => part === "-c" || part.startsWith("--config-env") || part.startsWith("--exec-path"))) {
+    return {
+      verdict: "REQUIRE_APPROVAL",
+      reason: "git with injected configuration (-c / --exec-path) can run arbitrary programs — human approval required.",
+      risk: "HIGH",
+    };
+  }
+  if (binary === "find" && argv.slice(1).some((part) => EXEC_CAPABLE_FLAGS.has(part.toLowerCase()))) {
+    return {
+      verdict: "REQUIRE_APPROVAL",
+      reason: "find with -exec/-delete can run or remove arbitrary things — human approval required.",
       risk: "HIGH",
     };
   }
@@ -176,9 +251,29 @@ export function evaluateCommand(argv: string[], override?: WorkspacePolicyOverri
 const SECRET_KEY_PATTERN = /(token|secret|password|passwd|api[_-]?key|private[_-]?key|credential|authorization)/i;
 
 /**
+ * Variables an agent must never set: they change which binary runs or inject
+ * code into an interpreter/loader (`PATH=./bin` turns `ls` into an agent-
+ * authored script; `NODE_OPTIONS=--require ./x.js` runs code in every node).
+ */
+const RESERVED_ENV_KEYS = new Set([
+  "PATH", "PATHEXT", "HOME", "USER", "SHELL", "IFS", "ENV", "BASH_ENV", "CDPATH",
+  "SYSTEMROOT", "COMSPEC", "TEMP", "TMP", "TMPDIR", "LANG", "LC_ALL",
+  "PERL5OPT", "PERL5LIB", "RUBYOPT", "RUBYLIB", "CLASSPATH", "JAVA_TOOL_OPTIONS",
+  "_JAVA_OPTIONS", "JDK_JAVA_OPTIONS", "EDITOR", "VISUAL", "PAGER", "BROWSER",
+]);
+const RESERVED_ENV_PREFIXES = ["LD_", "DYLD_", "NODE_", "NPM_", "PYTHON", "GIT_", "PIP_", "RUSTFLAGS", "RUSTC", "CARGO_", "GOFLAGS", "GOPATH", "GOROOT", "GOPROXY", "BUN_", "DENO_", "UV_", "LC_"];
+const SAFE_ENV_KEY = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
+
+function isReservedEnvKey(key: string): boolean {
+  const upper = key.toUpperCase();
+  return RESERVED_ENV_KEYS.has(upper) || RESERVED_ENV_PREFIXES.some((prefix) => upper.startsWith(prefix));
+}
+
+/**
  * Environment an agent child process may see: the process allow-list plus
- * workspace-declared variables, minus anything shaped like a secret.
- * `PATH`/`SystemRoot` (Windows) and locale survive so toolchains work.
+ * agent/workspace-declared variables, minus anything shaped like a secret and
+ * minus reserved loader/interpreter/PATH variables. `PATH`/`SystemRoot`
+ * (Windows) and locale come only from the host process so toolchains work.
  */
 export function filterEnv(extra: Record<string, string> = {}): Record<string, string> {
   const keep = new Set(["PATH", "PATHEXT", "SystemRoot", "SYSTEMROOT", "TEMP", "TMP", "LANG", "LC_ALL", "HOME", "USER"]);
@@ -190,7 +285,9 @@ export function filterEnv(extra: Record<string, string> = {}): Record<string, st
     output[key] = value;
   }
   for (const [key, value] of Object.entries(extra)) {
+    if (!SAFE_ENV_KEY.test(key)) continue;
     if (SECRET_KEY_PATTERN.test(key)) continue;
+    if (isReservedEnvKey(key)) continue;
     output[key] = value;
   }
   return output;

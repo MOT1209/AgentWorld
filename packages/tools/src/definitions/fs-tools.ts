@@ -7,7 +7,7 @@
  * HIGH and therefore held for human approval by default.
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, relative, sep } from "node:path";
 import { z } from "zod";
 import { PERMISSIONS, type Permission } from "../../../security/src/permissions.js";
 import { forbidden, validationError } from "../../../shared/src/index.js";
@@ -51,11 +51,19 @@ async function forWrite(db: DbClient, context: ToolExecutionContext, workspaceId
   return workspace;
 }
 
-function inRoot(workspace: Workspace, relPath: string): string {
+function inRoot(workspace: Workspace, relPath: string, mutating = false): string {
   if (typeof relPath !== "string" || relPath.length === 0 || relPath.length > 500) {
     throw validationError("Workspace path must be a non-empty relative path");
   }
-  return resolveInRoot(workspace.path, relPath);
+  const resolved = resolveInRoot(workspace.path, relPath);
+  if (mutating) {
+    // .git/config and .git/hooks make git run programs; agents may not edit them.
+    const rel = relative(resolveInRoot(workspace.path, "."), resolved).split(sep);
+    if (rel.some((part) => part.toLowerCase() === ".git")) {
+      throw forbidden("Writing inside .git is not allowed", { path: relPath });
+    }
+  }
+  return resolved;
 }
 
 export const fsListTool: ToolDefinition<{ workspaceId: string; path?: string; limit?: number }> = {
@@ -121,7 +129,7 @@ export const fsWriteTool: ToolDefinition<{ workspaceId: string; path: string; co
   risk: "MEDIUM",
   async execute(context, input) {
     const workspace = await forWrite(context.db, context, input.workspaceId);
-    const file = inRoot(workspace, input.path);
+    const file = inRoot(workspace, input.path, true);
     mkdirSync(join(file, ".."), { recursive: true });
     writeFileSync(file, input.content, "utf8");
     return {
@@ -142,7 +150,7 @@ export const fsMkdirTool: ToolDefinition<{ workspaceId: string; path: string }> 
   risk: "LOW",
   async execute(context, input) {
     const workspace = await forWrite(context.db, context, input.workspaceId);
-    const dir = inRoot(workspace, input.path);
+    const dir = inRoot(workspace, input.path, true);
     mkdirSync(dir, { recursive: true });
     return { data: { path: input.path }, summary: `Created ${input.path}` };
   },
@@ -160,8 +168,8 @@ export const fsMoveTool: ToolDefinition<{ workspaceId: string; from: string; to:
   risk: "MEDIUM",
   async execute(context, input) {
     const workspace = await forWrite(context.db, context, input.workspaceId);
-    const from = inRoot(workspace, input.from);
-    const to = inRoot(workspace, input.to);
+    const from = inRoot(workspace, input.from, true);
+    const to = inRoot(workspace, input.to, true);
     if (!existsSync(from)) throw validationError("Source does not exist in this workspace", { path: input.from });
     mkdirSync(join(to, ".."), { recursive: true });
     renameSync(from, to);
@@ -180,8 +188,8 @@ export const fsDeleteTool: ToolDefinition<{ workspaceId: string; path: string }>
   risk: "HIGH",
   async execute(context, input) {
     const workspace = await forWrite(context.db, context, input.workspaceId);
-    const target = inRoot(workspace, input.path);
-    if (target === workspace.path) throw forbidden("Refusing to delete the workspace root itself");
+    const target = inRoot(workspace, input.path, true);
+    if (target === resolveInRoot(workspace.path, ".")) throw forbidden("Refusing to delete the workspace root itself");
     if (!existsSync(target)) throw validationError("Path does not exist in this workspace", { path: input.path });
     rmSync(target, { recursive: true, force: true });
     return { data: { path: input.path }, summary: `Deleted ${input.path}` };

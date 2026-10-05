@@ -7,11 +7,14 @@
  * the table immediately; history lives in ToolInvocation rows, not here.
  */
 import { spawn, type ChildProcess } from "node:child_process";
+import { randomBytes } from "node:crypto";
 
 const IS_WINDOWS = process.platform === "win32";
 
 export interface SpawnOptions {
   workspaceId: string;
+  /** Caller-chosen id (a container backend names its container after it). */
+  executionId?: string;
   command: string[];
   cwd: string;
   env: Record<string, string>;
@@ -46,7 +49,6 @@ const KILL_GRACE_MS = 5000;
 
 export class ProcessManager {
   private readonly live = new Map<string, LiveProcess>();
-  private counter = 0;
 
   get liveCount(): number {
     return this.live.size;
@@ -55,7 +57,7 @@ export class ProcessManager {
   async exec(options: SpawnOptions): Promise<SpawnResult> {
     if (options.command.length === 0) throw new Error("Empty command");
     const startedAt = Date.now();
-    const executionId = `tex_${Date.now().toString(36)}_${(this.counter += 1)}`;
+    const executionId = options.executionId ?? `tex_${randomBytes(8).toString("hex")}`;
     const [binary, ...args] = options.command as [string, ...string[]];
 
     const child = spawn(binary, args, {
@@ -64,8 +66,9 @@ export class ProcessManager {
       stdio: ["ignore", "pipe", "pipe"],
       shell: false,
       windowsHide: true,
-      // POSIX: own process group so the whole tree can be signalled at once.
-      detached: !IS_WINDOWS,
+      // Own process group (POSIX) so a timeout/kill reaches grandchildren too
+      // (npm -> node -> ...), not just the direct child.
+      detached: process.platform !== "win32",
     });
 
     return new Promise<SpawnResult>((resolve) => {
@@ -164,6 +167,15 @@ export class ProcessManager {
     return true;
   }
 
+  /** Workspace that owns a live execution, or null when it is not live. */
+  workspaceOf(executionId: string): string | null {
+    return this.live.get(executionId)?.workspaceId ?? null;
+  }
+
+  has(executionId: string): boolean {
+    return this.live.has(executionId);
+  }
+
   /** Snapshot of one live process, or null once it has finished. */
   status(executionId: string): { executionId: string; workspaceId: string; command: string[]; runningMs: number } | null {
     const record = this.live.get(executionId);
@@ -185,8 +197,8 @@ export class ProcessManager {
   }
 
   /**
-   * Kills the process AND its children. `npm test` is a wrapper around the
-   * real worker; killing only the wrapper would leave orphans running.
+   * Kills the process AND its children (`npm test` wraps the real worker).
+   * POSIX: signal the process group. Windows: `taskkill /T /F` on the pid.
    */
   private terminate(record: LiveProcess, signal: "SIGTERM" | "SIGKILL"): void {
     const pid = record.child.pid;
@@ -195,17 +207,19 @@ export class ProcessManager {
         spawn("taskkill", ["/pid", String(pid), "/T", "/F"], { stdio: "ignore", windowsHide: true, shell: false })
           .on("error", () => record.child.kill(signal))
           .unref();
-      } else if (pid !== undefined) {
+        return;
+      }
+      if (pid !== undefined) {
         process.kill(-pid, signal);
-      } else {
-        record.child.kill(signal);
+        return;
       }
     } catch {
-      try {
-        record.child.kill(signal);
-      } catch {
-        // Already gone; close handler settles the promise.
-      }
+      // Group already gone or not signalable; fall back to the direct child.
+    }
+    try {
+      record.child.kill(signal);
+    } catch {
+      // Already gone; close handler settles the promise.
     }
   }
 

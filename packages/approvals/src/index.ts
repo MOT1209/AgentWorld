@@ -27,6 +27,7 @@ export {
   decideApproval,
   claimForExecution,
   markExecutionFailed,
+  markExecutionUncertain,
   markExecutionSucceeded,
   readApprovalPayload,
   listApprovals,

@@ -27,6 +27,14 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run db:generate
+      # Real container-boundary tests (tests/docker-sandbox.test.ts) need Docker;
+      # they self-skip on the Windows leg.
+      - name: Build sandbox image
+        if: runner.os == 'Linux'
+        run: |
+          docker build -t kingworld-sandbox:1 docker/sandbox
+          echo "TEST_DOCKER_IMAGE=kingworld-sandbox:1" >> "$GITHUB_ENV"
+      - run: npm run check:docs
       - run: npm run typecheck
       - run: npm run lint
       - run: npm run test

@@ -18,6 +18,13 @@ permissions/events/enums). That slice is absorbed as the starting point of M2.
 **Verification at baseline:** `npm run verify` green - typecheck, eslint, 62
 tests in 9 files, API + web builds.
 
+> **Note (as of 2026-10-04):** the figures in this audit (62 tests in 9 files,
+> 41 models, 34 tools, 17 packages) are the verified **baseline snapshot** at
+> the commit above and are deliberately left unchanged as a historical record.
+> The current tree has **55 tools, 38 models, 19 packages, and 161 tests
+> (149 passing + 12 Docker-sandbox skipped when Docker is absent)** — see
+> `README.md` and `docs/ROADMAP.md` for live totals.
+
 ---
 
 ## 1. Current architecture
