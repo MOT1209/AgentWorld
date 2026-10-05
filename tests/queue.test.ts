@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { prisma } from "../packages/database/src/client.js";
 import {
+  cancelExecution,
   cancelQueuedExecution,
   enqueueExecution,
   requeueTransientFailure,
@@ -160,6 +161,47 @@ describe("execution queue + worker", () => {
       expect(await cancelQueuedExecution(prisma, "cl_missing_job", "nope")).toBe("missing");
     } finally {
       await worker.stop();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("cancels a RUNNING job by aborting the child, and refuses orphaned rows", async () => {
+    const root = tempRoot();
+    try {
+      const job = await enqueueExecution(prisma, {
+        kind: "COMMAND",
+        command: HANG,
+        ...(await ws(root)),
+        actor: SYSTEM,
+        correlationId: CORRELATION,
+      });
+      const running = runJob(prisma, job.id);
+      await waitFor(async () => (await statusOf(job.id)) === "RUNNING");
+
+      expect(await cancelExecution(prisma, job.id, "stop now", { actor: SYSTEM })).toBe("cancelling");
+      expect(await running).toMatchObject({ claimed: true, status: "CANCELLED" });
+
+      const row = await prisma.executionJob.findUnique({ where: { id: job.id } });
+      expect(row?.status).toBe("CANCELLED");
+      expect(row?.error).toBe("stop now");
+      expect(row?.finishedAt).not.toBeNull();
+      expect(
+        await prisma.eventLog.count({ where: { type: "EXECUTION_CANCELLED", targetId: job.id } }),
+      ).toBe(1);
+
+      // A RUNNING row nobody in this process owns is recovery territory,
+      // not cancellable state.
+      const orphan = await prisma.executionJob.create({
+        data: {
+          kind: "COMMAND",
+          command: OK,
+          status: "RUNNING",
+          backendId: "mock",
+          correlationId: CORRELATION,
+        },
+      });
+      expect(await cancelExecution(prisma, orphan.id, "nope")).toBe("busy");
+    } finally {
       rmSync(root, { recursive: true, force: true });
     }
   });

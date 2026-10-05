@@ -14,11 +14,13 @@
   memories — and answer for what they do.</b>
 </p>
 
+<!-- check-docs: models=38 tools=55 packages=19 -->
+
 <p align="center">
   <img src="https://img.shields.io/badge/Phase_1-complete-brightgreen" alt="Phase 1 complete" />
   <img src="https://img.shields.io/badge/Phase_2-complete-brightgreen" alt="Phase 2 complete" />
-  <img src="https://img.shields.io/badge/Phase_3-in_progress-blue" alt="Phase 3 in progress" />
-  <img src="https://img.shields.io/badge/tests-62_passing-brightgreen" alt="62 tests passing" />
+  <img src="https://img.shields.io/badge/Phase_3-execution_runtime_landed-blue" alt="Phase 3 execution runtime landed" />
+  <img src="https://img.shields.io/badge/tests-170_passing-brightgreen" alt="170 tests passing" />
   <img src="https://img.shields.io/badge/verify-typecheck_%E2%80%A2_lint_%E2%80%A2_test_%E2%80%A2_build-blue" alt="verify pipeline" />
   <img src="https://img.shields.io/badge/keys-zero_required-black" alt="zero API keys needed" />
 </p>
@@ -38,7 +40,7 @@ flowchart TB
         WS[Workspace]
         RUN[AgentRuntime]
         AI[AI Provider]
-        TOOLS[34 tools]
+        TOOLS[55 tools]
     end
     WORLD --> AGENT --> TASK --> WS --> RUN --> AI --> TOOLS
     TOOLS -->|result| TASK
@@ -118,8 +120,9 @@ human message ──▶ wakeup ──▶ THINKING ──▶ act (tools) ──�
 - Every run writes episodic + fact + obligation memories, so the next turn
   has continuity — and pending approvals are remembered, not retried.
 
-**34 tools** across tasks, messages, memory, wallets, world, company, events,
-approvals, plans, reviews, reports, escalations, sessions, and workspaces.
+**55 tools** across tasks, messages, memory, wallets, world, company, events,
+approvals, plans, reviews, reports, escalations, sessions, workspaces, files,
+terminal, git, executions, and skills.
 
 ---
 
@@ -128,15 +131,17 @@ approvals, plans, reviews, reports, escalations, sessions, and workspaces.
 | Area | What lives there |
 |------|------------------|
 | `apps/api` | Express REST (`/api/v1`): JWT auth, RBAC, approval replay, agent wakeup, simulation control + SSE stream |
-| `apps/web` | React + Tailwind operator dashboard — World, Simulation (three.js), Company, Agents, Tasks, Communication, Economy, Approvals, Activity |
+| `apps/web` | React + Tailwind operator dashboard — World, Simulation (three.js), Company, Agents, Tasks, Communication, Economy, Approvals, Plans, Sessions, Workspaces, Executions, Escalations, Skills, Activity |
 | `packages/{shared,database,security}` | enums, `Money`, errors, config, JWT, RBAC, rate limits, sanitisation |
 | `packages/{economy,events,tasks,memory,world,company}` | ledger, event bus + audit, state machines, decay-ranked memory, dual clock |
 | `packages/{agents,orchestration,runtime}` | runtime loop, roles, capabilities, hierarchy, plans, delegation, reviews + rework budgets, reports, escalations, sessions |
 | `packages/{ai,tools}` | provider abstraction + `ModelRouter`, 34-tool registry + single enforcement point |
 | `packages/simulation` | needs, skills, goals, activities, deterministic decision engine, world tick loop |
-| `packages/workspace` | Phase 3 work environments — closed-root path guard, workspace lifecycle, members, archive/reap |
-| `database/` | Prisma SQLite schema (41 models) + migrations + idempotent `seed.ts` |
-| `tests/` | 9 suites, **62 tests** — finance races, ledger proofs, review loops, permissions, API, simulation |
+| `packages/workspace` | Phase 3 work environments — closed-root path guard, workspace lifecycle, members, file browsing, archive/reap |
+| `packages/execution` | Phase 3 execution runtime — `ExecutionBackend` (mock/local/OpenCode), guarded idempotent queue, non-blocking worker, spooled output, orphan recovery, verification pipeline |
+| `packages/skills` | external skill manifests — trust, security analysis, prompt-injection screening, installer, lockfile |
+| `database/` | Prisma SQLite schema (38 models) + migrations + idempotent `seed.ts` |
+| `tests/` | 18 suites, **170+ tests** — finance races, ledger proofs, review loops, permissions, API, simulation, path escapes, queue/worker, backends |
 | `docs/` | `ARCHITECTURE` · `SIMULATION_ENGINE` · `SECURITY` · `API` · `ROADMAP` · `AGENTWORLD_PHASE_3_ARCHITECTURE` · `PHASE3-AUDIT` |
 
 ---

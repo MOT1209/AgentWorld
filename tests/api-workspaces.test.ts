@@ -115,6 +115,38 @@ describe("executions REST", () => {
     expect(shellString.status).toBe(400);
   });
 
+  it("cancels a RUNNING job with 202 and settles it as CANCELLED", async () => {
+    const root = tempRoot();
+    try {
+      const auth = { Authorization: `Bearer ${await createToken("OWNER")}` };
+
+      const workspace = await makeWorkspace(root, { "hang.js": "setInterval(() => {}, 1000)" });
+      const enqueue = await request(app)
+        .post("/api/v1/executions")
+        .set(auth)
+        .send({ kind: "COMMAND", command: ["node", "hang.js"], workspaceId: workspace.id });
+      expect(enqueue.status).toBe(201);
+      const jobId = enqueue.body.data.job.id as string;
+
+      const running = runJob(prisma, jobId);
+      for (let waited = 0; waited < 8_000; waited += 25) {
+        const row = await prisma.executionJob.findUnique({ where: { id: jobId } });
+        if (row?.status === "RUNNING") break;
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      expect((await prisma.executionJob.findUnique({ where: { id: jobId } }))?.status).toBe("RUNNING");
+
+      const stop = await request(app).post(`/api/v1/executions/${jobId}/cancel`).set(auth);
+      expect(stop.status).toBe(202);
+      expect(stop.body.data).toMatchObject({ cancelled: true, stopping: true });
+
+      expect(await running).toMatchObject({ claimed: true, status: "CANCELLED" });
+      expect((await prisma.executionJob.findUnique({ where: { id: jobId } }))?.status).toBe("CANCELLED");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("enforces execute permission and cancels queued jobs", async () => {
     const root = tempRoot();
     try {

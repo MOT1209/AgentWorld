@@ -127,14 +127,30 @@ Every response carries `correlationId`; errors are `{ code, message, correlation
 - `POST /conflicts`, `GET /conflicts?status=&taskId=&planId=`, `GET /conflicts/:id`
 - `POST /conflicts/:id/resolve {resolution, decision}`
 
-## Workspaces (Phase 3, in progress)
+## Workspaces (Phase 3)
 
 - `POST /workspaces {name, agentId?, projectId?, type?, dir?, environment?}`
 - `GET /workspaces?agentId=&projectId=&type=&status=&take=&skip=`
 - `GET /workspaces/:id`
+- `GET /workspaces/:id/files?path=` — one-level directory listing behind the path guard; symlinks reported, never followed
 - `POST /workspaces/:id/status {status}` — CREATING|READY|BUSY|PAUSED|ERROR|ARCHIVED
 - `POST /workspaces/:id/share {agentId, role}`, `POST /workspaces/:id/unshare {agentId}`
 - `POST /workspaces/:id/archive`, `POST /workspaces/reap` — TTL sweeper
+- `GET /workspaces/:id/artifacts?executionId=&kind=&take=&skip=` — registered artifacts (name, kind, relative path, size, SHA-256, MIME); read access to the workspace is enforced first
+- `POST /workspaces/:id/verify` — detect test commands in the workspace and enqueue VERIFY execution jobs (202)
+
+## Executions (Phase 3)
+
+Jobs run asynchronously through the worker; nothing executes in the request path.
+
+- `POST /executions {kind: COMMAND|VERIFY|BACKEND, command: [argv] | {prompt}, backendId?, workspaceId?, sessionId?, taskId?, agentId?, workingDir?, timeoutMs?, priority?, maxAttempts?, idempotencyKey?}` — 201. A retried create with the same `idempotencyKey` returns the original job (409 if the key was used for a different request). Human API callers cannot clear REQUIRE_APPROVAL commands; those go through the tool/approval flow.
+- `GET /executions?status=&kind=&workspaceId=&sessionId=&take=&skip=`
+- `GET /executions/:id`
+- `GET /executions/:id/logs` (alias `/output`) — capped spooled stdout/stderr for a finished job (409 before completion); path re-validated against the spool directory
+- `POST /executions/:id/cancel` — cancels a QUEUED job (200) or aborts a RUNNING one (202 `stopping: true`; the runner settles the row CANCELLED when the child exits)
+- `POST /executions/verify-report {jobIds, taskId?}` — fold finished verification jobs into a `Report{kind:"EXECUTION"}` for review handoff
+
+Statuses: QUEUED | RUNNING | COMPLETED | FAILED | CANCELLED | TIMEOUT. Error categories: TRANSIENT (auto-requeued with backoff up to maxAttempts) | CONFIGURATION | SYSTEM.
 
 ## Tools & logs
 

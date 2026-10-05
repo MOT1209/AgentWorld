@@ -8,7 +8,7 @@
  * approval hook already applied.
  */
 import { z } from "zod";
-import { cancelQueuedExecution, enqueueExecution } from "../../../execution/src/index.js";
+import { cancelExecution, enqueueExecution } from "../../../execution/src/index.js";
 import { evaluateCommand, type WorkspacePolicyOverride } from "../command-policy.js";
 import { PERMISSIONS } from "../../../security/src/permissions.js";
 import { forbidden, notFound } from "../../../shared/src/index.js";
@@ -87,6 +87,7 @@ type CreateInput = {
   timeoutMs?: number;
   priority?: number;
   maxAttempts?: number;
+  idempotencyKey?: string;
 };
 
 export const executionCreateTool: ToolDefinition<CreateInput> = {
@@ -105,6 +106,7 @@ export const executionCreateTool: ToolDefinition<CreateInput> = {
     timeoutMs: z.number().int().min(1000).max(3_600_000).optional(),
     priority: z.number().int().min(-100).max(100).optional(),
     maxAttempts: z.number().int().min(1).max(5).optional(),
+    idempotencyKey: z.string().min(1).max(200).optional(),
   }),
   requiredPermission: PERMISSIONS.WORKSPACE_EXECUTE,
   risk: "MEDIUM",
@@ -142,6 +144,7 @@ export const executionCreateTool: ToolDefinition<CreateInput> = {
       ...(input.timeoutMs !== undefined ? { timeoutMs: input.timeoutMs } : {}),
       ...(input.priority !== undefined ? { priority: input.priority } : {}),
       ...(input.maxAttempts !== undefined ? { maxAttempts: input.maxAttempts } : {}),
+      ...(input.idempotencyKey !== undefined ? { idempotencyKey: input.idempotencyKey } : {}),
       // The executor already ran approvalPolicy (or replayed an approved call).
       policyCleared: true,
     });
@@ -194,7 +197,9 @@ export const executionListTool: ToolDefinition<{ workspaceId?: string; status?: 
 
 export const executionCancelTool: ToolDefinition<{ executionId: string; reason?: string }> = {
   name: "execution.cancel",
-  description: "Cancel an execution job that has not started yet.",
+  description:
+    "Cancel an execution job: one that is still queued is cancelled outright; " +
+    "one running in this server is signalled to stop and settled as CANCELLED.",
   inputSchema: z.object({
     executionId: z.string().min(1).max(120),
     reason: z.string().min(1).max(300).default("Cancelled by agent"),
@@ -203,12 +208,19 @@ export const executionCancelTool: ToolDefinition<{ executionId: string; reason?:
   risk: "LOW",
   async execute(context, input) {
     const job = await requireJobAccess(context, input.executionId, "write");
-    const outcome = await cancelQueuedExecution(context.db, job.id, input.reason ?? "Cancelled by agent", {
+    const outcome = await cancelExecution(context.db, job.id, input.reason ?? "Cancelled by agent", {
       actor: context.actor,
       correlationId: context.correlationId,
     });
-    if (outcome === "busy") throw forbidden("Execution is no longer queued and cannot be cancelled here");
-    return { data: { executionId: job.id, cancelled: true }, summary: `Cancelled ${job.id}` };
+    if (outcome === "missing") throw notFound("ExecutionJob", job.id);
+    if (outcome === "busy") {
+      throw forbidden("Execution is neither queued nor running here; orphan recovery will settle it");
+    }
+    const stopping = outcome === "cancelling";
+    return {
+      data: { executionId: job.id, cancelled: true, stopping },
+      summary: stopping ? `Stop signalled to ${job.id}` : `Cancelled ${job.id}`,
+    };
   },
 };
 

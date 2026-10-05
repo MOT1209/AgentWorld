@@ -1,5 +1,11 @@
 # AgentWorld - Phase 3 Audit
 
+> **Status (post-implementation):** this is the pre-build baseline audit. Sections
+> 3 ("Missing capabilities") and 5 (file inventory) describe the gap that
+> existed then and are now closed except where `docs/ROADMAP.md` says
+> otherwise. Current counts: 38 models, 55 tools, 19 packages, 7 migrations.
+> Where this file says "34 tools" or "41 models" it is describing the baseline.
+
 Full-stack diagnostic of the repository as it stands before the Phase 3 build
 (real Agent Workspace + Execution Runtime). Every claim below was verified
 against the tree, not against other documents.
@@ -221,12 +227,19 @@ tools, no GitHub integration. 34 of ~48 planned tools exist.
 
 ## 7. Definition-of-done checklist (Phase 3)
 
-- [ ] Workspace covered by tests (lifecycle + escape attacks)
-- [ ] `ExecutionBackend` + OpenCode/Local/Mock behind one interface
-- [ ] `CommandPolicy` + `ProcessManager` with caps, timeouts, orphan cleanup
-- [ ] fs/terminal/git tools enforcement-proven through `ToolExecutor`
-- [ ] Async queue in `main.ts`, non-blocking, cancellable, retry-classified
-- [ ] Verification pipeline producing `Report{kind:"EXECUTION"}` -> review
-- [ ] `/workspaces`, `/executions` REST + dashboard section
+Status below reflects the audit at commit `980a1e1` (execution runtime landed
+and verified: typecheck, lint, 170+ tests, build).
+
+- [x] Workspace covered by tests (lifecycle + escape attacks)
+- [x] `ExecutionBackend` + OpenCode/Local/Mock behind one interface
+- [x] `CommandPolicy` + `ProcessManager` with caps, timeouts, orphan cleanup
+- [x] fs/terminal/git tools enforcement-proven through `ToolExecutor`
+- [x] Async queue in `main.ts`, non-blocking, cancellable (queued and running
+  jobs; running cancellation aborts the live child and settles CANCELLED),
+  retry-classified, idempotent enqueue
+- [x] Verification pipeline producing `Report{kind:"EXECUTION"}` -> review
+- [x] `/workspaces`, `/executions` REST + dashboard section
 - [ ] One live OpenCode smoke run (documented, skip-if-absent)
-- [ ] All stale docs reconciled; `npm run verify` green
+- [ ] All stale docs reconciled; `npm run verify` green (ROADMAP and this
+  checklist reconciled; README counts and API doc execution/workspaces
+  sections still pending)

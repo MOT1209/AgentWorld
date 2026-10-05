@@ -189,6 +189,47 @@ describe("execution.* tools (real ToolExecutor)", () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+
+  it("cancels a RUNNING job by signalling the live child", async () => {
+    const agent = await createTestAgent({ name: "Exec Stopper" });
+    const root = tempRoot();
+    try {
+      const workspace = await workspaceFor(agent.id, root);
+      writeFileSync(join(workspace.path, "hang.js"), "setInterval(() => {}, 1000)", "utf8");
+      const { executor, ctx } = executorFor(agent.id);
+      const created = await executor.invoke(
+        "execution.create",
+        { workspaceId: workspace.id, command: ["node", "hang.js"] },
+        ctx,
+      );
+      const id = (created.data as ExecData).job.id;
+
+      const running = runJob(prisma, id);
+      for (let waited = 0; waited < 8_000; waited += 25) {
+        if ((await prisma.executionJob.findUnique({ where: { id } }))?.status === "RUNNING") break;
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      expect((await prisma.executionJob.findUnique({ where: { id } }))?.status).toBe("RUNNING");
+
+      const stopped = await executor.invoke(
+        "execution.cancel",
+        { executionId: id, reason: "stop now" },
+        ctx,
+      );
+      expect(stopped.status).toBe("SUCCESS");
+      expect((stopped.data as { cancelled: boolean; stopping: boolean })).toMatchObject({
+        cancelled: true,
+        stopping: true,
+      });
+
+      expect(await running).toMatchObject({ claimed: true, status: "CANCELLED" });
+      const row = await prisma.executionJob.findUnique({ where: { id } });
+      expect(row?.status).toBe("CANCELLED");
+      expect(row?.error).toBe("stop now");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("enqueue gate (single creation path)", () => {

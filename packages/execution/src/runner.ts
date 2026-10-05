@@ -18,6 +18,7 @@ import type { DbClient } from "../../database/src/index.js";
 import { eventBus, EVENT_TYPES, type EventPayloadMap, type EventType } from "../../events/src/index.js";
 import { logger, newCorrelationId, SYSTEM_ACTOR } from "../../shared/src/index.js";
 import { filterEnv } from "../../tools/src/command-policy.js";
+import { registerArtifact } from "../../workspace/src/index.js";
 import { assertRunnable } from "./guard.js";
 import { createBackend, defaultBackendId, type ExecutionBackendId, type ExecutionRequest } from "./backend.js";
 
@@ -166,6 +167,35 @@ async function finishFailed(
 }
 
 /**
+ * Settles a job whose backend never ran because a cancel won the race:
+ * CANCELLED row, EXECUTION_CANCELLED + EXECUTION_FINISHED events.
+ */
+async function settleCancelledBeforeBackend(
+  db: DbClient,
+  jobId: string,
+  correlationId: string,
+  reason: string | null,
+  startedAt: number,
+): Promise<JobRunOutcome> {
+  const reasonText = reason ?? "Cancelled before the backend ran";
+  await db.executionJob.update({
+    where: { id: jobId },
+    data: { status: "CANCELLED", finishedAt: new Date(), error: reasonText, errorCategory: null },
+  });
+  await emit(db, EVENT_TYPES.EXECUTION_CANCELLED, correlationId, jobId, {
+    executionId: jobId,
+    reason: reasonText,
+  });
+  await emit(db, EVENT_TYPES.EXECUTION_FINISHED, correlationId, jobId, {
+    executionId: jobId,
+    status: "CANCELLED",
+    exitCode: null,
+    durationMs: Date.now() - startedAt,
+  });
+  return { jobId, claimed: true, status: "CANCELLED", exitCode: null };
+}
+
+/**
  * Claims and runs one queued job. Returns `{ claimed: false }` when the
  * row is missing or no longer QUEUED (already claimed/finished).
  */
@@ -188,48 +218,57 @@ export async function runJob(
   }
 
   const correlationId = job.correlationId ?? options?.correlationId ?? newCorrelationId();
-  await emit(db, EVENT_TYPES.EXECUTION_CLAIMED, correlationId, job.id, {
-    executionId: job.id,
-    attempt: job.attempts + 1,
-  });
-  const backendId = (job.backendId ?? defaultBackendId()) as ExecutionBackendId;
-  const workspace =
-    job.workspaceId !== null ? await db.workspace.findUnique({ where: { id: job.workspaceId } }) : null;
-  const cwd = job.workingDir ?? workspace?.path ?? "";
-  const timeoutMs = job.timeoutMs > 0 ? job.timeoutMs : RUNNER_TIMEOUT_MS_FALLBACK;
-
-  let request: ExecutionRequest;
-  try {
-    request = {
-      jobId: job.id,
-      kind: job.kind as ExecutionRequest["kind"],
-      workspaceId: job.workspaceId,
-      cwd,
-      ...parseCommand(job.command),
-      env: filterEnv(),
-      timeoutMs,
-      maxBytes: MAX_OUTPUT_BYTES,
-    };
-  } catch (error) {
-    const message = errorMessage(error);
-    await finishFailed(db, job.id, correlationId, { error: message, errorCategory: "CONFIGURATION" });
-    return { jobId, claimed: true, status: "FAILED", exitCode: null };
-  }
-
-  await emit(db, EVENT_TYPES.EXECUTION_STARTED, correlationId, job.id, {
-    executionId: job.id,
-    backendId,
-    sessionId: job.sessionId,
-  });
-
-  const startedAt = Date.now();
+  // The abort entry is registered SYNCHRONOUSLY with the claim: from the
+  // instant the row says RUNNING in this process, cancelExecution must be
+  // able to reach the controller. Any await in between was a window in which
+  // a cancel was answered "busy" for a job running right here.
   const entry = { controller: new AbortController(), reason: null as string | null };
   running.set(job.id, entry);
+  const startedAt = Date.now();
+  let backendRan = false;
   try {
+    await emit(db, EVENT_TYPES.EXECUTION_CLAIMED, correlationId, job.id, {
+      executionId: job.id,
+      attempt: job.attempts + 1,
+    });
+    const backendId = (job.backendId ?? defaultBackendId()) as ExecutionBackendId;
+    const workspace =
+      job.workspaceId !== null ? await db.workspace.findUnique({ where: { id: job.workspaceId } }) : null;
+    const cwd = job.workingDir ?? workspace?.path ?? "";
+    const timeoutMs = job.timeoutMs > 0 ? job.timeoutMs : RUNNER_TIMEOUT_MS_FALLBACK;
+
+    let request: ExecutionRequest;
+    try {
+      request = {
+        jobId: job.id,
+        kind: job.kind as ExecutionRequest["kind"],
+        workspaceId: job.workspaceId,
+        cwd,
+        ...parseCommand(job.command),
+        env: filterEnv(),
+        timeoutMs,
+        maxBytes: MAX_OUTPUT_BYTES,
+      };
+    } catch (error) {
+      const message = errorMessage(error);
+      await finishFailed(db, job.id, correlationId, { error: message, errorCategory: "CONFIGURATION" });
+      return { jobId, claimed: true, status: "FAILED", exitCode: null };
+    }
+
+    await emit(db, EVENT_TYPES.EXECUTION_STARTED, correlationId, job.id, {
+      executionId: job.id,
+      backendId,
+      sessionId: job.sessionId,
+    });
+
     assertRunnable(job, request.argv, workspace);
     const backend = createBackend(backendId);
     if (cwd === "" && backendId !== "mock") {
       throw new Error("No working directory available for execution");
+    }
+    // A cancel that landed in the setup window means the backend never ran.
+    if (entry.controller.signal.aborted) {
+      return await settleCancelledBeforeBackend(db, job.id, correlationId, entry.reason, startedAt);
     }
     await emit(db, EVENT_TYPES.PROCESS_STARTED, correlationId, job.id, {
       executionId: job.id,
@@ -237,6 +276,7 @@ export async function runJob(
       // Binary name only: arguments may carry task text and never belong in events.
       command: request.argv?.[0] ?? (request.prompt !== undefined ? "<prompt>" : null),
     });
+    backendRan = true;
     const result = await backend.run({ ...request, signal: entry.controller.signal });
     const durationMs = result.durationMs > 0 ? result.durationMs : Date.now() - startedAt;
     const cancelled = result.cancelled === true || entry.controller.signal.aborted;
@@ -255,6 +295,37 @@ export async function runJob(
           ? "COMPLETED"
           : "FAILED";
     const spooled = spoolOutput(job.id, workspace?.path ?? null, result.stdout, result.stderr);
+
+    // Spooled logs become LOG artifacts so the dashboard lists them with the run.
+    // Best-effort: a registration failure must never change the job's verdict.
+    if (workspace !== null) {
+      for (const logPath of [spooled.stdoutPath, spooled.stderrPath]) {
+        if (logPath === null) continue;
+        try {
+          await registerArtifact(
+            db,
+            {
+              workspaceId: workspace.id,
+              path: logPath,
+              kind: "LOG",
+              executionId: job.id,
+              sessionId: job.sessionId,
+              taskId: job.taskId,
+              agentId: job.agentId,
+            },
+            { correlationId },
+          );
+        } catch (error) {
+          logger.warn("Artifact registration failed", {
+            action: "execution.artifact_failed",
+            targetType: "ExecutionJob",
+            targetId: job.id,
+            result: "ERROR",
+            error: errorMessage(error),
+          });
+        }
+      }
+    }
 
     await db.executionJob.update({
       where: { id: job.id },
@@ -300,6 +371,12 @@ export async function runJob(
     });
     return { jobId, claimed: true, status, exitCode: result.exitCode };
   } catch (error) {
+    // A cancel that arrives after the backend call has begun aborts the real
+    // child; one that arrives in the setup window means "did not run", so the
+    // job settles as CANCELLED, never FAILED.
+    if (entry.controller.signal.aborted && !backendRan) {
+      return await settleCancelledBeforeBackend(db, job.id, correlationId, entry.reason, startedAt);
+    }
     const message = errorMessage(error);
     await finishFailed(db, job.id, correlationId, {
       error: message,
