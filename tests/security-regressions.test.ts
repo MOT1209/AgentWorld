@@ -71,8 +71,23 @@ describe("agent-supplied environment", () => {
   });
 });
 
+// Some hosts (Windows without Developer Mode/admin) refuse symlink creation
+// with EPERM. Probe once so the assertions still run wherever symlinks work.
+function canCreateSymlink(): boolean {
+  const base = mkdtempSync(join(tmpdir(), "kw-symprobe-"));
+  try {
+    mkdirSync(join(base, "ws"));
+    symlinkSync(base, join(base, "ws", "link"));
+    return true;
+  } catch {
+    return false;
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+}
+
 describe("workspace path guard", () => {
-  it("rejects writes through a symlink that points outside, even for new files", () => {
+  it.skipIf(!canCreateSymlink())("rejects writes through a symlink that points outside, even for new files", () => {
     const base = mkdtempSync(join(tmpdir(), "kw-sym-"));
     const root = join(base, "ws");
     const outside = join(base, "outside");
@@ -82,9 +97,17 @@ describe("workspace path guard", () => {
       symlinkSync(outside, join(root, "link"));
       expect(() => resolveInRoot(root, "link/new.txt")).toThrow(/outside the workspace root/);
       expect(() => resolveInRoot(root, "link/sub/deeper/new.txt")).toThrow(/outside the workspace root/);
-      expect(resolveInRoot(root, "ok/new.txt")).toBe(join(root, "ok", "new.txt"));
     } finally {
       rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+  it("resolves new paths inside the root", () => {
+    const root = mkdtempSync(join(tmpdir(), "kw-ok-"));
+    try {
+      expect(resolveInRoot(root, "ok/new.txt")).toBe(join(root, "ok", "new.txt"));
+    } finally {
+      rmSync(root, { recursive: true, force: true });
     }
   });
 
