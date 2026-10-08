@@ -193,6 +193,26 @@ Statuses: QUEUED | RUNNING | COMPLETED | FAILED | CANCELLED | TIMEOUT. Error cat
 - `POST /factory/runs/:id/deployments/:depId/rollback` — rolls back only with a recorded rollback command
 - `POST /factory/runs/:id/approve` — human merge at the gate; `POST /factory/runs/:id/cancel`
 
+## Relationships (`/relationships`)
+
+- `GET /relationships/agents/:agentId` — outgoing edges, strongest affinity first
+- `GET /relationships/agents/:agentId/with/:targetAgentId` — one edge or `null`
+- `POST /relationships/observe {sourceAgentId, targetAgentId, kind: CONVERSATION|COLLABORATION|CO_LOCATION|OUTCOME, outcome?, weight?}` — records observed evidence only (AGENT_MODIFY); there is no endpoint that asserts trust directly
+
+## Performance (`/performance`)
+
+- `GET /performance/agents/:agentId?since=` — task success/rework, review verdicts, execution outcomes, AI usage; computed from recorded history on request
+- `GET /performance/companies/:companyId?since=` — per-member rollup
+
+## Academy (`/academy`)
+
+- `POST /academy/runs {agentId, skillName, evaluator?, passingScore?}` — start a training run
+- `POST /academy/runs/:id/evaluate {score, feedback?}` — terminal; a score ≥ the run's passing score widens `Agent.skills` (AGENT_MODIFY)
+- `POST /academy/runs/:id/fail {reason}` — terminal failure, evidence without a score
+- `GET /academy/agents/:agentId/runs?skillName=&status=` — the evidence behind granted skills
+- `POST /academy/agents/:agentId/evolve` — recompute reputation from measured history (≤5 points/pass, emits `AGENT_REPUTATION_CHANGED`)
+- `POST /academy/companies/:companyId/evolve` — same pass over active members
+
 ## MCP (`/mcp`)
 
 - `GET /mcp` — server info, tool names, auth scheme (`Authorization: Bearer aw_<key>`)

@@ -66,7 +66,7 @@ export function PerformanceView(): JSX.Element {
       .then((res) => {
         if (cancelled) return;
         setAgents(res.data);
-        if (res.data.length > 0) setSelected((cur) => cur ?? res.data[0].id);
+        if (res.data.length > 0) setSelected((cur) => cur ?? res.data[0]!.id);
       })
       .catch((e: unknown) => {
         if (!cancelled) setAgentsErr(e instanceof Error ? e.message : String(e));
