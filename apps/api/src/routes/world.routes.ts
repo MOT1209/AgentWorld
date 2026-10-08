@@ -5,11 +5,13 @@ import {
   getWorldSnapshot,
   tickWorld,
   listCities,
+  listDistricts,
   listLocations,
   getLocationDetail,
   moveAgent,
   createWorld,
   createCity,
+  createDistrict,
   createLocation,
   getSimulatedTime,
   listWorlds,
@@ -105,6 +107,58 @@ worldRouter.get(
       const worldId = typeof req.query.worldId === "string" ? req.query.worldId : undefined;
       const cities = worldId !== undefined ? await listCities(prisma, worldId) : [];
       res.json({ data: cities, correlationId: getCorrelationId(req) });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+worldRouter.get(
+  "/districts",
+  requirePermission(PERMISSIONS.WORLD_READ),
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const q = req.query as Record<string, string | undefined>;
+      const districts = await listDistricts(prisma, {
+        ...(q.worldId !== undefined ? { worldId: q.worldId } : {}),
+        ...(q.cityId !== undefined ? { cityId: q.cityId } : {}),
+        ...(q.kind !== undefined ? { kind: q.kind } : {}),
+      });
+      res.json({ data: districts, correlationId: getCorrelationId(req) });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+const CreateDistrictSchema = z.object({
+  cityId: z.string().min(1),
+  name: z.string().min(1).max(120),
+  kind: z.string().max(60).optional(),
+  description: z.string().max(2000).optional().nullable(),
+  geometry: z.record(z.string(), z.unknown()).optional(),
+});
+
+worldRouter.post(
+  "/districts",
+  requirePermission(PERMISSIONS.WORLD_WRITE),
+  validate("body", CreateDistrictSchema),
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const principal = getPrincipal(req);
+      const body = req.body as z.infer<typeof CreateDistrictSchema>;
+      const district = await createDistrict(
+        prisma,
+        {
+          cityId: body.cityId,
+          name: body.name,
+          ...(body.kind !== undefined ? { kind: body.kind } : {}),
+          ...(body.description !== undefined ? { description: body.description } : {}),
+          ...(body.geometry !== undefined ? { geometry: body.geometry } : {}),
+        },
+        { actor: principalToActor(principal), correlationId: getCorrelationId(req) },
+      );
+      res.status(201).json({ data: district, correlationId: getCorrelationId(req) });
     } catch (error) {
       next(error);
     }
@@ -225,6 +279,7 @@ const CreateLocationSchema = z.object({
   kind: z.string().min(1).max(60),
   address: z.string().max(500).optional().nullable(),
   capacity: z.number().int().min(1).max(1000000).optional().nullable(),
+  districtId: z.string().min(1).optional().nullable(),
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
@@ -244,6 +299,7 @@ worldRouter.post(
           kind: body.kind,
           address: body.address ?? null,
           capacity: body.capacity ?? null,
+          districtId: body.districtId ?? null,
           ...(body.metadata !== undefined ? { metadata: body.metadata } : {}),
         },
         { actor: principalToActor(principal), correlationId: getCorrelationId(req) },

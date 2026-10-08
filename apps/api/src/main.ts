@@ -5,6 +5,8 @@ import { connectDatabase, disconnectDatabase, prisma } from "../../../packages/d
 import { verifyCommandRunner } from "../../../packages/tools/src/command-runner.js";
 import { getSimulationEngine } from "../../../packages/simulation/src/index.js";
 import { startExecutionWorker } from "../../../packages/execution/src/index.js";
+import { startWebhookDispatcher, enqueueDeliveriesForEvent } from "../../../packages/webhooks/src/index.js";
+import { eventBus, type PersistedEvent } from "../../../packages/events/src/index.js";
 
 const log = logger.child({ component: "api.main" });
 
@@ -29,6 +31,14 @@ async function main(): Promise<void> {
   const executionWorker = startExecutionWorker(prisma);
   log.info("Execution worker started", { action: "execution.worker_started" });
 
+  // Webhooks: every persisted event fans out to a delivery enqueue (cheap,
+  // failure-isolated), and a bounded dispatcher delivers with retries.
+  const unsubscribeWebhooks = eventBus.subscribe("*", (event: PersistedEvent) => {
+    void enqueueDeliveriesForEvent(prisma, event).catch(() => undefined);
+  });
+  const webhookDispatcher = startWebhookDispatcher(prisma);
+  log.info("Webhook dispatcher started", { action: "webhook.dispatcher_started" });
+
   const app = createApp();
   const server = app.listen(config.port, () => {
     log.info(`API listening on :${config.port}`, { action: "api.listening", port: config.port });
@@ -37,6 +47,8 @@ async function main(): Promise<void> {
   const shutdown = (signal: string): void => {
     log.info(`Received ${signal}, shutting down`, { action: "api.shutdown" });
     simulation.dispose();
+    unsubscribeWebhooks();
+    void webhookDispatcher.stop().catch(() => undefined);
     void executionWorker
       .stop()
       .catch((error: unknown) => {

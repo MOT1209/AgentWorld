@@ -12,3 +12,22 @@ export {
   ensureMockProvider,
 } from "./registry.js";
 export { routeModel, type ModelRequest, type ModelRoute, type LatencyProfile } from "./router.js";
+export {
+  MODEL_CAPABILITIES,
+  BUILT_IN_MODELS,
+  ModelRegistry,
+  modelRegistry,
+  estimateCostMinor,
+  isModelCapability,
+  type ModelCapability,
+  type ModelEntry,
+  type ModelQuery,
+} from "./model-registry.js";
+export {
+  complete,
+  usageSummary,
+  resetGatewayCaches,
+  type GatewayRequest,
+  type GatewayResult,
+} from "./gateway.js";
+export { chargeAiSpend } from "./ai-cost.service.js";

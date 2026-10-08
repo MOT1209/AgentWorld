@@ -12,11 +12,13 @@ export type {
   CompanyMember,
   World,
   City,
+  District,
   Location,
   Agent,
   AgentState,
   AgentStateHistory,
   AgentActivity,
+  AgentRoutine,
   AgentGoal,
   AgentMemory,
   AgentRelationship,
@@ -47,6 +49,14 @@ export type {
   // Phase 3 execution.
   ExecutionJob,
   Artifact,
+  // Phase 4 integrations.
+  Credential,
+  AiUsage,
+  WebhookSubscription,
+  WebhookDelivery,
+  ApiKey,
+  TestRun,
+  FactoryRun,
 } from "@prisma/client";
 
 /** ActorRef lives in shared so no domain package needs the ORM to name a caller. */

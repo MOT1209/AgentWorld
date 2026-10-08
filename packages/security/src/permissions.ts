@@ -85,6 +85,24 @@ export const PERMISSIONS = {
   WORKSPACE_SHARE: "workspace.share",
   WORKSPACE_ADMIN: "workspace.admin",
 
+  // integrations (Phase 4)
+  PROVIDER_READ: "provider.read",
+  PROVIDER_USE: "provider.use",
+  PROVIDER_ADMIN: "provider.admin",
+  CREDENTIAL_READ: "credential.read",
+  CREDENTIAL_MANAGE: "credential.manage",
+  CONNECTOR_READ: "connector.read",
+  CONNECTOR_USE: "connector.use",
+  CONNECTOR_ADMIN: "connector.admin",
+  WEBHOOK_READ: "webhook.read",
+  WEBHOOK_MANAGE: "webhook.manage",
+  APIKEY_MANAGE: "apikey.manage",
+  MCP_READ: "mcp.read",
+  TESTING_RUN: "testing.run",
+  TESTING_READ: "testing.read",
+  FACTORY_RUN: "factory.run",
+  FACTORY_READ: "factory.read",
+
   // observability
   EVENT_READ: "event.read",
   EVENT_EMIT: "event.emit",
@@ -119,6 +137,13 @@ export const HUMAN_ONLY_PERMISSIONS: readonly Permission[] = [
   // Agents propose plans; a human signs them off. Granting this to a role
   // would let an agent authorise its own plan execution.
   PERMISSIONS.PLAN_APPROVE,
+  // Phase 4: credential/key/webhook administration changes what the system can
+  // reach on the outside. Only humans widen the blast radius.
+  PERMISSIONS.CREDENTIAL_MANAGE,
+  PERMISSIONS.APIKEY_MANAGE,
+  PERMISSIONS.WEBHOOK_MANAGE,
+  PERMISSIONS.CONNECTOR_ADMIN,
+  PERMISSIONS.PROVIDER_ADMIN,
 ] as const;
 
 export function assertNoHumanOnlyPermissions(permissions: readonly string[], context: string): void {

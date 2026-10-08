@@ -83,6 +83,38 @@ const EnvSchema = z.object({
   EXEC_DOCKER_MEMORY: z.string().regex(/^[0-9]+[kmg]$/i, "e.g. 512m").default("512m"),
   EXEC_DOCKER_CPUS: z.string().regex(/^[0-9]+(\.[0-9]+)?$/, "e.g. 1 or 0.5").default("1"),
   EXEC_DOCKER_PIDS: int(256, 16, 4096),
+
+  // Integration platform (Phase 4).
+  // Master key for the credential vault: base64 32 bytes. REQUIRED whenever a
+  // credential is sealed or opened; development falls back to a derived key so
+  // a fresh clone still runs, production refuses.
+  VAULT_MASTER_KEY: z.string().default(""),
+  // Generic OpenAI-compatible passthrough (vendor-agnostic custom provider).
+  CUSTOM_PROVIDER_ENABLED: bool(false),
+  CUSTOM_PROVIDER_ID: z.string().regex(/^([a-z][a-z0-9-]{1,40})?$/).default(""),
+  CUSTOM_PROVIDER_BASE_URL: z.string().default(""),
+  CUSTOM_PROVIDER_API_KEY: z.string().default(""),
+  CUSTOM_PROVIDER_MODEL: z.string().default(""),
+  // Ollama-style local OpenAI-compatible server.
+  LOCAL_AI_ENABLED: bool(false),
+  LOCAL_AI_BASE_URL: z.string().default("http://127.0.0.1:11434/v1"),
+  LOCAL_AI_API_KEY: z.string().default(""),
+  LOCAL_AI_MODEL: z.string().default("llama3.1"),
+  // Model routing cost model (minor units per 1k tokens, KW currency).
+  AI_COST_INPUT_PER_1K: int(1, 0, 1_000_000),
+  AI_COST_OUTPUT_PER_1K: int(3, 0, 1_000_000),
+  // AI spend charges to the company treasury only above this minor-unit cap.
+  AI_CHARGE_THRESHOLD_MINOR: int(1_000_000, 0),
+  // Webhook deliveries.
+  WEBHOOK_ENABLED: bool(true),
+  WEBHOOK_MAX_ATTEMPTS: int(5, 1, 10),
+  WEBHOOK_TIMEOUT_MS: int(10_000, 1_000, 60_000),
+  // GitHub software factory.
+  FACTORY_GITHUB_TOKEN: z.string().default(""),
+  FACTORY_GITHUB_API_BASE: z.string().default("https://api.github.com"),
+  FACTORY_MAX_FIX_ATTEMPTS: int(3, 1, 10),
+  FACTORY_MAX_RUNTIME_MS: int(3_600_000, 60_000),
+  FACTORY_MAX_MODEL_CALLS: int(200, 1, 100_000),
 });
 
 export type RawConfig = z.infer<typeof EnvSchema>;
@@ -111,6 +143,22 @@ export interface AppConfig {
   exec: {
     sandbox: "local" | "docker";
     docker: { image: string; user: string; memory: string; cpus: string; pids: number };
+  };
+  vault: { masterKey: string };
+  aiGateway: {
+    customProvider: { enabled: boolean; id: string; baseUrl: string; apiKey: string; model: string };
+    localAi: { enabled: boolean; baseUrl: string; apiKey: string; model: string };
+    costInputPer1k: number;
+    costOutputPer1k: number;
+    chargeThresholdMinor: number;
+  };
+  webhooks: { enabled: boolean; maxAttempts: number; timeoutMs: number };
+  factory: {
+    githubToken: string;
+    githubApiBase: string;
+    maxFixAttempts: number;
+    maxRuntimeMs: number;
+    maxModelCalls: number;
   };
 }
 
@@ -153,10 +201,6 @@ function load(): AppConfig {
   }
 
   const defaultProviderId = raw.DEFAULT_PROVIDER;
-  const hasAnyProviderKey =
-    raw.OPENAI_COMPATIBLE_API_KEY !== "" ||
-    raw.ANTHROPIC_API_KEY !== "" ||
-    raw.GOOGLE_API_KEY !== "";
 
   return {
     env: raw.NODE_ENV,
@@ -212,9 +256,37 @@ function load(): AppConfig {
         pids: raw.EXEC_DOCKER_PIDS,
       },
     },
-    // Surfaced by hasAnyProviderKey callers; kept out of the object shape to
-    // avoid it being read as configuration.
-    ...(hasAnyProviderKey ? {} : {}),
+    vault: { masterKey: raw.VAULT_MASTER_KEY },
+    aiGateway: {
+      customProvider: {
+        enabled: raw.CUSTOM_PROVIDER_ENABLED && raw.CUSTOM_PROVIDER_BASE_URL !== "" && raw.CUSTOM_PROVIDER_ID !== "",
+        id: raw.CUSTOM_PROVIDER_ID,
+        baseUrl: raw.CUSTOM_PROVIDER_BASE_URL,
+        apiKey: raw.CUSTOM_PROVIDER_API_KEY,
+        model: raw.CUSTOM_PROVIDER_MODEL,
+      },
+      localAi: {
+        enabled: raw.LOCAL_AI_ENABLED && raw.LOCAL_AI_BASE_URL !== "",
+        baseUrl: raw.LOCAL_AI_BASE_URL,
+        apiKey: raw.LOCAL_AI_API_KEY,
+        model: raw.LOCAL_AI_MODEL,
+      },
+      costInputPer1k: raw.AI_COST_INPUT_PER_1K,
+      costOutputPer1k: raw.AI_COST_OUTPUT_PER_1K,
+      chargeThresholdMinor: raw.AI_CHARGE_THRESHOLD_MINOR,
+    },
+    webhooks: {
+      enabled: raw.WEBHOOK_ENABLED,
+      maxAttempts: raw.WEBHOOK_MAX_ATTEMPTS,
+      timeoutMs: raw.WEBHOOK_TIMEOUT_MS,
+    },
+    factory: {
+      githubToken: raw.FACTORY_GITHUB_TOKEN,
+      githubApiBase: raw.FACTORY_GITHUB_API_BASE,
+      maxFixAttempts: raw.FACTORY_MAX_FIX_ATTEMPTS,
+      maxRuntimeMs: raw.FACTORY_MAX_RUNTIME_MS,
+      maxModelCalls: raw.FACTORY_MAX_MODEL_CALLS,
+    },
   };
 }
 
@@ -251,6 +323,17 @@ export function redactedConfig(config: AppConfig = getConfig()): Record<string, 
       openaiCompatible: { enabled: config.providers.openaiCompatible.enabled },
       anthropic: { enabled: config.providers.anthropic.enabled },
       google: { enabled: config.providers.google.enabled },
+    },
+    aiGateway: {
+      customProvider: { enabled: config.aiGateway.customProvider.enabled },
+      localAi: { enabled: config.aiGateway.localAi.enabled },
+    },
+    webhooks: config.webhooks,
+    factory: {
+      githubConfigured: config.factory.githubToken !== "",
+      maxFixAttempts: config.factory.maxFixAttempts,
+      maxRuntimeMs: config.factory.maxRuntimeMs,
+      maxModelCalls: config.factory.maxModelCalls,
     },
   };
 }

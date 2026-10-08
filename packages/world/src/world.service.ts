@@ -15,7 +15,7 @@ import {
 } from "../../shared/src/index.js";
 import { conflict, notFound } from "../../shared/src/index.js";
 import type { DbClient } from "../../database/src/index.js";
-import type { Agent, City, Location, World } from "../../database/src/types.js";
+import type { Agent, City, District, Location, World } from "../../database/src/types.js";
 import { eventBus } from "../../events/src/index.js";
 import { recordActivity } from "../../events/src/audit.js";
 import { EVENT_TYPES } from "../../events/src/index.js";
@@ -88,6 +88,7 @@ export interface CreateLocationInput {
   kind: string;
   address?: string | null;
   capacity?: number | null;
+  districtId?: string | null;
   metadata?: Record<string, unknown>;
 }
 
@@ -112,9 +113,21 @@ export async function createLocation(
     });
   }
 
+  if (input.districtId != null) {
+    const district = await db.district.findUnique({ where: { id: input.districtId } });
+    if (district === null) throw validationError("Unknown district", { districtId: input.districtId });
+    if (district.cityId !== input.cityId) {
+      throw validationError("District does not belong to that city", {
+        districtId: input.districtId,
+        cityId: input.cityId,
+      });
+    }
+  }
+
   const location = await db.location.create({
     data: {
       cityId: input.cityId,
+      districtId: input.districtId ?? null,
       name: input.name,
       kind,
       address: input.address ?? null,
@@ -129,10 +142,99 @@ export async function createLocation(
     targetType: "Location",
     targetId: location.id,
     correlationId,
-    metadata: { cityId: input.cityId, kind, name: input.name },
+    metadata: { cityId: input.cityId, kind, name: input.name, districtId: location.districtId },
   });
 
   return location;
+}
+
+// =============================================================================
+// DISTRICTS
+// =============================================================================
+
+export interface CreateDistrictInput {
+  cityId: string;
+  name: string;
+  kind?: string;
+  description?: string | null;
+  geometry?: Record<string, unknown>;
+}
+
+export async function createDistrict(
+  db: DbClient,
+  input: CreateDistrictInput,
+  ctx: WorldContext,
+): Promise<District> {
+  const city = await db.city.findUnique({ where: { id: input.cityId } });
+  if (city === null) throw notFound("City", input.cityId);
+
+  const existing = await db.district.findUnique({
+    where: { cityId_name: { cityId: input.cityId, name: input.name } },
+  });
+  if (existing !== null) {
+    throw conflict("A district with that name already exists in this city", {
+      cityId: input.cityId,
+      name: input.name,
+    });
+  }
+
+  const correlationId = ctx.correlationId ?? newCorrelationId();
+  const district = await db.district.create({
+    data: {
+      cityId: input.cityId,
+      name: input.name,
+      kind: input.kind ?? "OTHER",
+      description: input.description ?? null,
+      geometry: input.geometry !== undefined ? JSON.stringify(input.geometry) : null,
+    },
+  });
+
+  await eventBus.publishAndDispatch(db, {
+    type: EVENT_TYPES.DISTRICT_CREATED,
+    actor: ctx.actor,
+    correlationId,
+    targetType: "District",
+    targetId: district.id,
+    payload: {
+      districtId: district.id,
+      cityId: district.cityId,
+      name: district.name,
+      kind: district.kind,
+    },
+  });
+
+  await recordActivity(db, {
+    actor: ctx.actor,
+    action: "world.create_district",
+    targetType: "District",
+    targetId: district.id,
+    correlationId,
+    metadata: { cityId: district.cityId, name: district.name, kind: district.kind },
+  });
+
+  return district;
+}
+
+export async function listDistricts(
+  db: DbClient,
+  query: { worldId?: string; cityId?: string; kind?: string },
+): Promise<Array<District & { city: { name: string }; locationCount: number }>> {
+  const rows = await db.district.findMany({
+    where: {
+      ...(query.cityId !== undefined ? { cityId: query.cityId } : {}),
+      ...(query.kind !== undefined ? { kind: query.kind } : {}),
+      ...(query.worldId !== undefined ? { city: { worldId: query.worldId } } : {}),
+    },
+    include: {
+      city: { select: { name: true } },
+      _count: { select: { locations: true } },
+    },
+    orderBy: { name: "asc" },
+  });
+  return rows.map((row) => {
+    const { _count, ...district } = row;
+    return { ...district, locationCount: _count.locations };
+  });
 }
 
 export async function listCities(db: DbClient, worldId: string): Promise<City[]> {
@@ -179,7 +281,44 @@ export async function moveAgent(
   if (agent === null) throw notFound("Agent", input.agentId);
 
   if (input.toLocationId !== null) {
-    await getLocation(db, input.toLocationId);
+    const destination = await getLocation(db, input.toLocationId);
+    if (agent.currentLocationId !== input.toLocationId) {
+      const occupants = await db.agent.count({
+        where: { currentLocationId: input.toLocationId, NOT: { id: input.agentId } },
+      });
+      try {
+        assertLocationCapacity(destination, occupants);
+      } catch (error) {
+        await recordActivity(db, {
+          actor: ctx.actor,
+          action: "world.move_agent_denied",
+          targetType: "Agent",
+          targetId: input.agentId,
+          correlationId,
+          metadata: {
+            toLocationId: input.toLocationId,
+            capacity: destination.capacity,
+            occupants,
+            reason: "LOCATION_AT_CAPACITY",
+          },
+        });
+        await eventBus.publishAndDispatch(db, {
+          type: EVENT_TYPES.LOCATION_MOVE_DENIED,
+          actor: ctx.actor,
+          correlationId,
+          targetType: "Agent",
+          targetId: input.agentId,
+          worldId: agent.worldId ?? undefined,
+          payload: {
+            agentId: input.agentId,
+            toLocationId: input.toLocationId,
+            capacity: destination.capacity ?? 0,
+            occupants,
+          },
+        });
+        throw error;
+      }
+    }
   }
 
   if (agent.currentLocationId === input.toLocationId) return agent;
@@ -278,12 +417,24 @@ export interface WorldSnapshot {
   wallNow: string;
   phase: string;
   cities: Array<{ id: string; name: string; kind: string; population: number; locationCount: number }>;
+  districts: Array<{
+    id: string;
+    cityId: string;
+    cityName: string;
+    name: string;
+    kind: string;
+    description: string | null;
+    geometry: unknown | null;
+    locationCount: number;
+  }>;
   locations: Array<{
     id: string;
     name: string;
     kind: string;
     cityId: string;
     cityName: string;
+    districtId: string | null;
+    capacity: number | null;
     occupantCount: number;
   }>;
   agentCount: number;
@@ -294,10 +445,18 @@ export async function getWorldSnapshot(db: DbClient, worldId?: string): Promise<
   const world = worldId === undefined ? await getActiveWorld(db) : await requireWorld(db, worldId);
   const simulated = computeSimulatedTime(world);
 
-  const [cities, locations, agentCount] = await Promise.all([
+  const [cities, districts, locations, agentCount] = await Promise.all([
     db.city.findMany({
       where: { worldId: world.id },
       include: { _count: { select: { locations: true } } },
+      orderBy: { name: "asc" },
+    }),
+    db.district.findMany({
+      where: { city: { worldId: world.id } },
+      include: {
+        city: { select: { name: true } },
+        _count: { select: { locations: true } },
+      },
       orderBy: { name: "asc" },
     }),
     db.location.findMany({
@@ -336,12 +495,24 @@ export async function getWorldSnapshot(db: DbClient, worldId?: string): Promise<
       population: city.population,
       locationCount: city._count.locations,
     })),
+    districts: districts.map((district) => ({
+      id: district.id,
+      cityId: district.cityId,
+      cityName: district.city.name,
+      name: district.name,
+      kind: district.kind,
+      description: district.description,
+      geometry: district.geometry === null ? null : (JSON.parse(district.geometry) as unknown),
+      locationCount: district._count.locations,
+    })),
     locations: locations.map((location) => ({
       id: location.id,
       name: location.name,
       kind: location.kind,
       cityId: location.cityId,
       cityName: location.city.name,
+      districtId: location.districtId,
+      capacity: location.capacity,
       occupantCount: occupants.get(location.id) ?? 0,
     })),
     agentCount,

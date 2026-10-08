@@ -21,6 +21,10 @@ import { conflictRouter } from "../routes/conflict.routes.js";
 import { workspaceRouter } from "../routes/workspace.routes.js";
 import { skillRouter } from "../routes/skill.routes.js";
 import { executionRouter } from "../routes/execution.routes.js";
+import { integrationsRouter } from "../routes/integrations.routes.js";
+import { mcpRouter } from "../routes/mcp.routes.js";
+import { testingRouter } from "../routes/testing.routes.js";
+import { factoryRouter } from "../routes/factory.routes.js";
 
 export function registerRoutes(app: Express): void {
   app.use("/api/v1/auth", authRouter);
@@ -45,4 +49,8 @@ export function registerRoutes(app: Express): void {
   app.use("/api/v1/workspaces", workspaceRouter);
   app.use("/api/v1/skills", skillRouter);
   app.use("/api/v1/executions", executionRouter);
+  app.use("/api/v1/integrations", integrationsRouter);
+  app.use("/api/v1/mcp", mcpRouter);
+  app.use("/api/v1/testing", testingRouter);
+  app.use("/api/v1/factory", factoryRouter);
 }

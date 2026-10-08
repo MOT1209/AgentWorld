@@ -24,6 +24,10 @@ import { terminalTools } from "./definitions/terminal-tools.js";
 import { fsTools } from "./definitions/fs-tools.js";
 import { gitTools } from "./definitions/git-tools.js";
 import { executionTools } from "./definitions/execution-tools.js";
+import { providerTools } from "./definitions/provider-tools.js";
+import { connectorTools } from "./definitions/connector-tools.js";
+import { testingTools } from "./definitions/testing-tools.js";
+import { factoryTools } from "./definitions/factory-tools.js";
 import { ToolRegistry } from "./registry.js";
 
 export const BUILT_IN_TOOLS: AnyToolDefinition[] = [
@@ -45,6 +49,10 @@ export const BUILT_IN_TOOLS: AnyToolDefinition[] = [
   ...fsTools,
   ...gitTools,
   ...executionTools,
+  ...providerTools,
+  ...connectorTools,
+  ...testingTools,
+  ...factoryTools,
 ];
 
 export function createDefaultRegistry(): ToolRegistry {
@@ -105,3 +113,7 @@ export {
   executionListTool,
   executionCancelTool,
 } from "./definitions/execution-tools.js";
+export { providerTools, providerListTool, providerCompleteTool, providerUsageTool } from "./definitions/provider-tools.js";
+export { connectorTools, connectorListTool, connectorGetTool, connectorCallTool } from "./definitions/connector-tools.js";
+export { testingTools, testingRunTool, testingGetTool, testingListTool, testingSettleTool } from "./definitions/testing-tools.js";
+export { factoryTools, factoryStartTool, factoryAdvanceTool, factoryGetTool, factoryListTool, factoryMergeTool } from "./definitions/factory-tools.js";

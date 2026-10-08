@@ -47,6 +47,7 @@ model User {
   activityLogs   ActivityLog[]
   conversations  Conversation[]
   wallets        Wallet[]
+  apiKeys        ApiKey[]
 
   // Phase 2
   plansCreated         Plan[]        @relation("PlanCreatorUser")
@@ -79,6 +80,11 @@ model Company {
   conversations Conversation[]
   approvals ApprovalRequest[]
   plans     Plan[]
+
+  // Phase 4 integrations.
+  aiUsages            AiUsage[]
+  webhookSubscriptions WebhookSubscription[]
+  factoryRuns         FactoryRun[]
 
   @@index([ownerId])
 }
@@ -171,32 +177,57 @@ model City {
 
   world     World      @relation(fields: [worldId], references: [id], onDelete: Cascade)
   locations Location[]
+  districts District[]
 
   @@unique([worldId, name])
   @@index([worldId])
 }
 
+model District {
+  id          String  @id @default(cuid())
+  cityId      String
+  name        String
+  /// RESIDENTIAL | COMMERCIAL | INDUSTRIAL | CIVIC | GREEN | OTHER
+  kind        String  @default("OTHER")
+  description String?
+  /// JSON geometry: center, bounds, boundary polygon, display color.
+  /// Phase 4 is data + enforcement only; no pathfinding or travel time.
+  geometry    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  city      City       @relation(fields: [cityId], references: [id], onDelete: Cascade)
+  locations Location[]
+
+  @@unique([cityId, name])
+  @@index([cityId])
+}
+
 model Location {
   id       String  @id @default(cuid())
   cityId   String
+  districtId String?
   name     String
   /// HQ | BANK | MARKET | OFFICE | HOME | SHOP | RESTAURANT | SCHOOL |
   /// HOSPITAL | GOVERNMENT | TRANSPORT | PUBLIC_SPACE | OTHER
   kind     String  @default("OTHER")
   address  String?
   capacity Int?
-  /// JSON -- Phase 2: geometry, floorplan, opening hours, price modifiers.
+  /// JSON -- geometry, floorplan, opening hours, price modifiers.
   metadata String?
   isActive Boolean @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  city   City    @relation(fields: [cityId], references: [id], onDelete: Cascade)
+  city   City     @relation(fields: [cityId], references: [id], onDelete: Cascade)
+  district District? @relation(fields: [districtId], references: [id], onDelete: SetNull)
   agents Agent[]
   activities AgentActivity[]
+  routines AgentRoutine[]
 
   @@unique([cityId, name])
   @@index([cityId])
+  @@index([districtId])
   @@index([kind])
 }
 
@@ -257,6 +288,7 @@ model Agent {
   memories      AgentMemory[]
   stateHistory  AgentStateHistory[]
   activities    AgentActivity[]
+  routines      AgentRoutine[]
   /// Structured Phase 1 goals; the scalar `goals` column above remains the
   /// legacy free-form list and is not read by the simulation.
   structuredGoals AgentGoal[]
@@ -284,6 +316,10 @@ model Agent {
   workspaceMemberships WorkspaceMember[]
   artifacts          Artifact[]
   executions         ExecutionJob[]
+
+  // Phase 4 integrations.
+  aiUsages           AiUsage[]
+  testRuns           TestRun[]
 
   @@index([roleKey])
   @@index([worldId])
@@ -361,6 +397,45 @@ model AgentActivity {
   @@index([agentId, status])
   @@index([agentId, startTime])
   @@index([locationId])
+}
+
+/// Phase 5 daily routine. Spec-as-data: when (slotMinutes), what
+/// (activityType), where (locationId, optional) and for how long
+/// (durationSimMinutes). The engine evaluates these on the existing tick --
+/// no new timer, no polling loop. Triggering and misses are surfaced through
+/// ROUTINE_* events + audit rows; a miss is marked so it surfaces once.
+model AgentRoutine {
+  id String @id @default(cuid())
+  agentId String
+
+  /// Simulated time-of-day the routine starts, minutes since midnight (0..1439).
+  slotMinutes Int
+  /// WORK | REST | THINK | TRAVEL | SOCIALIZE | SLEEP (ActivityTypeSchema).
+  /// Routines pin an activity, so IDLE is deliberately excluded.
+  activityType String
+  /// Where the activity must happen; null uses the agent's current location.
+  locationId String?
+  /// Length of the activity, in SIMULATED minutes.
+  durationSimMinutes Int
+
+  /// Soft delete / opt-out.
+  active Boolean @default(true)
+  /// Sim date (YYYY-MM-DD) the routine last fired, so a daily routine triggers
+  /// at most once per simulated day even when a tick spans the slot twice.
+  lastTriggeredSimDate String?
+  /// Sim date the routine was already evaluated today (fired OR skipped), the
+  /// marker that lets misses be surfaced exactly once and re-evaluated tomorrow.
+  evaluatedOnSimDate String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  agent    Agent     @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  location Location? @relation(fields: [locationId], references: [id], onDelete: SetNull)
+
+  /// An agent plans one routine per activity at a given time of day.
+  @@unique([agentId, slotMinutes, activityType])
+  @@index([agentId, active])
 }
 
 /// Phase 1 goal system. Structured upgrade of the legacy JSON goals column:
@@ -521,6 +596,8 @@ model Task {
   childTasks Task[]   @relation("TaskHierarchy")
   creatorAgent Agent? @relation("TaskCreatorAgent", fields: [creatorAgentId], references: [id], onDelete: SetNull)
   assigneeAgent Agent? @relation("TaskAssigneeAgent", fields: [assigneeAgentId], references: [id], onDelete: SetNull)
+  aiUsages  AiUsage[]
+  factoryRuns FactoryRun[]
 
   blockedBy        TaskDependency[] @relation("TaskBlockedBy")
   blocks           TaskDependency[] @relation("TaskBlocks")
@@ -534,6 +611,9 @@ model Task {
   conflicts        DecisionConflict[]
   artifacts        Artifact[]
   executions       ExecutionJob[]
+
+  // Phase 4 integrations.
+  testRuns         TestRun[]
 
   @@index([status])
   @@index([priority])
@@ -706,6 +786,10 @@ model AgentSession {
 
   artifacts  Artifact[]
   executions ExecutionJob[]
+
+  // Phase 4 integrations.
+  aiUsages   AiUsage[]
+  testRuns   TestRun[]
 
   @@index([agentId, status])
   @@index([status])
@@ -1195,6 +1279,8 @@ model Workspace {
   sessions   AgentSession[]
   artifacts  Artifact[]
   executions ExecutionJob[]
+  testRuns   TestRun[]
+  factoryRuns FactoryRun[]
 
   @@index([agentId])
   @@index([projectId])
@@ -1281,12 +1367,273 @@ model ExecutionJob {
 
   artifacts Artifact[]
 
+  // Phase 4 integrations.
+  testRuns TestRun[]
+
   @@index([status, scheduledAt])
   @@index([workspaceId])
   @@index([sessionId])
   @@index([agentId])
   @@index([taskId])
   @@index([correlationId])
+}
+
+// =============================================================================
+// INTEGRATION PLATFORM -- Phase 4: providers, credentials, webhooks, keys,
+// testing runs, and the GitHub software factory. Everything here reuses the
+// Core: authority via ToolExecutor, money via LedgerService, events via
+// EventBus. No parallel business logic.
+// =============================================================================
+
+/// Encrypted credential for an AI provider or connector. The secret payload is
+/// AES-256-GCM ciphertext (packages/vault); plaintext never touches a row, a
+/// DTO, a log line or a prompt. Read access returns metadata only.
+model Credential {
+  id   String @id @default(cuid())
+  name String @unique
+
+  /// API_KEY | OAUTH | TOKEN | CUSTOM
+  kind String @default("API_KEY")
+  /// PROVIDER | CONNECTOR
+  scope String
+  /// Provider id (e.g. "openai-compatible") or connector slug, per scope.
+  refId String
+
+  /// JSON -- {iv, tag, data} base64 ciphertext produced by the vault.
+  payload String
+  /// Vault key version used to seal this row (rotation support).
+  keyVersion Int @default(1)
+
+  /// ACTIVE | REVOKED
+  status String @default("ACTIVE")
+  /// JSON -- non-secret descriptors only (scopes, base url, account label).
+  metadata String @default("{}")
+
+  lastRotatedAt DateTime?
+  lastUsedAt    DateTime?
+  expiresAt     DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([scope, refId])
+  @@index([status])
+}
+
+/// One recorded AI provider call with its token usage and estimated cost.
+/// Observability only -- any actual money movement goes through LedgerService
+/// (type FEE), never around it.
+model AiUsage {
+  id Int @id @default(autoincrement())
+
+  providerId String
+  model      String
+  /// OK | ERROR
+  status String @default("OK")
+
+  inputTokens  Int @default(0)
+  outputTokens Int @default(0)
+  cachedTokens Int @default(0)
+  /// Estimated cost in minor units (KW). Estimation only; the ledger owns truth.
+  estimatedCostMinor Int @default(0)
+  currency String @default("KW")
+
+  latencyMs Int @default(0)
+  error     String?
+
+  agentId     String?
+  sessionId   String?
+  taskId      String?
+  companyId   String?
+  correlationId String?
+
+  createdAt DateTime @default(now())
+
+  agent   Agent?        @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  session AgentSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  task    Task?         @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  company Company?      @relation(fields: [companyId], references: [id], onDelete: SetNull)
+
+  @@index([providerId, model])
+  @@index([agentId, createdAt])
+  @@index([companyId, createdAt])
+  @@index([createdAt])
+}
+
+/// An external endpoint subscribed to domain events. Deliveries are signed
+/// (HMAC-SHA256), retried with bounded backoff, and dead-lettered.
+model WebhookSubscription {
+  id   String @id @default(cuid())
+  url  String
+  description String?
+
+  /// JSON string[] of event type names, or ["*"] for everything.
+  events String @default("[\"*\"]")
+
+  /// ACTIVE | PAUSED | DISABLED
+  status String @default("ACTIVE")
+
+  /// HMAC secret, sealed by the vault (never plaintext, never returned).
+  secretPayload String
+  keyVersion    Int @default(1)
+
+  /// Auto-disabled after too many consecutive dead deliveries.
+  failureCount   Int @default(0)
+  lastDeliveryAt DateTime?
+
+  companyId String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company   Company?           @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  deliveries WebhookDelivery[]
+
+  @@index([status])
+  @@index([companyId])
+}
+
+/// One delivery attempt series for one event against one subscription.
+model WebhookDelivery {
+  id             String @id @default(cuid())
+  subscriptionId String
+  eventType      String
+
+  /// JSON -- the event payload exactly as signed.
+  payload String
+  /// Hex HMAC-SHA256 over `${timestamp}.${body}`.
+  signature String
+
+  /// PENDING | DELIVERED | FAILED | DEAD
+  status String @default("PENDING")
+  attempts    Int @default(0)
+  maxAttempts Int @default(5)
+  nextAttemptAt DateTime @default(now())
+
+  responseStatus Int?
+  /// Bounded response snippet for debugging (no headers, no secrets).
+  responseSnippet String?
+  error  String?
+  deliveredAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  subscription WebhookSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@index([status, nextAttemptAt])
+  @@index([subscriptionId, createdAt])
+}
+
+/// A public API token for external applications (and the MCP server).
+/// Only the SHA-256 hash and a display prefix are stored; the plaintext is
+/// returned exactly once at creation.
+model ApiKey {
+  id   String @id @default(cuid())
+  name String
+
+  /// Display prefix, e.g. "aw_ab12cd34". Never the secret itself.
+  prefix  String @unique
+  keyHash String @unique
+
+  /// JSON string[] of permission names granted to this key.
+  scopes String @default("[]")
+
+  userId String
+  /// ACTIVE | REVOKED
+  status String @default("ACTIVE")
+
+  lastUsedAt DateTime?
+  expiresAt  DateTime?
+  revokedAt  DateTime?
+  createdAt  DateTime @default(now())
+
+  owner User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+}
+
+/// One execution of a test suite through the TestingEngine. Evidence follows
+/// the factory rules: OBSERVED / INFERRED / HYPOTHESIS are labelled explicitly.
+model TestRun {
+  id   String @id @default(cuid())
+
+  /// UNIT | INTEGRATION | E2E | BROWSER | MOBILE | SECURITY | PERFORMANCE
+  suite String
+  /// Adapter that ran it: vitest | command | testerarmy | http
+  adapter String
+  name String
+
+  /// QUEUED | RUNNING | PASSED | FAILED | ERROR | CANCELLED | TIMEOUT
+  status String @default("QUEUED")
+
+  /// JSON -- { passed, failed, skipped, total }
+  summary String @default("{}")
+  /// JSON -- { observed: [...], inferred: [...], hypothesis: [...] }
+  evidence String @default("{}")
+  /// Workspace-relative path to raw output, when a workspace was used.
+  rawPath String?
+
+  workspaceId String?
+  executionId String?
+  sessionId   String?
+  taskId      String?
+  agentId     String?
+
+  startedAt  DateTime?
+  finishedAt DateTime?
+  durationMs Int @default(0)
+  correlationId String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  workspace Workspace?    @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  execution ExecutionJob? @relation(fields: [executionId], references: [id], onDelete: SetNull)
+  session   AgentSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  task      Task?         @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  agent     Agent?        @relation(fields: [agentId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([suite, createdAt])
+  @@index([taskId])
+  @@index([workspaceId])
+}
+
+/// One pass of the GitHub Software Factory pipeline. Stages advance only
+/// forward, the loop is bounded by config (attempts, runtime, model calls),
+/// and merge always ends in human approval.
+model FactoryRun {
+  id      String @id @default(cuid())
+  repoUrl String
+  companyId String
+
+  /// INTAKE | ANALYZING | PLANNING | BUILDING | TESTING | FIXING | REVIEWING |
+  /// AWAITING_APPROVAL | COMPLETED | FAILED | CANCELLED
+  status String @default("INTAKE")
+  currentStage String @default("INTAKE")
+
+  /// JSON -- { maxFixAttempts, maxRuntimeMs, maxModelCalls, targetBranch }
+  config String @default("{}")
+  /// JSON -- ProjectHealthReport from the repository analyzer.
+  analysis String @default("{}")
+  /// JSON -- plan payload produced during PLANNING.
+  plan String @default("{}")
+  /// JSON -- { owner, repo, branch, prUrl, commits }
+  github String @default("{}")
+  /// JSON -- { fixAttempts, modelCalls, costMinor, testRuns }
+  stats String @default("{}")
+
+  workspaceId String?
+  taskId      String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company   Company?   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  task      Task?      @relation(fields: [taskId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, status])
+  @@index([status])
 }
 
 /// A file, log, report or other product registered for the dashboard.

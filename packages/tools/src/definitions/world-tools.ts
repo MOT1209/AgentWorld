@@ -15,8 +15,9 @@ import type { ToolDefinition } from "../types.js";
 export const worldGetStateTool: ToolDefinition<Record<string, never>> = {
   name: "world.get_state",
   description:
-    "Read the current state of the world: name, simulated time and time of day, cities, locations, " +
-    "and which agents are present where. Read-only; use it before deciding where or when to act.",
+    "Read the current state of the world: name, simulated time and time of day, cities, districts, " +
+    "locations (with capacity and occupancy), and which agents are present where. " +
+    "Read-only; use it before deciding where or when to act.",
   inputSchema: z.object({}),
   requiredPermission: PERMISSIONS.WORLD_READ,
   risk: "LOW",
@@ -28,10 +29,11 @@ export const worldGetStateTool: ToolDefinition<Record<string, never>> = {
         simulatedNow: snapshot.simulatedNow,
         phase: snapshot.phase,
         cities: snapshot.cities,
+        districts: snapshot.districts,
         locations: snapshot.locations,
         agentCount: snapshot.agentCount,
       },
-      summary: `${snapshot.world.name}: ${snapshot.cities.length} cities, ${snapshot.locations.length} locations, ${snapshot.phase.toLowerCase()}`,
+      summary: `${snapshot.world.name}: ${snapshot.cities.length} cities, ${snapshot.districts.length} districts, ${snapshot.locations.length} locations, ${snapshot.phase.toLowerCase()}`,
     };
   },
 };

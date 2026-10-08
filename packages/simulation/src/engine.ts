@@ -49,6 +49,7 @@ import {
 import { decisionEngine, type Decision } from "./decision.js";
 import { executeAction, type AgentAction } from "./actions.js";
 import { controlWorld, type WorldControlAction } from "./clock.js";
+import { evaluateAgentRoutines } from "./routines.js";
 
 export const DEFAULT_TICK_INTERVAL_MS = 5_000;
 export const DEFAULT_MAX_AGENTS_PER_TICK = 200;
@@ -74,6 +75,8 @@ export interface TickResult {
   activitiesCompleted: number;
   decisionsExecuted: number;
   decisionRejected: number;
+  routinesTriggered: number;
+  routinesSkipped: number;
   errors: Array<{ agentId: string; message: string }>;
 }
 
@@ -210,6 +213,8 @@ export class SimulationEngine {
       activitiesCompleted: 0,
       decisionsExecuted: 0,
       decisionRejected: 0,
+      routinesTriggered: 0,
+      routinesSkipped: 0,
       errors: [],
     };
 
@@ -247,6 +252,8 @@ export class SimulationEngine {
       let activitiesCompleted = 0;
       let decisionsExecuted = 0;
       let decisionRejected = 0;
+      let routinesTriggered = 0;
+      let routinesSkipped = 0;
       const errors: Array<{ agentId: string; message: string }> = [];
 
       for (const agent of agents) {
@@ -264,6 +271,8 @@ export class SimulationEngine {
           activitiesCompleted += outcome.activitiesCompleted;
           decisionsExecuted += outcome.decisionsExecuted;
           decisionRejected += outcome.decisionRejected;
+          routinesTriggered += outcome.routinesTriggered;
+          routinesSkipped += outcome.routinesSkipped;
         } catch (error) {
           // One agent failing must never stop the rest of the world.
           errors.push({
@@ -297,6 +306,8 @@ export class SimulationEngine {
         activitiesCompleted,
         decisionsExecuted,
         decisionRejected,
+        routinesTriggered,
+        routinesSkipped,
         errors,
       };
     } finally {
@@ -311,7 +322,13 @@ export class SimulationEngine {
     worldId: string,
     landmarks: { work: Landmark[]; common: Landmark[] },
     correlationId: string,
-  ): Promise<{ activitiesCompleted: number; decisionsExecuted: number; decisionRejected: number } | null> {
+  ): Promise<{
+    activitiesCompleted: number;
+    decisionsExecuted: number;
+    decisionRejected: number;
+    routinesTriggered: number;
+    routinesSkipped: number;
+  } | null> {
     const state = agent.state;
     if (state === null) return null;
     if (state.state === "OFFLINE" || state.state === "PAUSED" || state.state === "ERROR") return null;
@@ -320,6 +337,8 @@ export class SimulationEngine {
     let activitiesCompleted = 0;
     let decisionsExecuted = 0;
     let decisionRejected = 0;
+    let routinesTriggered = 0;
+    let routinesSkipped = 0;
     let open = await getOpenActivity(this.db, agent.id);
 
     // 2a. A PLANNED activity whose start time arrived becomes ACTIVE.
@@ -357,6 +376,20 @@ export class SimulationEngine {
 
     // 4/5. Decide and execute only when the agent is free.
     if (open === null) {
+      // 4a. A due routine fires before the decision engine: routines are the
+      // deterministic schedule, decisions only fill what the day does not plan.
+      const routineEval = await evaluateAgentRoutines(
+        this.db,
+        { agentId: agent.id, simulatedNow },
+        ctx,
+      );
+      if (routineEval.triggered.length > 0) {
+        routinesTriggered += routineEval.triggered.length;
+        routinesSkipped += routineEval.skipped.length;
+        return { activitiesCompleted, decisionsExecuted, decisionRejected, routinesTriggered, routinesSkipped };
+      }
+      routinesSkipped += routineEval.skipped.length;
+
       const decision = decisionEngine.decide({
         agentId: agent.id,
         state: state.state as AgentState,
@@ -394,7 +427,7 @@ export class SimulationEngine {
       }
     }
 
-    return { activitiesCompleted, decisionsExecuted, decisionRejected };
+    return { activitiesCompleted, decisionsExecuted, decisionRejected, routinesTriggered, routinesSkipped };
   }
 
   /** Completing an activity has consequences beyond the row's status. */

@@ -24,6 +24,16 @@ export const ALWAYS_APPROVE_ACTIONS: readonly string[] = [
   "world.write",
   "external.action",
   "admin.impersonate",
+  // Phase 4: anything that widens external reach or touches stored secrets is
+  // a human decision, always.
+  "credential.create",
+  "credential.revoke",
+  "connector.install",
+  "webhook.subscribe",
+  "webhook.unsubscribe",
+  "apikey.create",
+  "apikey.revoke",
+  "factory.merge",
 ];
 
 /** Actions that are safe to perform without asking, if permissions allow them. */
@@ -66,6 +76,23 @@ export const ROUTINE_ACTIONS: readonly string[] = [
   "git.branch",
   "git.diff",
   "git.log",
+  // Phase 4 routine integration work (permission-gated as well).
+  "provider.list",
+  "provider.get",
+  "provider.complete",
+  "connector.list",
+  "connector.get",
+  "connector.call",
+  "testing.run",
+  "testing.get",
+  "testing.list",
+  "testing.settle",
+  "provider.usage",
+  "factory.start",
+  "factory.get",
+  "factory.list",
+  "factory.analyze",
+  "factory.advance",
 ];
 
 export const ACTION_RISK: Record<string, RiskLevel> = {
@@ -133,6 +160,31 @@ export const ACTION_RISK: Record<string, RiskLevel> = {
   "wallet.withdraw": "CRITICAL",
   "wallet.adjust": "CRITICAL",
   "world.write": "MEDIUM",
+  // Phase 4 integrations.
+  "provider.list": "LOW",
+  "provider.get": "LOW",
+  "provider.complete": "MEDIUM",
+  "credential.create": "CRITICAL",
+  "credential.revoke": "HIGH",
+  "connector.list": "LOW",
+  "connector.get": "LOW",
+  "connector.call": "MEDIUM",
+  "connector.install": "HIGH",
+  "webhook.subscribe": "HIGH",
+  "webhook.unsubscribe": "MEDIUM",
+  "apikey.create": "CRITICAL",
+  "apikey.revoke": "HIGH",
+  "testing.run": "MEDIUM",
+  "testing.get": "LOW",
+  "testing.list": "LOW",
+  "testing.settle": "LOW",
+  "provider.usage": "LOW",
+  "factory.start": "MEDIUM",
+  "factory.get": "LOW",
+  "factory.list": "LOW",
+  "factory.analyze": "LOW",
+  "factory.advance": "MEDIUM",
+  "factory.merge": "CRITICAL",
 };
 
 export interface ApprovalPolicy {

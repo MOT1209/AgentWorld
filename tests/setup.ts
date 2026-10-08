@@ -102,6 +102,15 @@ try {
   await db.$executeRawUnsafe(`DROP TRIGGER IF EXISTS "transaction_is_immutable_update"`);
   await db.$executeRawUnsafe(`DROP TRIGGER IF EXISTS "transaction_is_immutable_delete"`);
   for (const table of [
+    // Phase 4 integrations: deliveries reference subscriptions; usages/runs
+    // reference agents/sessions/tasks/companies/executions.
+    "WebhookDelivery",
+    "WebhookSubscription",
+    "ApiKey",
+    "AiUsage",
+    "TestRun",
+    "FactoryRun",
+    "Credential",
     // Phase 3 execution first: artifacts reference everything, jobs reference
     // workspaces/sessions, and sessions now reference workspaces.
     "Artifact",
@@ -132,7 +141,9 @@ try {
     "Project",
     "AgentRelationship",
     // Phase 1 simulation tables: they reference Agent and Location, so they
-    // must be dropped before either.
+    // must be dropped before either. AgentRoutine (Phase 5) also references
+    // both, so it is dropped with them.
+    "AgentRoutine",
     "AgentActivity",
     "AgentGoal",
     "AgentMemory",
@@ -140,6 +151,8 @@ try {
     "AgentState",
     "Agent",
     "Location",
+    // Location now references District, which references City.
+    "District",
     "City",
     "World",
     "CompanyMember",

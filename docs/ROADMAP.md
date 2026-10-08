@@ -55,18 +55,70 @@ Audit: `docs/PHASE3-AUDIT.md`. Architecture: `docs/AGENTWORLD_PHASE_3_ARCHITECTU
 - [x] Artifact service, `/workspaces/:id/artifacts`, `/executions/:id/logs`; dashboard execution and workspace detail views
 - [x] Security matrix (`tests/security-m4.test.ts`) and recovery / idempotency / cancel tests (`tests/execution-m2.test.ts`)
 
-## Later: the city
+## Phases 4-10: the city (derived from the deferred list)
 
-The originally sketched Phase 2 city features, deferred:
+Derived from the original "Later: the city" list. Postgres migration stays
+deferred beyond Phase 10 (infra-gated: SQLite is the documented Phase 1
+default and no Docker daemon is available here). Each phase must keep
+`npm run verify` green and extend existing services rather than duplicating
+them (single ledger, single ToolExecutor, single event bus).
 
-1. Postgres migration (`enum`, `jsonb`, `numeric(19,4)`), BigInt money.
-2. Districts + geometry (location metadata), capacity enforcement in UI.
-3. Daily routine engine driven by the event stream (no polling).
-4. Relationship graph from co-location + conversation history.
-5. Salary payroll heartbeat + market purchases with price modifiers.
-6. Vector-backed memory retrieval behind `MemoryRetriever`.
-7. Real-time dashboard (SSE on `EventLog`) + role-based views.
-8. Nightly `verifyLedger` + treasury reconciliation job.
+### Phase 4: districts + geometry
+
+- `District` model (cityId, name, kind, geometry metadata) + migration,
+  `Location.districtId` FK (nullable, no destructive changes)
+- CRUD service + `world.*` tools + REST endpoints; snapshot/list APIs expose
+  districts
+- Capacity enforcement: call `assertLocationCapacity` on `moveAgent`
+  (currently never invoked) and surface capacity in the dashboard
+
+### Phase 5: daily routine engine (event-driven, no polling)
+
+- Routine specs as data (agent routine rows: slot/activity/location/duration)
+- Engine evaluated from the existing tick/WORLD_TICK path — **no new timer,
+  no polling loop**; emits `ROUTINE_*` events + audit rows
+- Simulation decides within routines (decision engine respects scheduled
+  activity); missed/overdue routines are surfaced, never crash the tick
+
+### Phase 6: relationship graph
+
+- `AgentRelationship` edges updated from co-location and conversation/memory
+  history via `recordInteraction`-style service; scores evolve, never grant
+  permissions
+- `relationship.*` tools behind ToolExecutor + REST + dashboard graph view
+- Social decision branch in the simulation may read relationship scores
+
+### Phase 7: payroll heartbeat + market purchases
+
+- Salary payroll: idempotent per-cycle run triggered from the existing
+  heartbeat path (single-writer ledger, `PAYROLL_*` events)
+- Market purchases with price modifiers: catalog/price rows, `market.*` tools
+  that route through `payPurchase`/treasury withdrawal (no new financial
+  system — extend `packages/economy`)
+
+### Phase 8: vector-backed memory retrieval
+
+- `MemoryRetriever` interface; vector/similarity implementation behind it
+  (same store/decay semantics, scores as today); runtime + tools switch to
+  the interface, existing callers unchanged
+
+### Phase 9: real-time dashboard + role-based views
+
+- SSE streaming already exists (`/events/stream`); add replay/cursor from
+  `EventLog` if missing + live event feed in the dashboard
+- Role-based views (agent / reviewer / king) gated on existing RBAC + tool
+  permissions; no new auth
+
+### Phase 10: nightly ledger + treasury reconciliation
+
+- Scheduled job (same pattern as existing heartbeat scheduler) running
+  `verifyLedger` + treasury reconciliation; emits events + audit rows, alert
+  row/escalation on imbalance, dashboard/REST status surface
+
+## Deferred beyond Phase 10
+
+- Postgres migration (`enum`, `jsonb`, `numeric(19,4)`), BigInt money —
+  requires Docker/Postgres infra not present in this environment.
 
 ## Non-goals
 

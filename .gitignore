@@ -34,4 +34,5 @@ Thumbs.db
 
 # environment junk: bash crash dumps, local scratch reports
 *.stackdump
-التقرير.html
+التقرير.html.playwright-mcp/
+

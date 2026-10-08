@@ -16,6 +16,8 @@ export const EVENT_TYPES = {
   WORLD_CREATED: "WORLD_CREATED",
   WORLD_TICK: "WORLD_TICK",
   LOCATION_CHANGED: "LOCATION_CHANGED",
+  LOCATION_MOVE_DENIED: "LOCATION_MOVE_DENIED",
+  DISTRICT_CREATED: "DISTRICT_CREATED",
 
   // Company
   COMPANY_CREATED: "COMPANY_CREATED",
@@ -125,9 +127,45 @@ export const EVENT_TYPES = {
   AGENT_GOAL_UPDATED: "AGENT_GOAL_UPDATED",
   AGENT_GOAL_COMPLETED: "AGENT_GOAL_COMPLETED",
 
+  // Routines (Phase 5). Specs-as-data: a routine is a row, the engine
+  // evaluates it on the existing tick and the ROUTINE_* stream records the
+  // fact. TRIGGERED/SKIPPED are surfaced outcomes, never commands.
+  ROUTINE_CREATED: "ROUTINE_CREATED",
+  ROUTINE_UPDATED: "ROUTINE_UPDATED",
+  ROUTINE_DELETED: "ROUTINE_DELETED",
+  ROUTINE_TRIGGERED: "ROUTINE_TRIGGERED",
+  ROUTINE_SKIPPED: "ROUTINE_SKIPPED",
+
   // Security
   LOGIN_SUCCEEDED: "LOGIN_SUCCEEDED",
   LOGIN_FAILED: "LOGIN_FAILED",
+
+  // Integrations (Phase 4). Facts about outbound reach; each is also a
+  // candidate webhook event for subscribed external systems.
+  AI_PROVIDER_CALL_RECORDED: "AI_PROVIDER_CALL_RECORDED",
+  AI_FALLBACK_TRIGGERED: "AI_FALLBACK_TRIGGERED",
+  AI_COST_CHARGED: "AI_COST_CHARGED",
+  CREDENTIAL_SEALED: "CREDENTIAL_SEALED",
+  CREDENTIAL_REVOKED: "CREDENTIAL_REVOKED",
+  CONNECTOR_CALLED: "CONNECTOR_CALLED",
+  CONNECTOR_FAILED: "CONNECTOR_FAILED",
+  OAUTH_STARTED: "OAUTH_STARTED",
+  OAUTH_COMPLETED: "OAUTH_COMPLETED",
+  OAUTH_FAILED: "OAUTH_FAILED",
+  WEBHOOK_SUBSCRIBED: "WEBHOOK_SUBSCRIBED",
+  WEBHOOK_UNSUBSCRIBED: "WEBHOOK_UNSUBSCRIBED",
+  WEBHOOK_DELIVERED: "WEBHOOK_DELIVERED",
+  WEBHOOK_DELIVERY_FAILED: "WEBHOOK_DELIVERY_FAILED",
+  WEBHOOK_DEAD_LETTERED: "WEBHOOK_DEAD_LETTERED",
+  APIKEY_CREATED: "APIKEY_CREATED",
+  APIKEY_REVOKED: "APIKEY_REVOKED",
+  MCP_REQUEST: "MCP_REQUEST",
+  MCP_DENIED: "MCP_DENIED",
+  TEST_RUN_RECORDED: "TEST_RUN_RECORDED",
+  FACTORY_RUN_STARTED: "FACTORY_RUN_STARTED",
+  FACTORY_STAGE_ADVANCED: "FACTORY_STAGE_ADVANCED",
+  FACTORY_RUN_FINISHED: "FACTORY_RUN_FINISHED",
+  FACTORY_APPROVAL_REQUIRED: "FACTORY_APPROVAL_REQUIRED",
 } as const;
 
 export type EventType = (typeof EVENT_TYPES)[keyof typeof EVENT_TYPES];
@@ -136,6 +174,13 @@ export interface EventPayloadMap {
   WORLD_CREATED: { worldId: string; name: string };
   WORLD_TICK: { worldId: string; simulatedNow: string; phase: string };
   LOCATION_CHANGED: { agentId: string; fromLocationId: string | null; toLocationId: string | null };
+  LOCATION_MOVE_DENIED: {
+    agentId: string;
+    toLocationId: string;
+    capacity: number;
+    occupants: number;
+  };
+  DISTRICT_CREATED: { districtId: string; cityId: string; name: string; kind: string };
 
   COMPANY_CREATED: { companyId: string; name: string; ownerId: string };
   COMPANY_STRUCTURE_MODIFIED: { companyId: string; change: string };
@@ -296,8 +341,78 @@ export interface EventPayloadMap {
   AGENT_GOAL_UPDATED: { agentId: string; goalId: string; status: string; progress: number };
   AGENT_GOAL_COMPLETED: { agentId: string; goalId: string; title: string };
 
+  ROUTINE_CREATED: {
+    routineId: string;
+    agentId: string;
+    activityType: string;
+    slotMinutes: number;
+  };
+  ROUTINE_UPDATED: {
+    routineId: string;
+    agentId: string;
+    activityType: string;
+    slotMinutes: number;
+  };
+  ROUTINE_DELETED: {
+    routineId: string;
+    agentId: string;
+    activityType: string;
+    slotMinutes: number;
+  };
+  ROUTINE_TRIGGERED: {
+    routineId: string;
+    agentId: string;
+    activityId: string;
+    activityType: string;
+    slotMinutes: number;
+    reason: string;
+  };
+  ROUTINE_SKIPPED: {
+    routineId: string;
+    agentId: string;
+    activityType: string;
+    slotMinutes: number;
+    reason: string;
+  };
+
   LOGIN_SUCCEEDED: { userId: string; email: string };
   LOGIN_FAILED: { email: string; reason: string };
+
+  // Integrations (Phase 4). Never carries secret material.
+  AI_PROVIDER_CALL_RECORDED: {
+    providerId: string;
+    model: string;
+    status: string;
+    inputTokens: number;
+    outputTokens: number;
+    estimatedCostMinor: number;
+    latencyMs: number;
+    agentId: string | null;
+    companyId: string | null;
+  };
+  AI_FALLBACK_TRIGGERED: { fromProvider: string; toProvider: string; reason: string; agentId: string | null };
+  AI_COST_CHARGED: { companyId: string; walletId: string; amountMinor: number; currency: string; transactionId: string };
+  CREDENTIAL_SEALED: { credentialId: string; scope: string; refId: string; name: string };
+  CREDENTIAL_REVOKED: { credentialId: string; name: string };
+  CONNECTOR_CALLED: { connectorId: string; slug: string; action: string; durationMs: number; agentId: string | null };
+  CONNECTOR_FAILED: { connectorId: string; slug: string; action: string; error: string; agentId: string | null };
+  OAUTH_STARTED: { credentialId: string | null; connectorId: string | null; state: string };
+  OAUTH_COMPLETED: { credentialId: string; connectorId: string | null };
+  OAUTH_FAILED: { credentialId: string | null; connectorId: string | null; reason: string };
+  WEBHOOK_SUBSCRIBED: { subscriptionId: string; events: string[] };
+  WEBHOOK_UNSUBSCRIBED: { subscriptionId: string };
+  WEBHOOK_DELIVERED: { deliveryId: string; subscriptionId: string; eventType: string; attempts: number };
+  WEBHOOK_DELIVERY_FAILED: { deliveryId: string; subscriptionId: string; attempt: number; error: string | null };
+  WEBHOOK_DEAD_LETTERED: { deliveryId: string; subscriptionId: string; attempts: number };
+  APIKEY_CREATED: { apiKeyId: string; name: string; prefix: string; userId: string };
+  APIKEY_REVOKED: { apiKeyId: string; name: string };
+  MCP_REQUEST: { method: string; toolName: string | null; client: string | null; authorized: boolean };
+  MCP_DENIED: { method: string; toolName: string | null; client: string | null; reason: string };
+  TEST_RUN_RECORDED: { testRunId: string; suite: string; adapter: string; status: string; taskId: string | null };
+  FACTORY_RUN_STARTED: { factoryRunId: string; repoUrl: string; companyId: string };
+  FACTORY_STAGE_ADVANCED: { factoryRunId: string; fromStage: string; toStage: string };
+  FACTORY_RUN_FINISHED: { factoryRunId: string; status: string; fixAttempts: number };
+  FACTORY_APPROVAL_REQUIRED: { factoryRunId: string; repoUrl: string; reason: string };
 }
 
 export type EventPayload<T extends EventType = EventType> = EventPayloadMap[T];

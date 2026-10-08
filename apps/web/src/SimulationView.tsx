@@ -38,7 +38,19 @@ interface LocationRow {
   name: string;
   kind: string;
   cityName: string;
+  districtId: string | null;
+  capacity: number | null;
   occupantCount: number;
+}
+
+interface DistrictRow {
+  id: string;
+  cityId: string;
+  cityName: string;
+  name: string;
+  kind: string;
+  description: string | null;
+  locationCount: number;
 }
 
 const STATE_COLORS: Record<string, number> = {
@@ -102,14 +114,16 @@ export function SimulationView({ token }: { token: string }): JSX.Element {
   const sceneRef = useRef<SceneContext | null>(null);
   const [state, setState] = useState<SimulationState | null>(null);
   const [locations, setLocations] = useState<LocationRow[]>([]);
+  const [districts, setDistricts] = useState<DistrictRow[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async (): Promise<void> => {
     try {
       const sim = await api.get<SimulationState>("/simulation/state");
       setState(sim.data);
-      const snapshot = await api.get<{ locations: LocationRow[] }>("/world/snapshot");
+      const snapshot = await api.get<{ locations: LocationRow[]; districts: DistrictRow[] }>("/world/snapshot");
       setLocations(snapshot.data.locations);
+      setDistricts(snapshot.data.districts ?? []);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -337,7 +351,7 @@ export function SimulationView({ token }: { token: string }): JSX.Element {
               <span className="rounded bg-gray-100 px-2 py-0.5">Active {state.counts.activeActivities}</span>
               <span className="rounded bg-gray-100 px-2 py-0.5">Critical needs {state.counts.criticalNeeds}</span>
             </div>
-            <ul className="divide-y">
+<ul className="divide-y">
               {state.agents.map((agent) => (
                 <li key={agent.id} className="py-2 text-sm">
                   <div className="flex items-center justify-between">
@@ -346,7 +360,7 @@ export function SimulationView({ token }: { token: string }): JSX.Element {
                   </div>
                   <div className="text-xs text-gray-500">
                     {agent.title}
-                    {agent.activity !== null ? ` · ${agent.activity.type} (${agent.activity.status})` : ""}
+                    {agent.activity !== null ? ` • ${agent.activity.type} (${agent.activity.status})` : ""}
                   </div>
                   <div className="mt-1 flex gap-3 text-xs text-gray-500">
                     <span>Energy {Math.round(agent.needs.ENERGY ?? 0)}</span>
@@ -356,6 +370,82 @@ export function SimulationView({ token }: { token: string }): JSX.Element {
                 </li>
               ))}
             </ul>
+            <div className="mt-4 border-t border-gray-100 pt-3">
+              <h3 className="mb-2 text-sm font-semibold text-gray-700">
+                Districts &amp; occupancy
+                <span className="ml-1 rounded bg-gray-100 px-1.5 py-0.5 text-xs font-normal text-gray-500">{districts.length}</span>
+              </h3>
+              {districts.length === 0 ? (
+                <p className="text-xs text-gray-400">No districts defined</p>
+              ) : (
+                <div className="space-y-3">
+                  {districts
+                    .filter((district) => locations.some((location) => location.districtId === district.id))
+                    .map((district) => {
+                      const grouped = locations.filter((location) => location.districtId === district.id);
+                      const capacity = grouped.reduce((sum, location) => sum + (location.capacity ?? 0), 0);
+                      const occupants = grouped.reduce((sum, location) => sum + location.occupantCount, 0);
+                      return (
+                        <div key={district.id}>
+                          <div className="flex items-baseline justify-between text-xs">
+                            <span className="font-medium text-gray-700">
+                              {district.name}
+                              <span className="ml-1 text-gray-400">{district.cityName}</span>
+                            </span>
+                            <span className="text-gray-500">
+                              {occupants}/{capacity || "∞"} in {grouped.length} place{grouped.length === 1 ? "" : "s"}
+                            </span>
+                          </div>
+                          <div className="mt-1 h-1 w-full overflow-hidden rounded bg-gray-100">
+                            <div
+                              className={`h-full ${capacity === 0 || occupants < capacity ? "bg-teal-500" : "bg-red-500"}`}
+                              style={{ width: capacity === 0 ? "0%" : `${Math.min(100, (occupants / capacity) * 100)}%` }}
+                            />
+                          </div>
+                          <ul className="mt-1 grid grid-cols-1 gap-x-3 text-xs text-gray-500">
+                            {grouped.map((location) => (
+                              <li key={location.id} className="flex justify-between">
+                                <span>
+                                  {location.name}
+                                  <span className="ml-1 text-gray-400">{location.kind}</span>
+                                </span>
+                                <span>
+                                  {location.occupantCount}
+                                  {location.capacity !== null ? `/${location.capacity}` : ""}
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      );
+                    })}
+                  {locations.some((location) => location.districtId === null) && (
+                    <div>
+                      <div className="flex items-baseline justify-between text-xs">
+                        <span className="font-medium text-gray-400">Unassigned</span>
+                        <span className="text-gray-500">{locations.filter((location) => location.districtId === null).length} places</span>
+                      </div>
+                      <ul className="mt-1 grid grid-cols-1 gap-x-3 text-xs text-gray-500">
+                        {locations
+                          .filter((location) => location.districtId === null)
+                          .map((location) => (
+                            <li key={location.id} className="flex justify-between">
+                              <span>
+                                {location.name}
+                                <span className="ml-1 text-gray-400">{location.kind}</span>
+                              </span>
+                              <span>
+                                {location.occupantCount}
+                                {location.capacity !== null ? `/${location.capacity}` : ""}
+                              </span>
+                            </li>
+                          ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </>
         )}
       </div>

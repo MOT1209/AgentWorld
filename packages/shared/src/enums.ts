@@ -645,6 +645,92 @@ export const SKILL_CATEGORIES = [
 export const SkillCategorySchema = z.enum(SKILL_CATEGORIES);
 export type SkillCategory = z.infer<typeof SkillCategorySchema>;
 
+// -- Integration platform (Phase 4) -----------------------------------------
+
+export const CREDENTIAL_KINDS = ["API_KEY", "OAUTH", "TOKEN", "CUSTOM"] as const;
+export const CredentialKindSchema = z.enum(CREDENTIAL_KINDS);
+export type CredentialKind = z.infer<typeof CredentialKindSchema>;
+
+export const CREDENTIAL_SCOPES = ["PROVIDER", "CONNECTOR"] as const;
+export const CredentialScopeSchema = z.enum(CREDENTIAL_SCOPES);
+export type CredentialScope = z.infer<typeof CredentialScopeSchema>;
+
+export const CREDENTIAL_STATUSES = ["ACTIVE", "REVOKED"] as const;
+export const CredentialStatusSchema = z.enum(CREDENTIAL_STATUSES);
+export type CredentialStatus = z.infer<typeof CredentialStatusSchema>;
+
+export const WEBHOOK_SUBSCRIPTION_STATUSES = ["ACTIVE", "PAUSED", "DISABLED"] as const;
+export const WebhookSubscriptionStatusSchema = z.enum(WEBHOOK_SUBSCRIPTION_STATUSES);
+export type WebhookSubscriptionStatus = z.infer<typeof WebhookSubscriptionStatusSchema>;
+
+export const WEBHOOK_DELIVERY_STATUSES = ["PENDING", "DELIVERED", "FAILED", "DEAD"] as const;
+export const WebhookDeliveryStatusSchema = z.enum(WEBHOOK_DELIVERY_STATUSES);
+export type WebhookDeliveryStatus = z.infer<typeof WebhookDeliveryStatusSchema>;
+
+export const API_KEY_STATUSES = ["ACTIVE", "REVOKED"] as const;
+export const ApiKeyStatusSchema = z.enum(API_KEY_STATUSES);
+export type ApiKeyStatus = z.infer<typeof ApiKeyStatusSchema>;
+
+export const TEST_SUITES = ["UNIT", "INTEGRATION", "E2E", "BROWSER", "MOBILE", "SECURITY", "PERFORMANCE"] as const;
+export const TestSuiteSchema = z.enum(TEST_SUITES);
+export type TestSuite = z.infer<typeof TestSuiteSchema>;
+
+export const TEST_RUN_STATUSES = ["QUEUED", "RUNNING", "PASSED", "FAILED", "ERROR", "CANCELLED", "TIMEOUT"] as const;
+export const TestRunStatusSchema = z.enum(TEST_RUN_STATUSES);
+export type TestRunStatus = z.infer<typeof TestRunStatusSchema>;
+
+export const FACTORY_STAGES = [
+  "INTAKE",
+  "ANALYZING",
+  "PLANNING",
+  "BUILDING",
+  "TESTING",
+  "FIXING",
+  "REVIEWING",
+  "AWAITING_APPROVAL",
+  "COMPLETED",
+  "FAILED",
+  "CANCELLED",
+] as const;
+export const FactoryStageSchema = z.enum(FACTORY_STAGES);
+export type FactoryStage = z.infer<typeof FactoryStageSchema>;
+
+/** Stages advance only forward; terminal stages have no exits. */
+export const FACTORY_STAGE_TRANSITIONS: Readonly<Record<FactoryStage, readonly FactoryStage[]>> = {
+  INTAKE: ["ANALYZING", "FAILED", "CANCELLED"],
+  ANALYZING: ["PLANNING", "FAILED", "CANCELLED"],
+  PLANNING: ["BUILDING", "FAILED", "CANCELLED"],
+  BUILDING: ["TESTING", "FAILED", "CANCELLED"],
+  TESTING: ["FIXING", "REVIEWING", "FAILED", "CANCELLED"],
+  FIXING: ["TESTING", "FAILED", "CANCELLED"],
+  REVIEWING: ["AWAITING_APPROVAL", "COMPLETED", "FAILED", "CANCELLED"],
+  AWAITING_APPROVAL: ["COMPLETED", "FAILED", "CANCELLED"],
+  COMPLETED: [],
+  FAILED: [],
+  CANCELLED: [],
+};
+
+export function canTransitionFactoryStage(from: FactoryStage, to: FactoryStage): boolean {
+  if (from === to) return true;
+  return (FACTORY_STAGE_TRANSITIONS[from] ?? []).includes(to);
+}
+
+export const CONNECTOR_KINDS = [
+  "REST",
+  "GRAPHQL",
+  "OAUTH",
+  "API_KEY",
+  "WEBHOOK",
+  "WEBSOCKET",
+  "CLI",
+  "BROWSER",
+  "MCP",
+  "DATABASE",
+  "CUSTOM",
+] as const;
+export const ConnectorKindSchema = z.enum(CONNECTOR_KINDS);
+export type ConnectorKind = z.infer<typeof ConnectorKindSchema>;
+
 // -- Helpers -----------------------------------------------------------------
 
 export function enumValues<T extends Record<string, string>>(obj: T): Array<T[keyof T]> {

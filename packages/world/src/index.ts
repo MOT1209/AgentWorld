@@ -5,6 +5,8 @@ export {
   requireWorld,
   createCity,
   listCities,
+  createDistrict,
+  listDistricts,
   createLocation,
   listLocations,
   getLocation,
@@ -16,5 +18,6 @@ export {
   assertLocationCapacity,
   type WorldContext,
   type CreateLocationInput,
+  type CreateDistrictInput,
   type WorldSnapshot,
 } from "./world.service.js";

@@ -38,7 +38,7 @@ flowchart TB
         WS[Workspace]
         RUN[AgentRuntime]
         AI[AI Provider]
-        TOOLS[55 tools]
+        TOOLS[70 tools]
     end
     WORLD --> AGENT --> TASK --> WS --> RUN --> AI --> TOOLS
     TOOLS -->|result| TASK
@@ -118,7 +118,7 @@ human message ──▶ wakeup ──▶ THINKING ──▶ act (tools) ──�
 - Every run writes episodic + fact + obligation memories, so the next turn
   has continuity — and pending approvals are remembered, not retried.
 
-**55 tools** across tasks, messages, memory, wallets, world, company, events,
+**70 tools** across tasks, messages, memory, wallets, world, company, events,
 approvals, plans, reviews, reports, escalations, sessions, workspaces, files,
 terminal, git, executions, and skills.
 
@@ -138,7 +138,7 @@ terminal, git, executions, and skills.
 | `packages/workspace` | Phase 3 work environments — closed-root path guard, workspace lifecycle, members, file browsing, archive/reap |
 | `packages/execution` | Phase 3 execution runtime — `ExecutionBackend` (mock/local/OpenCode), guarded idempotent queue, non-blocking worker, spooled output, orphan recovery, verification pipeline |
 | `packages/skills` | external skill manifests — trust, security analysis, prompt-injection screening, installer, lockfile |
-| `database/` | Prisma SQLite schema (38 models) + migrations + idempotent `seed.ts` |
+| `database/` | Prisma SQLite schema (46 models) + migrations + idempotent `seed.ts` |
 | `tests/` | 17 suites, **161 tests** (149 passing, 12 Docker-sandbox tests skipped when Docker is absent) — finance races, ledger proofs, review loops, permissions, API, simulation, sandbox |
 | `docs/` | `ARCHITECTURE` · `SIMULATION_ENGINE` · `SECURITY` · `API` · `ROADMAP` · `AGENTWORLD_PHASE_3_ARCHITECTURE` · `PHASE3-AUDIT` |
 

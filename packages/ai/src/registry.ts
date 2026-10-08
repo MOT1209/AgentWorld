@@ -117,6 +117,33 @@ function configuredProviders(): AIProvider[] {
     );
   }
 
+  // Phase 4 gateway: vendor-agnostic custom OpenAI-compatible provider and a
+  // local/self-hosted server (Ollama, vLLM, llama.cpp ...). Both are just the
+  // generic adapter pointed somewhere else -- no new adapter code per vendor.
+  const custom = config.aiGateway.customProvider;
+  if (custom.enabled) {
+    providers.push(
+      new OpenAiCompatibleProvider(custom.id, {
+        apiKey: custom.apiKey,
+        baseUrl: custom.baseUrl,
+        timeoutMs: config.agent.requestTimeoutMs,
+        defaultModel: custom.model !== "" ? custom.model : "default",
+      }),
+    );
+  }
+
+  const localAi = config.aiGateway.localAi;
+  if (localAi.enabled) {
+    providers.push(
+      new OpenAiCompatibleProvider("local", {
+        apiKey: localAi.apiKey,
+        baseUrl: localAi.baseUrl,
+        timeoutMs: config.agent.requestTimeoutMs,
+        defaultModel: localAi.model,
+      }),
+    );
+  }
+
   return providers;
 }
 
