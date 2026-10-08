@@ -13,7 +13,12 @@ export default defineConfig({
     pool: "forks",
     maxWorkers: 1,
     fileParallelism: false,
-    testTimeout: 30_000,
+    // Load-sensitive wait-loop tests (queue runner, REST execution streams)
+    // flake on slower machines when the whole suite shares one fork: each
+    // 30s+ failure observed was a waitFor timeout under load, not a logic
+    // regression. A generous ceiling keeps the wait loops meaningful (they
+    // still fail on real hangs) without punishing loaded environments.
+    testTimeout: 120_000,
     hookTimeout: 60_000,
     coverage: {
       provider: "v8",
