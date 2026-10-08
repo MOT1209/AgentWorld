@@ -61,24 +61,85 @@ flowchart TB
 
 ---
 
-## ⚡ Quick start — from zero to a living company in 60 seconds
+## 🚀 Run it — from clone to a living company
+
+Prerequisites: **Node 20.11+** (22 recommended), **npm**, **git**. Nothing
+else — no Docker, no Postgres, no API keys. Storage is SQLite, models run on
+the deterministic `mock` provider, so the whole loop works offline.
 
 ```bash
+# 1. Install and configure (Windows: use `copy` instead of `cp`)
 npm install
-cp .env.example .env          # works as-is — no API keys needed
-npm run db:generate && npm run db:migrate && npm run db:seed
-npm run dev                   # API on :4000
-npm run dev:web               # Dashboard on :5173
+cp .env.example .env          # works as-is — no keys needed
+
+# 2. Let the doctor check your machine (node version, env, client, DB)
+npm run doctor
+
+# 3. Generate the database client
+npm run db:generate
+
+# 4. Build the database from the migration SQL, in order.
+#    (The Prisma CLI hangs in this repo — never call `prisma migrate`
+#    directly; execute the SQL through the query engine instead.)
+#    macOS / Linux:
+for d in database/migrations/*/; do
+  npx tsx scripts/apply-migration.ts "$(basename "$d")"
+done
+#    Windows PowerShell:
+Get-ChildItem database/migrations -Directory -Name |
+  Where-Object { $_ -notlike "*.toml" } | Sort-Object |
+  ForEach-Object { .\node_modules\.bin\tsx.cmd scripts/apply-migration.ts $_ }
+
+# 5. Seed the world (owner account, company, Ahmad + Rashid, wallets)
+npm run db:seed
+
+# 6. Start the API (terminal 1) and the dashboard (terminal 2)
+npm run dev                   # API on http://localhost:4000
+npm run dev:web               # Dashboard on http://localhost:5173
 ```
 
-Then meet **Ahmad** (the Planner) and **Rashid** (the Executor) — two seeded
-agents with real wallets, memories, jobs, and a pending approval waiting for
-you on the dashboard. Talk to one. Watch it plan, delegate, spend, and report.
+Then open the dashboard and sign in with the seeded owner account:
 
-Runs end to end with **zero API keys** via the deterministic `mock` provider.
-Plug in a real vendor only when you want real model reasoning — switching is a
-database `UPDATE`, never a deployment. `GET /integrations/providers` shows all
+| Field | Default (from `.env.example`) |
+|-------|-------------------------------|
+| Email | `king@kingworld.local` |
+| Password | `KingWorld!2026` |
+
+(Change both via `SEED_OWNER_*` before any shared/production use. In
+production `JWT_SECRET` must also be replaced — the server refuses to boot
+otherwise.)
+
+**Your first five minutes.** Meet **Ahmad** (the Planner) and **Rashid**
+(the Executor) — two seeded agents with real wallets, memories, jobs, and a
+pending approval waiting for you. Talk to one in *Communication*. Watch it
+plan, delegate, spend, and report. Then open the *Factory* tab, paste any
+public GitHub URL, and advance the run stage by stage: analyze → plan →
+build → test → review → PR → approve → merge. Plug in a real vendor only
+when you want real model reasoning — `GET /integrations/providers` shows all
 20 catalogued vendors and exactly which env change enables each one.
+Switching is a database `UPDATE`, never a deployment.
+
+**Everyday commands.**
+
+| Command | What it does |
+|---------|--------------|
+| `npm run verify` | the one command to trust: typecheck → lint → test → build |
+| `npm run doctor` | environment health check with exact fix hints |
+| `npm run check:docs` | README tool/model counts match the tree |
+| `.\node_modules\.bin\vitest.cmd run <file>` | run one test file (never bare `npx` here — it hangs) |
+| `npm run db:seed` | re-seed (idempotent, safe to re-run) |
+
+**Troubleshooting.**
+
+| Symptom | Fix |
+|---------|-----|
+| `prisma --version` / `prisma migrate` hangs | Expected here — use `npm run db:generate` + `scripts/apply-migration.ts`, never the CLI |
+| `npx …` hangs | Call binaries directly: `.\node_modules\.bin\vitest.cmd`, `.\node_modules\.bin\tsx.cmd` |
+| `EADDRINUSE :4000` / `:5173` | Another server holds the port — stop it or set `PORT=` / `VITE_API_BASE_URL=` |
+| `SQLITE_BUSY` / locked DB | Stop other servers/tests; test DBs are per-process (`test-<pid>.db`), `dev.db` is yours alone |
+| Want a clean database | Delete `dev.db*`, re-apply the migrations (step 4), re-seed (step 5) |
+| Dashboard can't reach the API | `VITE_API_BASE_URL` defaults to `http://localhost:4000/api/v1` — set it only if the API moved |
+| Path with spaces fails (Windows) | Quote it: `Set-Location -LiteralPath "alle folder von code\AgentWorld"` or pass `-workdir` explicitly |
 
 ---
 
@@ -257,7 +318,7 @@ Auth → RBAC → ToolExecutor → Audit gauntlet. MCP never bypasses it.
 
 | Area | What lives there |
 |------|------------------|
-| `apps/api` | Express REST (`/api/v1`, 28 route files): JWT auth, RBAC, approval replay, agent wakeup, simulation control + SSE stream |
+| `apps/api` | Express REST (`/api/v1`, 29 route files): JWT auth, RBAC, approval replay, agent wakeup, simulation control + SSE stream |
 | `apps/web` | React + Tailwind operator dashboard — Simulation (three.js), World, Company, Agents, Performance,
 Tasks, Plans, Sessions, Workspaces, Executions, **Factory, Testing, Integrations**, Escalations, Skills,
 Communication, Economy, Approvals, Activity |
