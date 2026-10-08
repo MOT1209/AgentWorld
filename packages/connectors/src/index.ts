@@ -4,6 +4,7 @@ export {
   callConnector,
   marketplaceCatalog,
   type ConnectorDescriptor,
+  type ConnectorSecurityMetadata,
   type ConnectorAction,
   type ConnectorCallInput,
   type ConnectorCallContext,

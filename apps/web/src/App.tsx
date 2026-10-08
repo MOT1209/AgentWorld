@@ -10,8 +10,9 @@ const SkillsView = lazy(() =>
   import("./SkillsView.js").then((m) => ({ default: m.SkillsView })),
 );
 import { ExecutionsView, WorkspacesView } from "./ExecutionView.js";
+import { FactoryView, TestingView, IntegrationsView } from "./FactoryView.js";
 
-type Section = "simulation" | "world" | "company" | "agents" | "tasks" | "chat" | "economy" | "approvals" | "activity" | "plans" | "sessions" | "workspaces" | "executions" | "escalations" | "skills";
+type Section = "simulation" | "world" | "company" | "agents" | "tasks" | "chat" | "economy" | "approvals" | "activity" | "plans" | "sessions" | "workspaces" | "executions" | "escalations" | "skills" | "factory" | "testing" | "integrations";
 
 const SECTIONS: Array<{ key: Section; label: string }> = [
   { key: "simulation", label: "Simulation" },
@@ -23,6 +24,9 @@ const SECTIONS: Array<{ key: Section; label: string }> = [
   { key: "sessions", label: "Sessions" },
   { key: "workspaces", label: "Workspaces" },
   { key: "executions", label: "Executions" },
+  { key: "factory", label: "Factory" },
+  { key: "testing", label: "Testing" },
+  { key: "integrations", label: "Integrations" },
   { key: "escalations", label: "Escalations" },
   { key: "skills", label: "Skills" },
   { key: "chat", label: "Communication" },
@@ -308,6 +312,9 @@ export default function App(): JSX.Element {
         )}
         {section === "workspaces" && <WorkspacesView />}
         {section === "executions" && <ExecutionsView />}
+        {section === "factory" && <FactoryView />}
+        {section === "testing" && <TestingView />}
+        {section === "integrations" && <IntegrationsView />}
         {section === "escalations" && (
           <Panel title="Escalations awaiting a human" error={escalations.error}>
             <DataTable rows={((escalations.data?.items ?? []) as unknown[]) as Array<Record<string, unknown>>} />

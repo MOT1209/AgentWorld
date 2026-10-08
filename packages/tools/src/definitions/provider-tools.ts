@@ -11,7 +11,7 @@ import { PERMISSIONS } from "../../../security/src/permissions.js";
 import type { ToolDefinition } from "../types.js";
 import { complete, usageSummary } from "../../../ai/src/index.js";
 import { modelRegistry } from "../../../ai/src/index.js";
-import { getProviderRegistry } from "../../../ai/src/index.js";
+import { getProviderRegistry, describeVendorCatalog } from "../../../ai/src/index.js";
 import { SYSTEM_ACTOR, actorSystem } from "../../../shared/src/index.js";
 
 export const providerListTool: ToolDefinition<Record<string, never>> = {
@@ -43,6 +43,7 @@ export const providerListTool: ToolDefinition<Record<string, never>> = {
           contextWindow: model.contextWindow,
           available: model.available,
         })),
+        catalog: describeVendorCatalog(),
       },
       summary: `${registry.list().length} providers, ${modelRegistry.list().length} models catalogued`,
     };
@@ -55,6 +56,8 @@ export const providerCompleteTool: ToolDefinition<{
   providerId?: string;
   capability?: string;
   maxTokens?: number;
+  maxCostPer1k?: number;
+  minContextWindow?: number;
 }> = {
   name: "provider.complete",
   description:
@@ -65,6 +68,8 @@ export const providerCompleteTool: ToolDefinition<{
     providerId: z.string().max(60).optional(),
     capability: z.string().max(40).optional(),
     maxTokens: z.number().int().min(16).max(4_096).optional(),
+    maxCostPer1k: z.number().int().min(0).max(1_000_000).optional(),
+    minContextWindow: z.number().int().min(1_024).max(10_000_000).optional(),
   }),
   requiredPermission: PERMISSIONS.PROVIDER_USE,
   risk: "MEDIUM",
@@ -79,6 +84,8 @@ export const providerCompleteTool: ToolDefinition<{
           ...(input.providerId !== undefined ? { providerId: input.providerId } : {}),
           ...(input.modelId !== undefined ? { model: input.modelId } : {}),
           ...(input.capability !== undefined ? { capability: input.capability } : {}),
+          ...(input.maxCostPer1k !== undefined ? { maxCostPer1k: input.maxCostPer1k } : {}),
+          ...(input.minContextWindow !== undefined ? { minContextWindow: input.minContextWindow } : {}),
         },
         agentId: context.agentId ?? null,
         companyId: context.companyId ?? null,

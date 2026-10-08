@@ -8,6 +8,7 @@
  * only -- the ledger owns any actual money movement.
  */
 import { validationError } from "../../shared/src/index.js";
+import { VENDOR_MODELS } from "./providers/catalog.js";
 
 export const MODEL_CAPABILITIES = [
   "chat",
@@ -94,10 +95,28 @@ export const BUILT_IN_MODELS: ModelEntry[] = [
   entry("local", "qwen2.5-coder", "Qwen 2.5 Coder (local)", ["chat", "tools", "structured"], 128_000, 0, 0),
 ];
 
+/** Vendor catalog entries as registry rows. `available` starts false and is
+ *  refreshed from the live provider registry at query time, so every vendor
+ *  reports unavailable until its adapter is genuinely configured. */
+function vendorModelEntries(): ModelEntry[] {
+  return VENDOR_MODELS.map((model) =>
+    entry(
+      model.vendorId,
+      model.modelId,
+      model.displayName,
+      [...model.capabilities] as ModelCapability[],
+      model.contextWindow,
+      model.inputCostPer1k,
+      model.outputCostPer1k,
+      false,
+    ),
+  );
+}
+
 export class ModelRegistry {
   private readonly models = new Map<string, ModelEntry>();
 
-  constructor(entries: ModelEntry[] = BUILT_IN_MODELS) {
+  constructor(entries: ModelEntry[] = [...BUILT_IN_MODELS, ...vendorModelEntries()]) {
     for (const model of entries) this.register(model);
   }
 

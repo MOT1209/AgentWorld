@@ -162,6 +162,8 @@ export const EVENT_TYPES = {
   MCP_REQUEST: "MCP_REQUEST",
   MCP_DENIED: "MCP_DENIED",
   TEST_RUN_RECORDED: "TEST_RUN_RECORDED",
+  FACTORY_REVIEW_RECORDED: "FACTORY_REVIEW_RECORDED",
+  FACTORY_DEPLOY_RECORDED: "FACTORY_DEPLOY_RECORDED",
   FACTORY_RUN_STARTED: "FACTORY_RUN_STARTED",
   FACTORY_STAGE_ADVANCED: "FACTORY_STAGE_ADVANCED",
   FACTORY_RUN_FINISHED: "FACTORY_RUN_FINISHED",
@@ -413,6 +415,8 @@ export interface EventPayloadMap {
   FACTORY_STAGE_ADVANCED: { factoryRunId: string; fromStage: string; toStage: string };
   FACTORY_RUN_FINISHED: { factoryRunId: string; status: string; fixAttempts: number };
   FACTORY_APPROVAL_REQUIRED: { factoryRunId: string; repoUrl: string; reason: string };
+  FACTORY_REVIEW_RECORDED: { factoryRunId: string; passed: boolean; failedChecks: string[] };
+  FACTORY_DEPLOY_RECORDED: { factoryRunId: string; deploymentId: string; target: string; status: string };
 }
 
 export type EventPayload<T extends EventType = EventType> = EventPayloadMap[T];

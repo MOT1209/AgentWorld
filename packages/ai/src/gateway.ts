@@ -161,8 +161,11 @@ function candidatesFor(request: GatewayRequest): Array<{ providerId?: string; mo
   const registry = getProviderRegistry();
   // Rank fallback candidates by the registry: cheapest-capable first, mock
   // last (a scripted stand-in is a last resort, not a peer).
+  const contextNeed = routing.minContextWindow ?? routing.estimatedTokens;
   const query: ModelQuery = {
     ...(routing.capability !== undefined ? { capabilities: capabilityList(routing.capability) } : {}),
+    ...(routing.maxCostPer1k !== undefined ? { maxCostPer1k: routing.maxCostPer1k } : {}),
+    ...(contextNeed !== undefined ? { minContextWindow: contextNeed } : {}),
   };
   const ranked = modelRegistry
     .list(query)

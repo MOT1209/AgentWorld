@@ -17,6 +17,8 @@ import { validationError } from "../../../../packages/shared/src/index.js";
 export const testingRouter: Router = Router();
 testingRouter.use(authenticate);
 
+const SELF_CONTAINED_SUITES = ["BROWSER", "MOBILE", "SECURITY", "PERFORMANCE"] as const;
+
 const RunSchema = z
   .object({
     workspaceId: z.string().max(100).optional(),
@@ -26,9 +28,15 @@ const RunSchema = z
     command: z.array(z.string().max(200)).max(20).optional(),
     url: z.string().max(500).optional(),
   })
-  .refine((input) => input.command !== undefined || input.url !== undefined, {
-    message: "Either command or url is required",
-  });
+  .refine(
+    (input) =>
+      input.command !== undefined ||
+      input.url !== undefined ||
+      (input.suite !== undefined && (SELF_CONTAINED_SUITES as readonly string[]).includes(input.suite)),
+    {
+      message: "Either command or url is required (BROWSER/MOBILE/SECURITY/PERFORMANCE suites may run without one)",
+    },
+  );
 
 testingRouter.post(
   "/run",
@@ -37,13 +45,25 @@ testingRouter.post(
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const body = req.body as z.infer<typeof RunSchema>;
+      const impliedAdapter = body.command !== undefined
+        ? ("command" as const)
+        : body.url !== undefined
+          ? ("http" as const)
+          : body.suite === "BROWSER"
+            ? ("browser" as const)
+            : body.suite === "MOBILE"
+              ? ("mobile" as const)
+              : body.suite === "SECURITY"
+                ? ("security" as const)
+                : ("performance" as const);
       const run = await runTestSuite(prisma, {
         ...(body.workspaceId !== undefined ? { workspaceId: body.workspaceId } : {}),
         ...(body.taskId !== undefined ? { taskId: body.taskId } : {}),
         ...(body.name !== undefined ? { name: body.name } : {}),
         ...(body.suite !== undefined ? { suite: body.suite } : {}),
-        ...(body.command !== undefined ? { argv: body.command, adapter: "command" as const } : {}),
-        ...(body.url !== undefined ? { url: body.url, adapter: "http" as const } : {}),
+        adapter: impliedAdapter,
+        ...(body.command !== undefined ? { argv: body.command } : {}),
+        ...(body.url !== undefined ? { url: body.url } : {}),
       });
       res.status(202).json({
         data: { testRunId: run.id, status: run.status, executionId: run.executionId },
@@ -61,10 +81,13 @@ testingRouter.get(
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const q = req.query as Record<string, string | undefined>;
+      const limit = q.limit !== undefined ? Number(q.limit) : undefined;
       const runs = await listTestRuns(prisma, {
         ...(q.taskId !== undefined ? { taskId: q.taskId } : {}),
         ...(q.workspaceId !== undefined ? { workspaceId: q.workspaceId } : {}),
         ...(q.suite !== undefined ? { suite: q.suite } : {}),
+        ...(q.cursor !== undefined ? { cursor: q.cursor } : {}),
+        ...(limit !== undefined && Number.isFinite(limit) ? { limit } : {}),
       });
       res.json({
         data: runs.map((run) => ({
@@ -77,6 +100,7 @@ testingRouter.get(
           durationMs: run.durationMs,
           createdAt: run.createdAt,
         })),
+        nextCursor: runs.length > 0 ? runs[runs.length - 1]?.id ?? null : null,
         correlationId: getCorrelationId(req),
       });
     } catch (error) {

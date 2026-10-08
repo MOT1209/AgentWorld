@@ -19,6 +19,7 @@
  * dials it through the normal `AIProvider.complete` path.
  */
 import { notFound, serviceUnavailable } from "../../shared/src/index.js";
+import { modelRegistry } from "./model-registry.js";
 import { getProviderRegistry, type ProviderRegistry } from "./registry.js";
 import type { ProviderKind } from "./types.js";
 
@@ -33,6 +34,12 @@ export interface ModelRequest {
   taskType?: string;
   latency?: LatencyProfile;
   reasoning?: boolean;
+  /** Maximum acceptable input+output estimate per call, minor units per 1k tokens. */
+  maxCostPer1k?: number;
+  /** Minimum context window the serving model must offer. */
+  minContextWindow?: number;
+  /** Estimated prompt size; providers whose default model cannot fit it are skipped. */
+  estimatedTokens?: number;
 }
 
 export interface ModelRoute {
@@ -69,6 +76,32 @@ function wantsCoding(request: ModelRequest): boolean {
   return false;
 }
 
+/** True when the request carries budget or context constraints. */
+function hasRoutingConstraints(request: ModelRequest): boolean {
+  return request.maxCostPer1k !== undefined ||
+    request.minContextWindow !== undefined ||
+    request.estimatedTokens !== undefined;
+}
+
+/**
+ * Cheapest model on a provider satisfying the request's budget and context
+ * constraints. Null when nothing qualifies, so the caller skips the
+ * provider instead of routing to a model that cannot do the work.
+ */
+function bestModelFor(providerId: string, request: ModelRequest): string | null {
+  const needsContext = request.minContextWindow ?? request.estimatedTokens;
+  const matches = modelRegistry.list({
+    providerId,
+    ...(request.maxCostPer1k !== undefined ? { maxCostPer1k: request.maxCostPer1k } : {}),
+    ...(needsContext !== undefined ? { minContextWindow: needsContext } : {}),
+  });
+  if (matches.length === 0) return null;
+  const cheapest = matches.sort(
+    (a, b) => a.inputCostPer1k + a.outputCostPer1k - (b.inputCostPer1k + b.outputCostPer1k),
+  )[0];
+  return cheapest?.modelId ?? null;
+}
+
 export function routeModel(request: ModelRequest, registry: ProviderRegistry = getProviderRegistry()): ModelRoute {
   // 1. Explicit provider: validate, never silently substitute.
   if (request.providerId !== undefined) {
@@ -92,18 +125,22 @@ export function routeModel(request: ModelRequest, registry: ProviderRegistry = g
     return { providerId: serving.id, model: request.model, reason: "model-match", fallback: false };
   }
 
-  // 2. Ranked classes.
+  // 2. Ranked classes, honouring budget and context constraints. A provider
+  //    whose models cannot satisfy the constraints is skipped, never forced.
   const ranking = wantsReasoning(request) ? REASONING_KINDS : wantsCoding(request) ? CODING_KINDS : null;
   if (ranking !== null) {
     for (const kind of ranking) {
       const match = available.find((descriptor) => descriptor.kind === kind);
       if (match !== undefined) {
-        return {
-          providerId: match.id,
-          model: match.defaultModel,
-          reason: wantsReasoning(request) ? "reasoning-rank" : "coding-rank",
-          fallback: false,
-        };
+        const model = hasRoutingConstraints(request) ? bestModelFor(match.id, request) : match.defaultModel;
+        if (model !== null) {
+          return {
+            providerId: match.id,
+            model,
+            reason: wantsReasoning(request) ? "reasoning-rank" : "coding-rank",
+            fallback: false,
+          };
+        }
       }
     }
   }

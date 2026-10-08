@@ -115,6 +115,65 @@ them (single ledger, single ToolExecutor, single event bus).
   `verifyLedger` + treasury reconciliation; emits events + audit rows, alert
   row/escalation on imbalance, dashboard/REST status surface
 
+## Phase 11: AI platform + Software Factory (Agent 2)
+
+Delivered on top of Phases 1-5 without duplicating their systems (single
+ledger, single ToolExecutor, single event bus, existing workspace/execution
+runtime).
+
+- AI provider catalog: 20 vendors declared as data (`VENDOR_CATALOG`);
+  unconfigured vendors report `configured: false` with the exact env change
+  that enables them — never faked as working. Vendor model entries are
+  advisory and unavailable until their adapter is genuinely configured.
+- Model routing by capability, task type, context size, cost budget and
+  availability (`maxCostPer1k`, `minContextWindow`, `estimatedTokens` on
+  routing requests, tools and the gateway; cheapest qualifying model wins).
+- Connector marketplace metadata (version, category, capabilities, required
+  scopes, security posture) plus transports: GraphQL (real), outbound
+  webhook (real, SSRF-guarded, never forwards credentials), and honest
+  unavailable bridges for CLI / database / external-MCP / WebSocket (calls
+  fail loudly, nothing reaches the network).
+- MCP: 21 tools (agents, companies, projects, tasks, memory, testing,
+  world, economy, factory, providers, models, connectors, webhooks,
+  approvals, sessions, workspaces, plans) and 10 resources, all scoped and
+  audited; MCP never bypasses AgentWorld security.
+- TestingEngine adapters: browser (command or probe, else simulated ERROR),
+  mobile (command or simulated ERROR — device results never faked),
+  security (real in-process self-checks), performance (real latency probes
+  stored historically), testerarmy (reserved honest ERROR).
+- Factory intelligence: managed-project view with lifecycle mapping
+  (DISCOVERING..DEPLOYED), team suggestions (suggest-only; assignment stays
+  with delegation), bounded failure analysis + single fix-task creation,
+  pre-PR review gate (recorded, never opens the PR), deployment adapters
+  (custom executes for real; others BLOCKED with the missing piece named;
+  rollback only with a recorded command). New events:
+  FACTORY_REVIEW_RECORDED, FACTORY_DEPLOY_RECORDED.
+- Public API: cursor pagination (`cursor`/`limit`/`nextCursor`) on factory
+  and testing run lists; new factory endpoints (project, team, failure,
+  fix-task, review, deploy, deployments, rollback); providers endpoint
+  includes the vendor catalog; connectors endpoint includes full metadata.
+- Agent tools: `factory.project`, `factory.team.suggest`,
+  `factory.failure.analyze`, `factory.fix`, `factory.review`,
+  `factory.deploy`, `provider.list` (with catalog), `provider.complete`
+  (budget/context routing), `testing.run` (suite-only QA runs).
+- Dashboard: Factory (runs, lifecycle, tests, review, PR, deployments,
+  stage actions), Testing (queue + history), Integrations (provider
+  catalog, connector marketplace).
+- Docs: `docs/FACTORY.md` (operator contract), `docs/API.md` (new
+  endpoints), this roadmap entry.
+- Tests: `tests/factory-platform.test.ts` (catalog, routing, transports,
+  MCP, QA adapters, factory intelligence).
+
+Remaining (genuine limitations, not roadmap debt):
+
+- Deployments live on the run record + events; a dedicated Deployment table
+  (relations, indexes, SQL history) is the next schema step when needed.
+- No bundled adapters for Bedrock/Vertex native APIs, external MCP clients,
+  WebSocket feeds, or device farms: all are represented as unavailable with
+  explicit enable paths, never faked.
+- Browser QA runs commands/probes but drives no real browser session yet;
+  a Playwright-backed runner is the next QA step.
+
 ## Deferred beyond Phase 10
 
 - Postgres migration (`enum`, `jsonb`, `numeric(19,4)`), BigInt money —

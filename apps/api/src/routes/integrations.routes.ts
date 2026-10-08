@@ -14,7 +14,7 @@ import { validate } from "../middleware/validate.js";
 import { PERMISSIONS } from "../../../../packages/security/src/permissions.js";
 import { principalToActor } from "../../../../packages/security/src/rbac.js";
 import { getCorrelationId } from "../middleware/correlation.js";
-import { getProviderRegistry, modelRegistry, usageSummary } from "../../../../packages/ai/src/index.js";
+import { getProviderRegistry, modelRegistry, usageSummary, describeVendorCatalog } from "../../../../packages/ai/src/index.js";
 import {
   createCredential,
   listCredentials,
@@ -58,7 +58,7 @@ integrationsRouter.get(
       kind: d.kind,
       configured: d.configured,
     }));
-    res.json({ data: { providers: descriptors }, correlationId: getCorrelationId(_req) });
+    res.json({ data: { providers: descriptors, catalog: describeVendorCatalog() }, correlationId: getCorrelationId(_req) });
   },
 );
 
@@ -209,10 +209,16 @@ integrationsRouter.get(
         connectors: marketplaceCatalog().map((descriptor) => ({
           slug: descriptor.slug,
           displayName: descriptor.displayName,
+          version: descriptor.version,
+          category: descriptor.category,
+          provider: descriptor.provider,
           kind: descriptor.kind,
           auth: descriptor.auth,
           description: descriptor.description,
           actions: descriptor.actions,
+          capabilities: descriptor.capabilities,
+          requiredScopes: descriptor.requiredScopes,
+          security: descriptor.security,
           setupNotes: descriptor.setupNotes ?? null,
         })),
       },

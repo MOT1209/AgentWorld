@@ -18,7 +18,7 @@
   <img src="https://img.shields.io/badge/Phase_1-complete-brightgreen" alt="Phase 1 complete" />
   <img src="https://img.shields.io/badge/Phase_2-complete-brightgreen" alt="Phase 2 complete" />
   <img src="https://img.shields.io/badge/Phase_3-execution_runtime_landed-blue" alt="Phase 3 execution runtime landed" />
-  <img src="https://img.shields.io/badge/tests-149_passing-brightgreen" alt="149 tests passing" />
+  <img src="https://img.shields.io/badge/tests-253_passing-brightgreen" alt="253 tests passing" />
   <img src="https://img.shields.io/badge/verify-typecheck_%E2%80%A2_lint_%E2%80%A2_test_%E2%80%A2_build-blue" alt="verify pipeline" />
   <img src="https://img.shields.io/badge/keys-zero_required-black" alt="zero API keys needed" />
 </p>
@@ -38,7 +38,7 @@ flowchart TB
         WS[Workspace]
         RUN[AgentRuntime]
         AI[AI Provider]
-        TOOLS[70 tools]
+        TOOLS[72 tools]
     end
     WORLD --> AGENT --> TASK --> WS --> RUN --> AI --> TOOLS
     TOOLS -->|result| TASK
@@ -118,7 +118,7 @@ human message ──▶ wakeup ──▶ THINKING ──▶ act (tools) ──�
 - Every run writes episodic + fact + obligation memories, so the next turn
   has continuity — and pending approvals are remembered, not retried.
 
-**70 tools** across tasks, messages, memory, wallets, world, company, events,
+**72 tools** across tasks, messages, memory, wallets, world, company, events,
 approvals, plans, reviews, reports, escalations, sessions, workspaces, files,
 terminal, git, executions, and skills.
 
@@ -139,8 +139,8 @@ terminal, git, executions, and skills.
 | `packages/execution` | Phase 3 execution runtime — `ExecutionBackend` (mock/local/OpenCode), guarded idempotent queue, non-blocking worker, spooled output, orphan recovery, verification pipeline |
 | `packages/skills` | external skill manifests — trust, security analysis, prompt-injection screening, installer, lockfile |
 | `database/` | Prisma SQLite schema (46 models) + migrations + idempotent `seed.ts` |
-| `tests/` | 17 suites, **161 tests** (149 passing, 12 Docker-sandbox tests skipped when Docker is absent) — finance races, ledger proofs, review loops, permissions, API, simulation, sandbox |
-| `docs/` | `ARCHITECTURE` · `SIMULATION_ENGINE` · `SECURITY` · `API` · `ROADMAP` · `AGENTWORLD_PHASE_3_ARCHITECTURE` · `PHASE3-AUDIT` |
+| `tests/` | 28 suites, **268 tests** (253 passing, 15 environment-gated skips when Docker/CLI runtimes are absent) — finance races, ledger proofs, review loops, permissions, API, simulation, sandbox, AI platform, factory, QA |
+| `docs/` | `ARCHITECTURE` · `SIMULATION_ENGINE` · `SECURITY` · `API` · `ROADMAP` · `FACTORY` · `AGENTWORLD_PHASE_3_ARCHITECTURE` · `PHASE3-AUDIT` |
 
 ---
 

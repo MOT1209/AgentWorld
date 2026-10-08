@@ -229,6 +229,175 @@ export const MCP_TOOLS: McpToolDefinition[] = [
       return { wallets, transactions };
     },
   },
+  {
+    name: "factory.list_runs",
+    description: "List Software Factory runs (id, repo, stage).",
+    requiredScope: PERMISSIONS.FACTORY_READ,
+    inputSchema: jsonSchema({ companyId: { type: "string" } }),
+    async run(db, _auth, args) {
+      const companyId = id(args.companyId);
+      const runs = await db.factoryRun.findMany({
+        where: companyId !== null ? { companyId } : undefined,
+        select: { id: true, repoUrl: true, currentStage: true, status: true, createdAt: true },
+        orderBy: { createdAt: "desc" },
+        take: 50,
+      });
+      return { runs };
+    },
+  },
+  {
+    name: "factory.get_run",
+    description: "Get a factory run's stage, stats and PR state (no code contents).",
+    requiredScope: PERMISSIONS.FACTORY_READ,
+    inputSchema: jsonSchema({ factoryRunId: { type: "string" } }, ["factoryRunId"]),
+    async run(db, _auth, args) {
+      const factoryRunId = id(args.factoryRunId);
+      if (factoryRunId === null) throw new Error("factoryRunId is required");
+      const run = await db.factoryRun.findUnique({
+        where: { id: factoryRunId },
+        select: { id: true, repoUrl: true, currentStage: true, status: true, stats: true, github: true, createdAt: true, updatedAt: true },
+      });
+      return { run };
+    },
+  },
+  {
+    name: "providers.list",
+    description: "List AI providers with configured flags plus the full vendor catalog (unavailable vendors included, honestly marked).",
+    requiredScope: PERMISSIONS.PROVIDER_READ,
+    inputSchema: jsonSchema({}),
+    async run() {
+      const { getProviderRegistry, describeVendorCatalog } = await import("../../ai/src/index.js");
+      const live = getProviderRegistry().list();
+      return { providers: live, catalog: describeVendorCatalog() };
+    },
+  },
+  {
+    name: "models.list",
+    description: "List known models with capabilities and availability (unavailable models included, honestly marked).",
+    requiredScope: PERMISSIONS.PROVIDER_READ,
+    inputSchema: jsonSchema({ providerId: { type: "string" }, capability: { type: "string" } }),
+    async run(_db, _auth, args) {
+      const { getProviderRegistry, modelRegistry } = await import("../../ai/src/index.js");
+      const registry = getProviderRegistry();
+      modelRegistry.refreshAvailability(
+        new Set(registry.list().filter((d) => d.configured).map((d) => d.id)),
+      );
+      const providerId = id(args.providerId);
+      const capability = typeof args.capability === "string" && args.capability !== "" ? args.capability : undefined;
+      return {
+        models: modelRegistry.list({
+          ...(providerId !== null ? { providerId } : {}),
+          ...(capability !== undefined ? { capabilities: [capability] } : {}),
+        }).map((model) => ({
+          providerId: model.providerId,
+          modelId: model.modelId,
+          displayName: model.displayName,
+          capabilities: model.capabilities,
+          contextWindow: model.contextWindow,
+          available: model.available,
+        })),
+      };
+    },
+  },
+  {
+    name: "connectors.list",
+    description: "List the connector marketplace (metadata only, never secrets).",
+    requiredScope: PERMISSIONS.CONNECTOR_READ,
+    inputSchema: jsonSchema({}),
+    async run() {
+      const { marketplaceCatalog } = await import("../../connectors/src/index.js");
+      return {
+        connectors: marketplaceCatalog().map((descriptor) => ({
+          slug: descriptor.slug,
+          displayName: descriptor.displayName,
+          version: descriptor.version,
+          category: descriptor.category,
+          kind: descriptor.kind,
+          auth: descriptor.auth,
+          description: descriptor.description,
+          actions: descriptor.actions.map((action) => action.name),
+          capabilities: descriptor.capabilities,
+          setupNotes: descriptor.setupNotes ?? null,
+        })),
+      };
+    },
+  },
+  {
+    name: "webhooks.list",
+    description: "List webhook subscriptions (metadata only, never signing secrets).",
+    requiredScope: PERMISSIONS.WEBHOOK_READ,
+    inputSchema: jsonSchema({}),
+    async run(db) {
+      const rows = await db.webhookSubscription.findMany({
+        select: { id: true, url: true, events: true, status: true, failureCount: true, createdAt: true },
+        orderBy: { createdAt: "desc" },
+        take: 50,
+      });
+      return { subscriptions: rows };
+    },
+  },
+  {
+    name: "approvals.list",
+    description: "List approval requests (pending first).",
+    requiredScope: PERMISSIONS.APPROVAL_READ,
+    inputSchema: jsonSchema({ status: { type: "string" } }),
+    async run(db, _auth, args) {
+      const status = typeof args.status === "string" && args.status !== "" ? args.status : "PENDING";
+      const approvals = await db.approvalRequest.findMany({
+        where: { status },
+        select: { id: true, action: true, risk: true, status: true, reason: true, createdAt: true },
+        orderBy: { createdAt: "desc" },
+        take: 50,
+      });
+      return { approvals };
+    },
+  },
+  {
+    name: "sessions.list",
+    description: "List agent sessions (observability records, not model contexts).",
+    requiredScope: PERMISSIONS.SESSION_READ,
+    inputSchema: jsonSchema({ agentId: { type: "string" } }),
+    async run(db, _auth, args) {
+      const agentId = id(args.agentId);
+      const sessions = await db.agentSession.findMany({
+        where: agentId !== null ? { agentId } : undefined,
+        select: { id: true, agentId: true, status: true, providerId: true, model: true, startedAt: true },
+        orderBy: { startedAt: "desc" },
+        take: 50,
+      });
+      return { sessions };
+    },
+  },
+  {
+    name: "workspaces.list",
+    description: "List workspaces (id, name, status).",
+    requiredScope: PERMISSIONS.WORKSPACE_READ,
+    inputSchema: jsonSchema({}),
+    async run(db) {
+      const workspaces = await db.workspace.findMany({
+        select: { id: true, name: true, status: true, createdAt: true },
+        orderBy: { createdAt: "desc" },
+        take: 50,
+      });
+      return { workspaces };
+    },
+  },
+  {
+    name: "plans.list",
+    description: "List plans (id, title, status).",
+    requiredScope: PERMISSIONS.PLAN_READ,
+    inputSchema: jsonSchema({ companyId: { type: "string" } }),
+    async run(db, _auth, args) {
+      const companyId = id(args.companyId);
+      const plans = await db.plan.findMany({
+        where: companyId !== null ? { companyId } : undefined,
+        select: { id: true, title: true, status: true, createdAt: true },
+        orderBy: { createdAt: "desc" },
+        take: 50,
+      });
+      return { plans };
+    },
+  },
 ];
 
 // =============================================================================
@@ -302,6 +471,71 @@ export const MCP_RESOURCES: McpResourceDefinition[] = [
     async read(db) {
       const worlds = await db.world.findMany({ select: { id: true, name: true, status: true }, take: 10 });
       return { worlds };
+    },
+  },
+  {
+    uriPattern: /^factory:\/\/(.+)$/,
+    description: "Stage, stats and PR state of one factory run.",
+    requiredScope: PERMISSIONS.FACTORY_READ,
+    async read(db, _auth, match) {
+      const runId = match[1] ?? "";
+      const run = await db.factoryRun.findUnique({
+        where: { id: runId },
+        select: { id: true, repoUrl: true, currentStage: true, status: true, stats: true, github: true },
+      });
+      return run;
+    },
+  },
+  {
+    uriPattern: /^approval:\/\/(.+)$/,
+    description: "Public record of one approval request.",
+    requiredScope: PERMISSIONS.APPROVAL_READ,
+    async read(db, _auth, match) {
+      const approvalId = match[1] ?? "";
+      const approval = await db.approvalRequest.findUnique({
+        where: { id: approvalId },
+        select: { id: true, action: true, risk: true, status: true, reason: true, createdAt: true },
+      });
+      return approval;
+    },
+  },
+  {
+    uriPattern: /^workspace:\/\/(.+)$/,
+    description: "Public record of one workspace.",
+    requiredScope: PERMISSIONS.WORKSPACE_READ,
+    async read(db, _auth, match) {
+      const workspaceId = match[1] ?? "";
+      const workspace = await db.workspace.findUnique({
+        where: { id: workspaceId },
+        select: { id: true, name: true, status: true, createdAt: true },
+      });
+      return workspace;
+    },
+  },
+  {
+    uriPattern: /^plan:\/\/(.+)$/,
+    description: "Public record of one plan.",
+    requiredScope: PERMISSIONS.PLAN_READ,
+    async read(db, _auth, match) {
+      const planId = match[1] ?? "";
+      const plan = await db.plan.findUnique({
+        where: { id: planId },
+        select: { id: true, title: true, objective: true, status: true, createdAt: true },
+      });
+      return plan;
+    },
+  },
+  {
+    uriPattern: /^session:\/\/(.+)$/,
+    description: "Observability record of one agent session.",
+    requiredScope: PERMISSIONS.SESSION_READ,
+    async read(db, _auth, match) {
+      const sessionId = match[1] ?? "";
+      const session = await db.agentSession.findUnique({
+        where: { id: sessionId },
+        select: { id: true, agentId: true, status: true, providerId: true, model: true, startedAt: true },
+      });
+      return session;
     },
   },
 ];

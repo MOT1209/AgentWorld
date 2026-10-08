@@ -153,4 +153,162 @@ export const factoryMergeTool: ToolDefinition<{ factoryRunId: string }> = {
   },
 };
 
-export const factoryTools = [factoryStartTool, factoryAdvanceTool, factoryGetTool, factoryListTool, factoryMergeTool];
+export const factoryProjectTool: ToolDefinition<{ factoryRunId: string }> = {
+  name: "factory.project",
+  description: "Managed-project view of a factory run: lifecycle state, team, task, tests, review verdict, pull request and deployments in one object.",
+  inputSchema: z.object({ factoryRunId: z.string().max(100) }),
+  requiredPermission: PERMISSIONS.FACTORY_READ,
+  risk: "LOW",
+  async execute(context, input) {
+    const { getProjectStatus } = await import("../../../factory/src/index.js");
+    const project = await getProjectStatus(context.db, input.factoryRunId);
+    return {
+      data: project,
+      summary: `Factory run ${project.factoryRunId}: ${project.lifecycle} (${project.stage})`,
+    };
+  },
+};
+
+export const factoryTeamTool: ToolDefinition<{
+  factoryRunId: string;
+  requiredSkills?: string[];
+  taskType?: string;
+  limit?: number;
+}> = {
+  name: "factory.team.suggest",
+  description: "Suggest agents for factory work by skills, availability, workload and reputation. Suggestion only -- assignment stays with the delegation engine.",
+  inputSchema: z.object({
+    factoryRunId: z.string().max(100),
+    requiredSkills: z.array(z.string().max(60)).max(20).optional(),
+    taskType: z.string().max(30).optional(),
+    limit: z.number().int().min(1).max(20).optional(),
+  }),
+  requiredPermission: PERMISSIONS.FACTORY_RUN,
+  risk: "LOW",
+  async execute(context, input) {
+    const { suggestTeam } = await import("../../../factory/src/index.js");
+    const { toJson } = await import("../../../shared/src/index.js");
+    const suggestion = await suggestTeam(context.db, {
+      ...(input.requiredSkills !== undefined ? { requiredSkills: input.requiredSkills } : {}),
+      ...(input.taskType !== undefined ? { taskType: input.taskType } : {}),
+      ...(input.limit !== undefined ? { limit: input.limit } : {}),
+    });
+    const run = await context.db.factoryRun.findUnique({ where: { id: input.factoryRunId } });
+    if (run === null) throw new Error(`FactoryRun '${input.factoryRunId}' not found`);
+    await context.db.factoryRun.update({
+      where: { id: run.id },
+      data: { github: toJson({ ...inspect(run.github), team: { candidates: suggestion.candidates, at: new Date().toISOString() } }) },
+    });
+    return {
+      data: suggestion,
+      summary: suggestion.candidates.length > 0
+        ? `Top candidate: ${suggestion.candidates[0]?.name} (${suggestion.candidates[0]?.roleKey})`
+        : "No candidates available",
+    };
+  },
+};
+
+export const factoryFailureTool: ToolDefinition<{ factoryRunId: string }> = {
+  name: "factory.failure.analyze",
+  description: "Analyze the latest failure of a factory run: error code, evidence quoted verbatim, fix budget remaining, and a suggested fix task. Read-only.",
+  inputSchema: z.object({ factoryRunId: z.string().max(100) }),
+  requiredPermission: PERMISSIONS.FACTORY_READ,
+  risk: "LOW",
+  async execute(context, input) {
+    const { analyzeFailure } = await import("../../../factory/src/index.js");
+    const analysis = await analyzeFailure(context.db, input.factoryRunId);
+    return { data: analysis, summary: `${analysis.verdict}: ${analysis.safeMessage.slice(0, 160)}` };
+  },
+};
+
+export const factoryFixTool: ToolDefinition<{ factoryRunId: string }> = {
+  name: "factory.fix",
+  description: "Create exactly one fix task from the run's current failure analysis. Refuses when nothing is actionable or the fix budget is exhausted.",
+  inputSchema: z.object({ factoryRunId: z.string().max(100) }),
+  requiredPermission: PERMISSIONS.FACTORY_RUN,
+  risk: "MEDIUM",
+  async execute(context, input) {
+    const { createFixTask } = await import("../../../factory/src/index.js");
+    const result = await createFixTask(context.db, input.factoryRunId, {
+      actor: context.actor,
+      permissions: context.permissions,
+      ...(context.agentId !== undefined ? { agentId: context.agentId } : {}),
+      correlationId: context.correlationId,
+    });
+    return {
+      data: result,
+      summary: `Fix task ${result.taskId} created for run ${input.factoryRunId}`,
+    };
+  },
+};
+
+export const factoryReviewTool: ToolDefinition<{ factoryRunId: string }> = {
+  name: "factory.review",
+  description: "Run the pre-PR review gate (analysis, plan, passing tests, secret hygiene, fix budget, branch). Records the verdict; never opens the PR.",
+  inputSchema: z.object({ factoryRunId: z.string().max(100) }),
+  requiredPermission: PERMISSIONS.FACTORY_RUN,
+  risk: "LOW",
+  async execute(context, input) {
+    const { reviewRun } = await import("../../../factory/src/index.js");
+    const verdict = await reviewRun(context.db, input.factoryRunId, {
+      actor: context.actor,
+      correlationId: context.correlationId,
+    });
+    return {
+      data: verdict,
+      summary: verdict.passed ? "Review gate passed" : `Review gate failed: ${verdict.failedChecks.join(", ")}`,
+    };
+  },
+};
+
+export const factoryDeployTool: ToolDefinition<{
+  factoryRunId: string;
+  target: string;
+  environment?: string;
+  command?: string[];
+  rollbackCommand?: string[];
+}> = {
+  name: "factory.deploy",
+  description: "Record a deployment attempt for a run past the approval gate. Only target custom with an explicit workspace command executes for real; other targets record BLOCKED with the missing piece named. Never claims success without evidence.",
+  inputSchema: z.object({
+    factoryRunId: z.string().max(100),
+    target: z.enum(["vercel", "docker", "cloud", "local", "custom"]),
+    environment: z.string().min(1).max(80).optional(),
+    command: z.array(z.string().max(200)).max(20).optional(),
+    rollbackCommand: z.array(z.string().max(200)).max(20).optional(),
+  }),
+  requiredPermission: PERMISSIONS.FACTORY_RUN,
+  risk: "HIGH",
+  async execute(context, input) {
+    const { deployRun } = await import("../../../factory/src/index.js");
+    const deployment = await deployRun(
+      context.db,
+      input.factoryRunId,
+      {
+        target: input.target as "vercel" | "docker" | "cloud" | "local" | "custom",
+        ...(input.environment !== undefined ? { environment: input.environment } : {}),
+        ...(input.command !== undefined ? { command: input.command } : {}),
+        ...(input.rollbackCommand !== undefined ? { rollbackCommand: input.rollbackCommand } : {}),
+      },
+      { actor: context.actor, correlationId: context.correlationId },
+    );
+    return {
+      data: deployment,
+      summary: `Deployment ${deployment.id} ${deployment.status}${deployment.error !== null ? `: ${deployment.error}` : ""}`,
+    };
+  },
+};
+
+export const factoryTools = [
+  factoryStartTool,
+  factoryAdvanceTool,
+  factoryGetTool,
+  factoryListTool,
+  factoryProjectTool,
+  factoryTeamTool,
+  factoryFailureTool,
+  factoryFixTool,
+  factoryReviewTool,
+  factoryDeployTool,
+  factoryMergeTool,
+];

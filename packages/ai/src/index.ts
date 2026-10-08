@@ -1,6 +1,14 @@
 export * from "./types.js";
 export { zodToJsonSchema, jsonSchemaOf } from "./json-schema.js";
 export { postJson } from "./http.js";
+export {
+  VENDOR_CATALOG,
+  VENDOR_MODELS,
+  describeVendorCatalog,
+  type VendorAdapter,
+  type VendorEntry,
+  type VendorModelEntry,
+} from "./providers/catalog.js";
 export { MockProvider } from "./providers/mock.js";
 export { OpenAiCompatibleProvider } from "./providers/openai-compatible.js";
 export { AnthropicCompatibleProvider } from "./providers/anthropic.js";

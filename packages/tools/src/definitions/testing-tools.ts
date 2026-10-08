@@ -9,8 +9,26 @@ import type { ToolDefinition } from "../types.js";
 import { runTestSuite, listTestRuns, settleTestRunFromExecution } from "../../../factory/src/index.js";
 import { validationError } from "../../../shared/src/index.js";
 
+const SELF_CONTAINED_TOOL_SUITES = ["BROWSER", "MOBILE", "SECURITY", "PERFORMANCE"] as const;
+type QaSuite = (typeof SELF_CONTAINED_TOOL_SUITES)[number] | "UNIT" | "INTEGRATION" | "E2E";
+
+function toolAdapterFor(suite: string | undefined, hasCommand: boolean, hasUrl: boolean): "command" | "http" | "browser" | "mobile" | "security" | "performance" {
+  if (hasCommand) {
+    if (suite === "BROWSER") return "browser";
+    if (suite === "MOBILE") return "mobile";
+    if (suite === "SECURITY") return "security";
+    if (suite === "PERFORMANCE") return "performance";
+    return "command";
+  }
+  if (hasUrl) return "http";
+  if (suite === "BROWSER") return "browser";
+  if (suite === "MOBILE") return "mobile";
+  if (suite === "SECURITY") return "security";
+  return "performance";
+}
+
 export const testingRunTool: ToolDefinition<{
-  workspaceId: string;
+  workspaceId?: string;
   command?: string[];
   url?: string;
   name?: string;
@@ -18,9 +36,9 @@ export const testingRunTool: ToolDefinition<{
 }> = {
   name: "testing.run",
   description:
-    "Queue a test run. Give either command (argv inside the workspace, e.g. [\"npx\",\"vitest\",\"run\"]) or url (HTTP smoke probe). Returns a TestRun id tracked through the execution queue.",
+    "Queue a test run. Give command (argv inside the workspace, e.g. [\"npx\",\"vitest\",\"run\"]) or url (HTTP smoke probe). BROWSER/MOBILE/SECURITY/PERFORMANCE suites may run without either: SECURITY runs platform self-checks, PERFORMANCE measures latency, BROWSER/MOBILE record honest simulated rows when no runner exists.",
   inputSchema: z.object({
-    workspaceId: z.string().max(100),
+    workspaceId: z.string().max(100).optional(),
     command: z.array(z.string().max(200)).max(20).optional(),
     url: z.string().max(500).optional(),
     name: z.string().max(120).optional(),
@@ -29,25 +47,31 @@ export const testingRunTool: ToolDefinition<{
   requiredPermission: PERMISSIONS.TESTING_RUN,
   risk: "MEDIUM",
   async execute(context, input) {
+    const suite = input.suite as QaSuite | undefined;
     if (input.command === undefined && input.url === undefined) {
-      throw validationError("Provide either command or url");
+      if (suite === undefined || !(SELF_CONTAINED_TOOL_SUITES as readonly string[]).includes(suite)) {
+        throw validationError("Provide either command or url (BROWSER/MOBILE/SECURITY/PERFORMANCE suites may run without one)");
+      }
+    }
+    if (input.command !== undefined && input.workspaceId === undefined) {
+      throw validationError("A command run needs a workspaceId");
     }
     const run = await runTestSuite(context.db, {
-      workspaceId: input.workspaceId,
+      ...(input.workspaceId !== undefined ? { workspaceId: input.workspaceId } : {}),
       taskId: null,
       agentId: context.agentId ?? null,
       sessionId: null,
       ...(input.name !== undefined ? { name: input.name } : {}),
-      ...(input.suite !== undefined
-        ? { suite: input.suite as "UNIT" | "INTEGRATION" | "E2E" | "BROWSER" | "MOBILE" | "SECURITY" | "PERFORMANCE" }
+      ...(suite !== undefined
+        ? { suite: suite as "UNIT" | "INTEGRATION" | "E2E" | "BROWSER" | "MOBILE" | "SECURITY" | "PERFORMANCE" }
         : {}),
       ...(input.command !== undefined ? { argv: input.command } : {}),
       ...(input.url !== undefined ? { url: input.url } : {}),
-      ...(input.command !== undefined ? { adapter: "command" as const } : { adapter: "http" as const }),
+      adapter: toolAdapterFor(suite, input.command !== undefined, input.url !== undefined),
     });
     return {
       data: { testRunId: run.id, status: run.status, suite: run.suite, executionId: run.executionId },
-      summary: `Test run ${run.id} queued (${run.suite})`,
+      summary: `Test run ${run.id} recorded (${run.suite}/${run.status})`,
     };
   },
 };

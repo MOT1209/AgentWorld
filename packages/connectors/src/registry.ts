@@ -10,7 +10,7 @@
  */
 import type { DbClient } from "../../database/src/index.js";
 import { revealCredential, findActiveCredential } from "../../vault/src/index.js";
-import { newCorrelationId, validationError, type ActorRef } from "../../shared/src/index.js";
+import { conflict, getConfig, newCorrelationId, validationError, type ActorRef } from "../../shared/src/index.js";
 import { eventBus, EVENT_TYPES } from "../../events/src/index.js";
 import type { ConnectorKind } from "../../shared/src/index.js";
 
@@ -21,15 +21,33 @@ export interface ConnectorAction {
   parameters: Record<string, { type: string; description?: string }>;
 }
 
+export interface ConnectorSecurityMetadata {
+  /** What data the connector can touch (advisory, shown before install). */
+  dataAccess: string;
+  /** Whether outbound calls carry a user credential, a shared token, or nothing. */
+  credentialType: "USER_OAUTH" | "SHARED_TOKEN" | "NONE";
+  /** Egress posture: fixed vendor hosts vs caller-supplied URLs. */
+  egress: "FIXED_HOSTS" | "CALLER_URL_VALIDATED";
+}
+
 export interface ConnectorDescriptor {
   slug: string;
   displayName: string;
+  version: string;
+  /** Marketplace grouping: chat | dev | data | automation | ai | infra. */
+  category: string;
+  provider: string;
   kind: ConnectorKind;
   description: string;
   /** Base URL used for REST/GraphQL kinds. */
   baseUrl?: string;
   auth: "API_KEY" | "OAUTH" | "NONE";
   actions: ConnectorAction[];
+  /** Transport-level capabilities, e.g. ["rest:get", "rest:post"]. */
+  capabilities: string[];
+  /** Minimum scopes a caller needs; enforced by the connector.call tool. */
+  requiredScopes: string[];
+  security: ConnectorSecurityMetadata;
   /** Non-secret setup docs shown on the marketplace screen. */
   setupNotes?: string;
 }
@@ -67,6 +85,9 @@ export const MARKETPLACE: ConnectorDescriptor[] = [
   {
     slug: "github",
     displayName: "GitHub",
+    version: "1.0.0",
+    category: "dev",
+    provider: "GitHub",
     kind: "REST",
     description: "Repositories, issues, pull requests, and checks through the official REST API.",
     baseUrl: "https://api.github.com",
@@ -78,11 +99,17 @@ export const MARKETPLACE: ConnectorDescriptor[] = [
       { name: "list_pull_requests", description: "List pull requests.", parameters: { repo: { type: "string" } } },
       { name: "get_file", description: "Fetch a file's contents (UTF-8).", parameters: { repo: { type: "string" }, path: { type: "string" }, ref: { type: "string" } } },
     ],
+    capabilities: ["rest:get", "rest:post", "repos", "issues", "pull-requests"],
+    requiredScopes: ["connector.use"],
+    security: { dataAccess: "Repository metadata, issues and PRs the token can see", credentialType: "SHARED_TOKEN", egress: "FIXED_HOSTS" },
     setupNotes: "Create a fine-grained personal access token with the minimum scopes the connector needs.",
   },
   {
     slug: "slack",
     displayName: "Slack",
+    version: "1.0.0",
+    category: "chat",
+    provider: "Slack",
     kind: "REST",
     description: "Post messages and read channel history through the Slack Web API.",
     baseUrl: "https://slack.com/api",
@@ -91,11 +118,17 @@ export const MARKETPLACE: ConnectorDescriptor[] = [
       { name: "post_message", description: "Post a message to a channel.", parameters: { channel: { type: "string" }, text: { type: "string" } } },
       { name: "list_channels", description: "List channels the token can see.", parameters: {} },
     ],
+    capabilities: ["rest:get", "rest:post", "chat:write", "channels:read"],
+    requiredScopes: ["connector.use"],
+    security: { dataAccess: "Channel list and messages the bot token can see", credentialType: "SHARED_TOKEN", egress: "FIXED_HOSTS" },
     setupNotes: "Use a Slack app bot token (xoxb...) with chat:write and channels:read scopes only.",
   },
   {
     slug: "http",
     displayName: "Generic HTTP",
+    version: "1.0.0",
+    category: "automation",
+    provider: "Generic",
     kind: "REST",
     description: "Call any allow-listed REST endpoint with the connector's configured base URL.",
     baseUrl: "",
@@ -104,7 +137,113 @@ export const MARKETPLACE: ConnectorDescriptor[] = [
       { name: "get", description: "GET a path relative to the base URL.", parameters: { path: { type: "string" } } },
       { name: "post", description: "POST a JSON body to a relative path.", parameters: { path: { type: "string" }, body: { type: "string" } } },
     ],
+    capabilities: ["rest:get", "rest:post"],
+    requiredScopes: ["connector.use"],
+    security: { dataAccess: "Whatever the configured base URL serves", credentialType: "SHARED_TOKEN", egress: "CALLER_URL_VALIDATED" },
     setupNotes: "Configure the credential with { baseUrl } metadata; the token is sent as a Bearer header.",
+  },
+  {
+    slug: "graphql",
+    displayName: "Generic GraphQL",
+    version: "1.0.0",
+    category: "data",
+    provider: "Generic",
+    kind: "GRAPHQL",
+    description: "Execute GraphQL operations against a configured endpoint (GitHub, Linear, Shopify, ...).",
+    baseUrl: "",
+    auth: "API_KEY",
+    actions: [
+      { name: "query", description: "POST a GraphQL query with optional variables.", parameters: { query: { type: "string", description: "GraphQL document" }, variables: { type: "string", description: "JSON object string" }, endpoint: { type: "string", description: "Absolute endpoint URL (validated)" } } },
+    ],
+    capabilities: ["graphql:query"],
+    requiredScopes: ["connector.use"],
+    security: { dataAccess: "Whatever the configured endpoint serves", credentialType: "SHARED_TOKEN", egress: "CALLER_URL_VALIDATED" },
+    setupNotes: "Configure the credential with { baseUrl } metadata, or pass an absolute endpoint per call. The token is sent as a Bearer header.",
+  },
+  {
+    slug: "webhook-out",
+    displayName: "Outbound Webhook",
+    version: "1.0.0",
+    category: "automation",
+    provider: "Generic",
+    kind: "WEBHOOK",
+    description: "POST a signed JSON payload to a caller-supplied HTTPS URL (CI triggers, deploy hooks, Zapier, ...).",
+    auth: "NONE",
+    actions: [
+      { name: "post", description: "POST a JSON body to an absolute URL.", parameters: { url: { type: "string", description: "Absolute https URL" }, body: { type: "string", description: "JSON body string" } } },
+    ],
+    capabilities: ["webhook:post"],
+    requiredScopes: ["connector.use"],
+    security: { dataAccess: "Only the payload the caller supplies", credentialType: "NONE", egress: "CALLER_URL_VALIDATED" },
+    setupNotes: "No credential. URLs are validated (http/https only; loopback refused in production). No secrets are ever forwarded.",
+  },
+  {
+    slug: "cli",
+    displayName: "Local CLI Bridge",
+    version: "0.1.0",
+    category: "infra",
+    provider: "Local",
+    kind: "CLI",
+    description: "Run allow-listed local CLI commands inside a bound workspace. Not configured in this deployment.",
+    auth: "NONE",
+    actions: [
+      { name: "run", description: "Run an allow-listed command (unavailable until configured).", parameters: { command: { type: "string" }, workspaceId: { type: "string" } } },
+    ],
+    capabilities: [],
+    requiredScopes: ["connector.use", "workspace.execute"],
+    security: { dataAccess: "None until an allow-list is configured by an operator", credentialType: "NONE", egress: "FIXED_HOSTS" },
+    setupNotes: "Unavailable: executing local commands requires a workspace-bound allow-list approved by an operator. Calls fail loudly instead of running.",
+  },
+  {
+    slug: "database",
+    displayName: "Database Bridge",
+    version: "0.1.0",
+    category: "data",
+    provider: "Generic",
+    kind: "DATABASE",
+    description: "Allow-listed read-only queries against a bound database. Not configured in this deployment.",
+    auth: "API_KEY",
+    actions: [
+      { name: "query", description: "Run an allow-listed named query (unavailable until configured).", parameters: { name: { type: "string" }, params: { type: "string" } } },
+    ],
+    capabilities: [],
+    requiredScopes: ["connector.use"],
+    security: { dataAccess: "None until named queries are allow-listed by an operator", credentialType: "SHARED_TOKEN", egress: "FIXED_HOSTS" },
+    setupNotes: "Unavailable: arbitrary SQL is never executed. An operator must allow-list named read-only queries first.",
+  },
+  {
+    slug: "mcp-bridge",
+    displayName: "External MCP Bridge",
+    version: "0.1.0",
+    category: "ai",
+    provider: "Generic",
+    kind: "MCP",
+    description: "Call tools on an external MCP server. No MCP client is bundled in this deployment.",
+    auth: "API_KEY",
+    actions: [
+      { name: "call_tool", description: "Call a tool on the external server (unavailable until configured).", parameters: { server: { type: "string" }, tool: { type: "string" }, args: { type: "string" } } },
+    ],
+    capabilities: [],
+    requiredScopes: ["connector.use"],
+    security: { dataAccess: "None until an external server binding is configured", credentialType: "SHARED_TOKEN", egress: "FIXED_HOSTS" },
+    setupNotes: "Unavailable: no external MCP client is bundled. Calls fail loudly instead of reaching the network.",
+  },
+  {
+    slug: "websocket",
+    displayName: "WebSocket Feed",
+    version: "0.1.0",
+    category: "data",
+    provider: "Generic",
+    kind: "WEBSOCKET",
+    description: "Subscribe to a WebSocket feed. No socket client is bundled in this deployment.",
+    auth: "API_KEY",
+    actions: [
+      { name: "subscribe", description: "Subscribe to a channel (unavailable until configured).", parameters: { url: { type: "string" }, channel: { type: "string" } } },
+    ],
+    capabilities: [],
+    requiredScopes: ["connector.use"],
+    security: { dataAccess: "None until a feed binding is configured", credentialType: "SHARED_TOKEN", egress: "FIXED_HOSTS" },
+    setupNotes: "Unavailable: use webhook subscriptions or polling through the http/graphql connectors instead.",
   },
 ];
 
@@ -155,6 +294,36 @@ async function resolveAuth(ctx: ConnectorCallContext, descriptor: ConnectorDescr
     // keep the descriptor default
   }
   return { token, baseUrl: baseUrl || null, credentialId: credential.id };
+}
+
+/**
+ * Validates a caller-supplied absolute URL. Loopback and link-local targets
+ * are refused in production so a connector cannot be turned into an SSRF
+ * probe against the API's own network; development allows loopback so
+ * integrations can be exercised against a local receiver.
+ */
+function validateAbsoluteUrl(raw: string): string {
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    throw validationError("URL must be an absolute http(s) URL");
+  }
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+    throw validationError("URL must use http or https");
+  }
+  const host = parsed.hostname.toLowerCase();
+  const isLoopback =
+    host === "localhost" ||
+    host === "127.0.0.1" ||
+    host === "::1" ||
+    host === "0.0.0.0" ||
+    host === "169.254.169.254" ||
+    host.endsWith(".local");
+  if (isLoopback && getConfig().isProduction) {
+    throw validationError("URL must not target loopback or link-local addresses");
+  }
+  return parsed.toString();
 }
 
 function buildUrl(baseUrl: string, path: string): string {
@@ -225,6 +394,53 @@ async function executeAction(
     if (action.name === "list_channels") {
       return request(fetchImpl, "GET", buildUrl(auth.baseUrl ?? "https://slack.com/api", "/conversations.list?limit=50"), headers);
     }
+  }
+
+  if (descriptor.slug === "graphql") {
+    const endpoint = str("endpoint") !== "" ? str("endpoint") : (auth.baseUrl ?? "");
+    if (endpoint === "") throw validationError("graphql connector needs a configured base URL or an explicit endpoint");
+    const url = validateAbsoluteUrl(endpoint);
+    const query = str("query");
+    if (query === "" || query.length > 20_000) throw validationError("query is required (max 20k chars)");
+    let variables: unknown = {};
+    const rawVariables = str("variables");
+    if (rawVariables !== "") {
+      try {
+        variables = JSON.parse(rawVariables) as unknown;
+      } catch {
+        throw validationError("variables must be a valid JSON object string");
+      }
+      if (variables === null || typeof variables !== "object" || Array.isArray(variables)) {
+        throw validationError("variables must be a valid JSON object string");
+      }
+    }
+    headers["content-type"] = "application/json";
+    headers.accept = "application/json";
+    return request(fetchImpl, "POST", url, headers, { query, variables });
+  }
+
+  if (descriptor.slug === "webhook-out") {
+    const url = validateAbsoluteUrl(str("url"));
+    const rawBody = str("body");
+    if (rawBody.length > 256_000) throw validationError("body exceeds the 256kb limit");
+    let body: unknown = {};
+    if (rawBody !== "") {
+      try {
+        body = JSON.parse(rawBody) as unknown;
+      } catch {
+        throw validationError("body must be valid JSON");
+      }
+    }
+    // Deliberately no Authorization header: this connector carries no
+    // credential and must never forward one.
+    return request(fetchImpl, "POST", url, { "content-type": "application/json", "user-agent": "AgentWorld-Connector/1.0" }, body);
+  }
+
+  if (descriptor.slug === "cli" || descriptor.slug === "database" || descriptor.slug === "mcp-bridge" || descriptor.slug === "websocket") {
+    throw conflict(
+      `Connector '${descriptor.slug}' is registered but not configured in this deployment. ` +
+      `No command was executed and nothing reached the network.`,
+    );
   }
 
   if (descriptor.slug === "http") {

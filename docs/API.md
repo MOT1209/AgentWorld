@@ -157,3 +157,45 @@ Statuses: QUEUED | RUNNING | COMPLETED | FAILED | CANCELLED | TIMEOUT. Error cat
 - `GET /tools/catalogue`, `GET /tools/invocations?agentId=&toolName=&status=`, `GET /tools/providers`
 - `GET /logs/events?type=&companyId=&correlationId=`, `GET /logs/activity`
 - `GET /health`, `GET /ready`
+
+## Integrations — AI platform, connectors, webhooks, API keys
+
+- `GET /integrations/providers` — live providers plus the full vendor catalog (20 vendors; unconfigured vendors report `configured: false` with the exact env change that enables them)
+- `GET /integrations/models?providerId=&capability=` — models with capabilities, context windows, availability
+- `GET /integrations/ai-usage?agentId=` — aggregated calls, tokens, estimated cost
+- `POST /integrations/credentials {name, scope: PROVIDER|CONNECTOR, refId, secret, kind?, metadata?}` — seals into the vault (owner-only); the secret is never returned
+- `GET /integrations/credentials?scope=`, `POST /integrations/credentials/:id/rotate {secret}`, `POST /integrations/credentials/:id/revoke`
+- `GET /integrations/connectors`, `GET /integrations/connectors/:slug` — marketplace metadata (version, category, capabilities, required scopes, security) — never secrets
+- `POST /integrations/webhooks {url, events?, description?}` — returns the signing secret exactly once
+- `GET /integrations/webhooks`, `POST /integrations/webhooks/:id/status {status}`, `GET /integrations/webhooks/:id/deliveries`, `DELETE /integrations/webhooks/:id`
+- `POST /integrations/api-keys {name, scopes, ttlHours?}` — returns the secret once; `GET /integrations/api-keys`, `POST /integrations/api-keys/:id/revoke`
+- `POST /integrations/oauth/:slug/begin`, `GET /integrations/oauth/callback?code=&state=` — signed single-use OAuth flow; tokens sealed in the vault
+
+## Testing & QA
+
+- `POST /testing/run {workspaceId?, taskId?, name?, suite?, command?, url?}` — 202. Suites: UNIT | INTEGRATION | E2E | BROWSER | MOBILE | SECURITY | PERFORMANCE. Adapters: command (execution queue), http (probe), browser (command or probe), mobile (command or honest simulated ERROR), security (platform self-checks), performance (latency probe), testerarmy (honest ERROR until the engine is installed). BROWSER/MOBILE/SECURITY/PERFORMANCE may run without command/url.
+- `GET /testing/runs?taskId=&workspaceId=&suite=&cursor=&limit=` — cursor pagination (`nextCursor`)
+- `GET /testing/runs/:id` — status, summary counts, labelled evidence (observed/inferred/hypothesis; `simulated: true` when no real infra ran)
+
+## Software Factory
+
+- `POST /factory/runs {repoUrl, companyId, instruction?, maxFixAttempts?}` — 201, stage INTAKE
+- `GET /factory/runs?companyId=&cursor=&limit=` — cursor pagination (`nextCursor`)
+- `GET /factory/runs/:id` — stage, analysis, plan, github, stats
+- `POST /factory/runs/:id/advance` — exactly one stage forward (bounded loop)
+- `GET /factory/runs/:id/project` — managed-project view: lifecycle (DISCOVERING..DEPLOYED), team, task, tests, review, PR, deployments, bounds
+- `POST /factory/runs/:id/team {requiredSkills?, taskType?, companyId?, limit?}` — ranked suggestions (suggestion only; assignment stays with delegation)
+- `GET /factory/runs/:id/failure` — failure analysis with verbatim evidence and fix budget
+- `POST /factory/runs/:id/fix-task` — exactly one fix task, refused past budget
+- `POST /factory/runs/:id/review` — pre-PR review gate (analysis, plan, passing tests, secret hygiene, budget, branch); records verdict, never opens the PR
+- `POST /factory/runs/:id/deploy {target: vercel|docker|cloud|local|custom, environment?, command?, rollbackCommand?, artifacts?}` — 201. Only `custom` with an explicit workspace command executes; other targets record BLOCKED with the missing piece named. Requires the approval gate.
+- `GET /factory/runs/:id/deployments` — refresh RUNNING deploys from execution jobs, then list
+- `POST /factory/runs/:id/deployments/:depId/rollback` — rolls back only with a recorded rollback command
+- `POST /factory/runs/:id/approve` — human merge at the gate; `POST /factory/runs/:id/cancel`
+
+## MCP (`/mcp`)
+
+- `GET /mcp` — server info, tool names, auth scheme (`Authorization: Bearer aw_<key>`)
+- `POST /mcp` — JSON-RPC 2.0: `initialize`, `tools/list`, `tools/call`, `resources/list`, `resources/read`, `ping`. Every call except `initialize`/`ping` needs a scoped API key; missing scopes return `-32003` and are audited.
+- Tools: `agents.list/get`, `companies.list`, `projects.list`, `tasks.create/list`, `memory.search`, `testing.run`, `testing.get_result`, `world.status`, `economy.status`, `factory.list_runs`, `factory.get_run`, `providers.list`, `models.list`, `connectors.list`, `webhooks.list`, `approvals.list`, `sessions.list`, `workspaces.list`, `plans.list`.
+- Resources: `agent://`, `company://`, `task://`, `test://`, `world://status`, `factory://`, `approval://`, `workspace://`, `plan://`, `session://` (all read-only, scope-checked).

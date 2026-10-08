@@ -357,11 +357,26 @@ export async function cancelFactoryRun(db: DbClient, runId: string): Promise<Fac
   return transition(db, run, "CANCELLED");
 }
 
-export async function listFactoryRuns(db: DbClient, companyId?: string): Promise<FactoryRun[]> {
+export interface PageOptions {
+  /** Opaque cursor: the id of the last row of the previous page. */
+  cursor?: string;
+  /** Page size, default 100, capped at 100. */
+  limit?: number;
+}
+
+export function pageLimit(limit: number | undefined, def = 100): number {
+  if (limit === undefined || !Number.isFinite(limit)) return def;
+  return Math.max(1, Math.min(Math.floor(limit), 100));
+}
+
+export async function listFactoryRuns(db: DbClient, companyId?: string, opts: PageOptions = {}): Promise<FactoryRun[]> {
   return db.factoryRun.findMany({
-    where: companyId !== undefined ? { companyId } : undefined,
+    where: {
+      ...(companyId !== undefined ? { companyId } : {}),
+      ...(opts.cursor !== undefined ? { id: { lt: opts.cursor } } : {}),
+    },
     orderBy: { createdAt: "desc" },
-    take: 100,
+    take: pageLimit(opts.limit),
   });
 }
 
