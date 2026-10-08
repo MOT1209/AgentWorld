@@ -28,63 +28,63 @@ datasource db {
 // =============================================================================
 
 model User {
-  id           String  @id @default(cuid())
-  email        String  @unique
+  id           String    @id @default(cuid())
+  email        String    @unique
   passwordHash String
   displayName  String
   /// OWNER | ADMIN | OBSERVER -- see packages/shared/src/enums.ts UserRole
-  role         String  @default("OBSERVER")
-  isActive     Boolean @default(true)
+  role         String    @default("OBSERVER")
+  isActive     Boolean   @default(true)
   lastLoginAt  DateTime?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
-  ownedCompanies Company[]        @relation("CompanyOwner")
-  memberships    CompanyMember[]
-  sentMessages   Message[]        @relation("MessageSenderUser")
+  ownedCompanies     Company[]         @relation("CompanyOwner")
+  memberships        CompanyMember[]
+  sentMessages       Message[]         @relation("MessageSenderUser")
   requestedApprovals ApprovalRequest[] @relation("ApprovalRequester")
   decidedApprovals   ApprovalRequest[] @relation("ApprovalDecider")
-  activityLogs   ActivityLog[]
-  conversations  Conversation[]
-  wallets        Wallet[]
-  apiKeys        ApiKey[]
+  activityLogs       ActivityLog[]
+  conversations      Conversation[]
+  wallets            Wallet[]
+  apiKeys            ApiKey[]
 
   // Phase 2
-  plansCreated         Plan[]        @relation("PlanCreatorUser")
-  reportsWritten       Report[]      @relation("ReportAuthorUser")
-  reviewsWritten       TaskReview[]  @relation("ReviewAuthorUser")
-  escalationsReceived  Escalation[]  @relation("EscalationToUser")
+  plansCreated        Plan[]       @relation("PlanCreatorUser")
+  reportsWritten      Report[]     @relation("ReportAuthorUser")
+  reviewsWritten      TaskReview[] @relation("ReviewAuthorUser")
+  escalationsReceived Escalation[] @relation("EscalationToUser")
 
   @@index([role])
 }
 
 model Company {
-  id          String   @id @default(cuid())
-  name        String   @unique
-  description String?
-  ownerId     String
+  id               String   @id @default(cuid())
+  name             String   @unique
+  description      String?
+  ownerId          String
   /// Denormalised pointer to the Wallet whose ownerType=COMPANY, ownerId=id.
   /// Resolved exclusively through packages/economy LedgerService so the two
   /// can never disagree.
   treasuryWalletId String?
-  foundedAt   DateTime @default(now())
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  foundedAt        DateTime @default(now())
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
-  owner     User              @relation("CompanyOwner", fields: [ownerId], references: [id])
-  departments Department[]
-  members   CompanyMember[]
-  projects  Project[]
-  tasks     Task[]
-  agents    Agent[]
+  owner         User              @relation("CompanyOwner", fields: [ownerId], references: [id])
+  departments   Department[]
+  members       CompanyMember[]
+  projects      Project[]
+  tasks         Task[]
+  agents        Agent[]
   conversations Conversation[]
-  approvals ApprovalRequest[]
-  plans     Plan[]
+  approvals     ApprovalRequest[]
+  plans         Plan[]
 
   // Phase 4 integrations.
-  aiUsages            AiUsage[]
+  aiUsages             AiUsage[]
   webhookSubscriptions WebhookSubscription[]
-  factoryRuns         FactoryRun[]
+  factoryRuns          FactoryRun[]
 
   @@index([ownerId])
 }
@@ -97,7 +97,7 @@ model Department {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  company Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
   members CompanyMember[]
 
   @@unique([companyId, name])
@@ -145,10 +145,10 @@ model World {
   // simulatedNow() = new Date(now + timeOffsetMinutes).
   // A heartbeat advances the offset by (realMinutes x timeScale).
   // Phase 1: Float so development speeds like 0.5x are representable.
-  timeScale         Float @default(60)
+  timeScale         Float     @default(60)
   // Fractional SIMULATED minutes accumulated by ticks. Float so sub-minute
   // advances (0.5x speed) are not truncated away every tick.
-  timeOffsetMinutes Float @default(0)
+  timeOffsetMinutes Float     @default(0)
   lastTickAt        DateTime?
 
   /// INITIALIZING | RUNNING | PAUSED | STOPPED | ERROR --
@@ -184,11 +184,11 @@ model City {
 }
 
 model District {
-  id          String  @id @default(cuid())
+  id          String   @id @default(cuid())
   cityId      String
   name        String
   /// RESIDENTIAL | COMMERCIAL | INDUSTRIAL | CIVIC | GREEN | OTHER
-  kind        String  @default("OTHER")
+  kind        String   @default("OTHER")
   description String?
   /// JSON geometry: center, bounds, boundary polygon, display color.
   /// Phase 4 is data + enforcement only; no pathfinding or travel time.
@@ -204,26 +204,26 @@ model District {
 }
 
 model Location {
-  id       String  @id @default(cuid())
-  cityId   String
+  id         String   @id @default(cuid())
+  cityId     String
   districtId String?
-  name     String
+  name       String
   /// HQ | BANK | MARKET | OFFICE | HOME | SHOP | RESTAURANT | SCHOOL |
   /// HOSPITAL | GOVERNMENT | TRANSPORT | PUBLIC_SPACE | OTHER
-  kind     String  @default("OTHER")
-  address  String?
-  capacity Int?
+  kind       String   @default("OTHER")
+  address    String?
+  capacity   Int?
   /// JSON -- geometry, floorplan, opening hours, price modifiers.
-  metadata String?
-  isActive Boolean @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  metadata   String?
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
-  city   City     @relation(fields: [cityId], references: [id], onDelete: Cascade)
-  district District? @relation(fields: [districtId], references: [id], onDelete: SetNull)
-  agents Agent[]
+  city       City            @relation(fields: [cityId], references: [id], onDelete: Cascade)
+  district   District?       @relation(fields: [districtId], references: [id], onDelete: SetNull)
+  agents     Agent[]
   activities AgentActivity[]
-  routines AgentRoutine[]
+  routines   AgentRoutine[]
 
   @@unique([cityId, name])
   @@index([cityId])
@@ -236,90 +236,91 @@ model Location {
 // =============================================================================
 
 model Agent {
-  id       String  @id @default(cuid())
-  name     String
-  slug     String  @unique
+  id           String @id @default(cuid())
+  name         String
+  slug         String @unique
   /// Behaviour key resolved by packages/agents RoleProfileRegistry.
   /// e.g. PLANNER, EXECUTOR.  Adding a role must never require code changes to
   /// any `if (agent.name === ...)` branch -- there are none.
-  roleKey  String
-  title    String
+  roleKey      String
+  title        String
   /// Profile written by the Agent Factory; seeded for the two Phase 1 agents.
   systemPrompt String
-  personality   String @default("{}") // JSON
-  goals         String @default("[]") // JSON string[]
-  skills        String @default("[]") // JSON string[]
+  personality  String @default("{}") // JSON
+  goals        String @default("[]") // JSON string[]
+  skills       String @default("[]") // JSON string[]
   /// JSON -- declared abilities. Narrowed at runtime by granted permissions.
-  capabilities  String @default("[]") // JSON string[]
+  capabilities String @default("[]") // JSON string[]
 
   // -- Phase 2 orchestration profile ----------------------------------------
   /// JSON -- { provider?, model?, temperature?, maxTokens?, contextWindow? }.
   /// Consumed by ModelRouter; the columns above stay authoritative when absent.
   routingOverrides String @default("{}")
   /// MAX | NORMAL | LOW. Workload governor consulted before delegation.
-  concurrency String @default("NORMAL")
+  concurrency      String @default("NORMAL")
 
   // -- AI provider selection (never hard-coded) ------------------------------
   // providerId is resolved through the AIProvider registry in packages/ai.
   // Changing provider or model is a data change; agent logic is untouched.
-  providerId String
-  model      String
-  temperature Float @default(0.3)
-  maxTokens  Int    @default(2048)
+  providerId  String
+  model       String
+  temperature Float  @default(0.3)
+  maxTokens   Int    @default(2048)
 
   // -- World placement -------------------------------------------------------
-  worldId         String?
+  worldId           String?
   currentLocationId String?
-  currentCompanyId String?
-  currentJob      String?
+  currentCompanyId  String?
+  currentJob        String?
 
   /// Aggregate standing, 0-100. Phase 2 derives it from event history.
   reputation Int @default(50)
 
-  isActive Boolean   @default(true)
+  isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  world         World?    @relation(fields: [worldId], references: [id], onDelete: SetNull)
+  world           World?    @relation(fields: [worldId], references: [id], onDelete: SetNull)
   currentLocation Location? @relation(fields: [currentLocationId], references: [id], onDelete: SetNull)
-  currentCompany Company?  @relation(fields: [currentCompanyId], references: [id], onDelete: SetNull)
+  currentCompany  Company?  @relation(fields: [currentCompanyId], references: [id], onDelete: SetNull)
 
-  state         AgentState?
-  memories      AgentMemory[]
-  stateHistory  AgentStateHistory[]
-  activities    AgentActivity[]
-  routines      AgentRoutine[]
+  state               AgentState?
+  memories            AgentMemory[]
+  stateHistory        AgentStateHistory[]
+  activities          AgentActivity[]
+  routines            AgentRoutine[]
   /// Structured Phase 1 goals; the scalar `goals` column above remains the
   /// legacy free-form list and is not read by the simulation.
-  structuredGoals AgentGoal[]
-  memberships   CompanyMember[]
-  sentMessages  Message[]       @relation("MessageSenderAgent")
-  createdTasks  Task[]          @relation("TaskCreatorAgent")
-  assignedTasks Task[]          @relation("TaskAssigneeAgent")
-  conversations ConversationParticipant[]
-  toolInvocations ToolInvocation[]
-  relationshipsOut AgentRelationship[] @relation("RelationshipSource")
-  relationshipsIn  AgentRelationship[] @relation("RelationshipTarget")
-  blueprintsRequested AgentBlueprint[] @relation("BlueprintRequester")
-  approvalRequests  ApprovalRequest[]   @relation("ApprovalRequestAgentRequester")
+  structuredGoals     AgentGoal[]
+  memberships         CompanyMember[]
+  sentMessages        Message[]                 @relation("MessageSenderAgent")
+  createdTasks        Task[]                    @relation("TaskCreatorAgent")
+  assignedTasks       Task[]                    @relation("TaskAssigneeAgent")
+  conversations       ConversationParticipant[]
+  toolInvocations     ToolInvocation[]
+  relationshipsOut    AgentRelationship[]       @relation("RelationshipSource")
+  relationshipsIn     AgentRelationship[]       @relation("RelationshipTarget")
+  blueprintsRequested AgentBlueprint[]          @relation("BlueprintRequester")
+  approvalRequests    ApprovalRequest[]         @relation("ApprovalRequestAgentRequester")
 
   // -- Phase 2 relationships --------------------------------------------------
-  sessions           AgentSession[]
-  plansCreated       Plan[]           @relation("PlanCreatorAgent")
-  reportsWritten     Report[]         @relation("ReportAuthorAgent")
-  reviewsWritten     TaskReview[]     @relation("ReviewAuthorAgent")
-  escalationsRaised  Escalation[]     @relation("EscalationFromAgent")
-  escalationsReceived Escalation[]    @relation("EscalationToAgent")
-  asSupervisor       AgentHierarchy[] @relation("HierarchySupervisor")
-  asSubordinate      AgentHierarchy[] @relation("HierarchySubordinate")
-  workspaces         Workspace[]
+  sessions             AgentSession[]
+  plansCreated         Plan[]            @relation("PlanCreatorAgent")
+  reportsWritten       Report[]          @relation("ReportAuthorAgent")
+  reviewsWritten       TaskReview[]      @relation("ReviewAuthorAgent")
+  escalationsRaised    Escalation[]      @relation("EscalationFromAgent")
+  escalationsReceived  Escalation[]      @relation("EscalationToAgent")
+  asSupervisor         AgentHierarchy[]  @relation("HierarchySupervisor")
+  asSubordinate        AgentHierarchy[]  @relation("HierarchySubordinate")
+  workspaces           Workspace[]
   workspaceMemberships WorkspaceMember[]
-  artifacts          Artifact[]
-  executions         ExecutionJob[]
+  artifacts            Artifact[]
+  executions           ExecutionJob[]
 
   // Phase 4 integrations.
-  aiUsages           AiUsage[]
-  testRuns           TestRun[]
+  aiUsages     AiUsage[]
+  testRuns     TestRun[]
+  trainingRuns TrainingRun[]
 
   @@index([roleKey])
   @@index([worldId])
@@ -333,20 +334,20 @@ model AgentState {
 
   /// ONLINE | OFFLINE | IDLE | WORKING | THINKING | WAITING | SLEEPING |
   /// ERROR | PAUSED
-  state String @default("OFFLINE")
-  activity  String?
-  mood      String?
+  state    String  @default("OFFLINE")
+  activity String?
+  mood     String?
 
   currentTaskId     String?
   currentLocationId String?
   /// JSON -- Phase 2: energy, hunger, social need, focus.
-  vitals            String @default("{}")
+  vitals            String  @default("{}")
 
   lastActivityAt DateTime?
   errorCount     Int       @default(0)
   updatedAt      DateTime  @updatedAt
 
-  agent     Agent  @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  agent       Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
   currentTask Task? @relation("AgentStateCurrentTask", fields: [currentTaskId], references: [id], onDelete: SetNull)
 
   @@index([state])
@@ -354,12 +355,12 @@ model AgentState {
 }
 
 model AgentStateHistory {
-  id       String  @id @default(cuid())
-  agentId  String
+  id        String   @id @default(cuid())
+  agentId   String
   fromState String?
-  toState  String
-  activity String?
-  reason   String?
+  toState   String
+  activity  String?
+  reason    String?
   changedAt DateTime @default(now())
 
   agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
@@ -371,19 +372,19 @@ model AgentStateHistory {
 /// DOING over an interval of simulated time (work, rest, sleep, ...). The
 /// simulation engine advances these on tick; the decision engine creates them.
 model AgentActivity {
-  id String @id @default(cuid())
+  id      String @id @default(cuid())
   agentId String
 
   /// WORK | REST | THINK | TRAVEL | SOCIALIZE | IDLE | SLEEP --
   /// see packages/shared/src/enums.ts ActivityTypeSchema
-  type String
+  type   String
   /// PLANNED | ACTIVE | COMPLETED | CANCELLED | FAILED
   status String @default("PLANNED")
 
   startTime       DateTime  @default(now())
   expectedEndTime DateTime?
   actualEndTime   DateTime?
-  locationId String?
+  locationId      String?
 
   /// JSON -- activity-specific payload (progress notes, source decision id).
   metadata String @default("{}")
@@ -405,27 +406,27 @@ model AgentActivity {
 /// no new timer, no polling loop. Triggering and misses are surfaced through
 /// ROUTINE_* events + audit rows; a miss is marked so it surfaces once.
 model AgentRoutine {
-  id String @id @default(cuid())
+  id      String @id @default(cuid())
   agentId String
 
   /// Simulated time-of-day the routine starts, minutes since midnight (0..1439).
-  slotMinutes Int
+  slotMinutes        Int
   /// WORK | REST | THINK | TRAVEL | SOCIALIZE | SLEEP (ActivityTypeSchema).
   /// Routines pin an activity, so IDLE is deliberately excluded.
-  activityType String
+  activityType       String
   /// Where the activity must happen; null uses the agent's current location.
-  locationId String?
+  locationId         String?
   /// Length of the activity, in SIMULATED minutes.
   durationSimMinutes Int
 
   /// Soft delete / opt-out.
-  active Boolean @default(true)
+  active               Boolean @default(true)
   /// Sim date (YYYY-MM-DD) the routine last fired, so a daily routine triggers
   /// at most once per simulated day even when a tick spans the slot twice.
   lastTriggeredSimDate String?
   /// Sim date the routine was already evaluated today (fired OR skipped), the
   /// marker that lets misses be surfaced exactly once and re-evaluated tomorrow.
-  evaluatedOnSimDate String?
+  evaluatedOnSimDate   String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -442,17 +443,17 @@ model AgentRoutine {
 /// agents can now track progress and lifecycle per goal. The Agent.goals JSON
 /// column stays as the free-form legacy list and is not read by the simulation.
 model AgentGoal {
-  id String @id @default(cuid())
-  agentId String
-  title String
+  id          String  @id @default(cuid())
+  agentId     String
+  title       String
   description String?
 
   /// LOW | MEDIUM | HIGH | CRITICAL
   priority String @default("MEDIUM")
   /// PENDING | ACTIVE | PAUSED | COMPLETED | FAILED | CANCELLED
-  status String @default("PENDING")
+  status   String @default("PENDING")
   /// 0-100
-  progress Int @default(0)
+  progress Int    @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -487,10 +488,10 @@ model AgentMemory {
   /// JSON -- Phase 2: embedding vector handle, tags, salience decay curve.
   metadata String @default("{}")
 
-  accessCount     Int       @default(0)
-  lastAccessedAt  DateTime?
-  expiresAt       DateTime?
-  createdAt       DateTime  @default(now())
+  accessCount    Int       @default(0)
+  lastAccessedAt DateTime?
+  expiresAt      DateTime?
+  createdAt      DateTime  @default(now())
 
   agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
 
@@ -501,18 +502,18 @@ model AgentMemory {
 }
 
 model AgentRelationship {
-  id       String @id @default(cuid())
-  agentId  String
+  id            String @id @default(cuid())
+  agentId       String
   targetAgentId String
 
   /// Phase 2 social graph. Bounds: -100..100.
-  affinity        Int @default(0)
-  trust           Int @default(50)
-  interactionCount Int @default(0)
-  notes           String?
+  affinity          Int       @default(0)
+  trust             Int       @default(50)
+  interactionCount  Int       @default(0)
+  notes             String?
   lastInteractionAt DateTime?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   agent  Agent @relation("RelationshipSource", fields: [agentId], references: [id], onDelete: Cascade)
   target Agent @relation("RelationshipTarget", fields: [targetAgentId], references: [id], onDelete: Cascade)
@@ -535,8 +536,8 @@ model Project {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  tasks   Task[]
+  company    Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  tasks      Task[]
   workspaces Workspace[]
 
   @@unique([companyId, name])
@@ -550,29 +551,29 @@ model Task {
 
   /// PENDING | PLANNED | ASSIGNED | RUNNING | WAITING_APPROVAL | BLOCKED |
   /// COMPLETED | FAILED | CANCELLED
-  status      String  @default("PENDING")
+  status   String @default("PENDING")
   /// LOW | MEDIUM | HIGH | CRITICAL
-  priority    String  @default("MEDIUM")
+  priority String @default("MEDIUM")
 
-  companyId  String?
-  projectId  String?
+  companyId    String?
+  projectId    String?
   parentTaskId String?
   /// Phase 2 -- set when the task was decomposed out of a Plan.
-  planId     String?
+  planId       String?
 
   /// PLANNING | RESEARCH | ANALYSIS | IMPLEMENTATION | TESTING | REVIEW |
   /// OPERATIONS | COORDINATION | COMMUNICATION | GENERAL. Drives delegation
   /// matching: a task's type is matched against an agent's capabilities.
-  type       String  @default("GENERAL")
+  type String @default("GENERAL")
 
-  creatorAgentId String?
-  creatorUserId  String?
+  creatorAgentId  String?
+  creatorUserId   String?
   assigneeAgentId String?
 
-  result String?
-  error  String?
+  result   String?
+  error    String?
   /// JSON -- free-form execution context, plan steps, artifacts.
-  metadata String @default("{}")
+  metadata String  @default("{}")
 
   /// Total attempts. Each execution attempt increments it.
   attempts Int @default(0)
@@ -589,20 +590,20 @@ model Task {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  company   Company?  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  project   Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  plan      Plan?     @relation(fields: [planId], references: [id], onDelete: SetNull)
-  parentTask Task?    @relation("TaskHierarchy", fields: [parentTaskId], references: [id], onDelete: SetNull)
-  childTasks Task[]   @relation("TaskHierarchy")
-  creatorAgent Agent? @relation("TaskCreatorAgent", fields: [creatorAgentId], references: [id], onDelete: SetNull)
-  assigneeAgent Agent? @relation("TaskAssigneeAgent", fields: [assigneeAgentId], references: [id], onDelete: SetNull)
-  aiUsages  AiUsage[]
-  factoryRuns FactoryRun[]
+  company       Company?     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  project       Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  plan          Plan?        @relation(fields: [planId], references: [id], onDelete: SetNull)
+  parentTask    Task?        @relation("TaskHierarchy", fields: [parentTaskId], references: [id], onDelete: SetNull)
+  childTasks    Task[]       @relation("TaskHierarchy")
+  creatorAgent  Agent?       @relation("TaskCreatorAgent", fields: [creatorAgentId], references: [id], onDelete: SetNull)
+  assigneeAgent Agent?       @relation("TaskAssigneeAgent", fields: [assigneeAgentId], references: [id], onDelete: SetNull)
+  aiUsages      AiUsage[]
+  factoryRuns   FactoryRun[]
 
-  blockedBy        TaskDependency[] @relation("TaskBlockedBy")
-  blocks           TaskDependency[] @relation("TaskBlocks")
+  blockedBy        TaskDependency[]   @relation("TaskBlockedBy")
+  blocks           TaskDependency[]   @relation("TaskBlocks")
   messages         Message[]
-  currentForStates AgentState[]     @relation("AgentStateCurrentTask")
+  currentForStates AgentState[]       @relation("AgentStateCurrentTask")
   approvals        ApprovalRequest[]
   reviews          TaskReview[]
   reports          Report[]
@@ -613,7 +614,7 @@ model Task {
   executions       ExecutionJob[]
 
   // Phase 4 integrations.
-  testRuns         TestRun[]
+  testRuns TestRun[]
 
   @@index([status])
   @@index([priority])
@@ -625,14 +626,14 @@ model Task {
 }
 
 model TaskDependency {
-  id             String @id @default(cuid())
+  id              String   @id @default(cuid())
   /// The task that cannot proceed yet.
-  taskId         String
+  taskId          String
   /// The task that must complete first.
   dependsOnTaskId String
-  createdAt      DateTime @default(now())
+  createdAt       DateTime @default(now())
 
-  task     Task @relation("TaskBlockedBy", fields: [taskId], references: [id], onDelete: Cascade)
+  task      Task @relation("TaskBlockedBy", fields: [taskId], references: [id], onDelete: Cascade)
   dependsOn Task @relation("TaskBlocks", fields: [dependsOnTaskId], references: [id], onDelete: Cascade)
 
   @@unique([taskId, dependsOnTaskId])
@@ -672,13 +673,13 @@ model Plan {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  company   Company?  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  createdBy Agent?    @relation("PlanCreatorAgent", fields: [createdByAgentId], references: [id], onDelete: SetNull)
-  author    User?     @relation("PlanCreatorUser", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  company   Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdBy Agent?   @relation("PlanCreatorAgent", fields: [createdByAgentId], references: [id], onDelete: SetNull)
+  author    User?    @relation("PlanCreatorUser", fields: [createdByUserId], references: [id], onDelete: SetNull)
 
-  tasks    Task[]
-  reports  Report[]
-  conflicts DecisionConflict[]
+  tasks       Task[]
+  reports     Report[]
+  conflicts   DecisionConflict[]
   escalations Escalation[]
 
   @@index([status])
@@ -698,8 +699,8 @@ model TaskReview {
   reviewerUserId  String?
 
   /// APPROVED | NEEDS_CHANGES | REJECTED | ESCALATE
-  outcome String
-  notes   String
+  outcome  String
+  notes    String
   /// JSON -- per-criterion checks: [{ criterion, met, note }]
   criteria String @default("[]")
 
@@ -735,10 +736,10 @@ model Report {
 
   createdAt DateTime @default(now())
 
-  author  Agent? @relation("ReportAuthorAgent", fields: [authorAgentId], references: [id], onDelete: SetNull)
-  byUser  User?  @relation("ReportAuthorUser", fields: [authorUserId], references: [id], onDelete: SetNull)
-  task    Task?  @relation(fields: [taskId], references: [id], onDelete: SetNull)
-  plan    Plan?  @relation(fields: [planId], references: [id], onDelete: SetNull)
+  author Agent? @relation("ReportAuthorAgent", fields: [authorAgentId], references: [id], onDelete: SetNull)
+  byUser User?  @relation("ReportAuthorUser", fields: [authorUserId], references: [id], onDelete: SetNull)
+  task   Task?  @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  plan   Plan?  @relation(fields: [planId], references: [id], onDelete: SetNull)
 
   @@index([kind])
   @@index([authorAgentId])
@@ -750,8 +751,8 @@ model Report {
 /// A bounded reasoning/execution run of an agent. Observability record -- the
 /// King inspects this instead of the model's private context.
 model AgentSession {
-  id        String  @id @default(cuid())
-  agentId   String
+  id         String @id @default(cuid())
+  agentId    String
   /// Which provider/model this run actually used (after ModelRouter).
   providerId String
   model      String
@@ -776,9 +777,9 @@ model AgentSession {
 
   correlationId String?
 
-  startedAt DateTime @default(now())
+  startedAt DateTime  @default(now())
   endedAt   DateTime?
-  updatedAt DateTime @updatedAt
+  updatedAt DateTime  @updatedAt
 
   agent     Agent      @relation(fields: [agentId], references: [id], onDelete: Cascade)
   task      Task?      @relation(fields: [taskId], references: [id], onDelete: SetNull)
@@ -788,8 +789,8 @@ model AgentSession {
   executions ExecutionJob[]
 
   // Phase 4 integrations.
-  aiUsages   AiUsage[]
-  testRuns   TestRun[]
+  aiUsages AiUsage[]
+  testRuns TestRun[]
 
   @@index([agentId, status])
   @@index([status])
@@ -819,13 +820,13 @@ model AgentHierarchy {
 }
 
 model Escalation {
-  id      String @id @default(cuid())
-  fromAgentId String
+  id                String  @id @default(cuid())
+  fromAgentId       String
   /// Escalate to an agent (Rashid/Ahmad) or directly to the King.
-  toAgentId   String?
-  toUserId    String?
-  taskId      String?
-  planId      String?
+  toAgentId         String?
+  toUserId          String?
+  taskId            String?
+  planId            String?
   approvalRequestId String?
 
   /// BLOCKED | TOOL_UNAVAILABLE | TASK_IMPOSSIBLE | APPROVAL_REQUIRED |
@@ -834,17 +835,17 @@ model Escalation {
   detail   String
 
   /// OPEN | ACKNOWLEDGED | RESOLVED | REJECTED
-  status String @default("OPEN")
+  status     String  @default("OPEN")
   resolution String?
 
   createdAt  DateTime  @default(now())
   resolvedAt DateTime?
 
-  fromAgent Agent?  @relation("EscalationFromAgent", fields: [fromAgentId], references: [id], onDelete: Cascade)
-  toAgent   Agent?  @relation("EscalationToAgent", fields: [toAgentId], references: [id], onDelete: SetNull)
-  toUser    User?   @relation("EscalationToUser", fields: [toUserId], references: [id], onDelete: SetNull)
-  task      Task?   @relation(fields: [taskId], references: [id], onDelete: SetNull)
-  plan      Plan?   @relation(fields: [planId], references: [id], onDelete: SetNull)
+  fromAgent Agent?           @relation("EscalationFromAgent", fields: [fromAgentId], references: [id], onDelete: Cascade)
+  toAgent   Agent?           @relation("EscalationToAgent", fields: [toAgentId], references: [id], onDelete: SetNull)
+  toUser    User?            @relation("EscalationToUser", fields: [toUserId], references: [id], onDelete: SetNull)
+  task      Task?            @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  plan      Plan?            @relation(fields: [planId], references: [id], onDelete: SetNull)
   approval  ApprovalRequest? @relation(fields: [approvalRequestId], references: [id], onDelete: SetNull)
 
   @@index([status])
@@ -860,15 +861,15 @@ model DecisionConflict {
   id String @id @default(cuid())
 
   /// What the participants disagree about.
-  issue String
+  issue        String
   /// JSON -- [{ agentId, position, evidence }]
-  participants String @default("[]")
+  participants String  @default("[]")
   /// JSON -- { positions: [...], proposedResolution }
-  positions String @default("{}")
-  evidence  String?
+  positions    String  @default("{}")
+  evidence     String?
 
   /// OPEN | DISCUSSING | RESOLVED | ESCALATED
-  status String @default("OPEN")
+  status     String  @default("OPEN")
   resolution String?
 
   taskId String?
@@ -890,22 +891,22 @@ model DecisionConflict {
 // =============================================================================
 
 model Conversation {
-  id       String  @id @default(cuid())
+  id              String   @id @default(cuid())
   /// HUMAN_AGENT | AGENT_AGENT | SYSTEM
-  kind     String
-  title    String
-  companyId String?
+  kind            String
+  title           String
+  companyId       String?
   createdByUserId String?
-  isClosed Boolean  @default(false)
+  isClosed        Boolean  @default(false)
   /// JSON -- Phase 2: shared context window, topic, priority.
-  metadata  String  @default("{}")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  metadata        String   @default("{}")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  company       Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  createdBy     User?    @relation(fields: [createdByUserId], references: [id], onDelete: SetNull)
-  participants  ConversationParticipant[]
-  messages      Message[]
+  company      Company?                  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdBy    User?                     @relation(fields: [createdByUserId], references: [id], onDelete: SetNull)
+  participants ConversationParticipant[]
+  messages     Message[]
 
   @@index([companyId])
   @@index([kind])
@@ -913,10 +914,10 @@ model Conversation {
 }
 
 model ConversationParticipant {
-  id             String   @id @default(cuid())
+  id             String    @id @default(cuid())
   conversationId String
   agentId        String
-  joinedAt       DateTime @default(now())
+  joinedAt       DateTime  @default(now())
   lastReadAt     DateTime?
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
@@ -927,24 +928,24 @@ model ConversationParticipant {
 }
 
 model Message {
-  id             String  @id @default(cuid())
+  id             String @id @default(cuid())
   conversationId String
 
   /// HUMAN | AGENT | SYSTEM
-  senderType String
+  senderType    String
   senderUserId  String?
   senderAgentId String?
 
   /// MESSAGE | PLAN | REPORT | REQUEST | QUESTION | APPROVAL_REQUEST |
   /// TOOL_RESULT | TASK_RESULT | SYSTEM_NOTICE
-  kind    String @default("MESSAGE")
+  kind String @default("MESSAGE")
 
-  content String
-  taskId  String?
+  content       String
+  taskId        String?
   /// Correlates with the correlationId that produced this message.
   correlationId String?
   /// JSON -- plan payload, tool invocations, approval snapshot.
-  metadata String @default("{}")
+  metadata      String  @default("{}")
 
   createdAt DateTime @default(now())
 
@@ -963,7 +964,7 @@ model Message {
 // =============================================================================
 
 model Wallet {
-  id     String @id @default(cuid())
+  id        String @id @default(cuid())
   /// AGENT | USER | COMPANY
   ownerType String
   ownerId   String
@@ -982,9 +983,9 @@ model Wallet {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  owner            User?          @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
-  ownerUserId      String?
-  transactions     Transaction[]
+  owner             User?         @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  ownerUserId       String?
+  transactions      Transaction[]
   outgoingTransfers Transaction[] @relation("TransferCounterparty")
 
   @@unique([ownerType, ownerId, currency])
@@ -1023,8 +1024,8 @@ model Transaction {
   description String?
 
   /// USER | AGENT | SYSTEM
-  actorType String
-  actorId   String?
+  actorType         String
+  actorId           String?
   approvalRequestId String?
 
   /// Client-supplied dedupe key. Unique -- retrying a payment can never
@@ -1032,13 +1033,13 @@ model Transaction {
   idempotencyKey String?
 
   /// JSON
-  metadata String @default("{}")
+  metadata  String   @default("{}")
   createdAt DateTime @default(now())
 
-  wallet         Wallet  @relation(fields: [walletId], references: [id], onDelete: Cascade)
-  counterparty   Wallet? @relation("TransferCounterparty", fields: [counterpartyWalletId], references: [id], onDelete: SetNull)
+  wallet               Wallet           @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  counterparty         Wallet?          @relation("TransferCounterparty", fields: [counterpartyWalletId], references: [id], onDelete: SetNull)
   counterpartyWalletId String?
-  approval       ApprovalRequest? @relation(fields: [approvalRequestId], references: [id], onDelete: SetNull)
+  approval             ApprovalRequest? @relation(fields: [approvalRequestId], references: [id], onDelete: SetNull)
 
   @@unique([walletId, idempotencyKey])
   @@index([walletId, createdAt])
@@ -1056,15 +1057,15 @@ model ApprovalRequest {
   id String @id @default(cuid())
 
   /// USER | AGENT | SYSTEM
-  requesterType String
+  requesterType    String
   requesterAgentId String?
   requesterUserId  String?
 
   /// Dotted action identifier, e.g. "wallet.transfer" or "agent.create".
-  action         String
+  action        String
   /// JSON -- the exact arguments that were withheld pending approval.
-  actionPayload  String
-  reason         String
+  actionPayload String
+  reason        String
 
   /// LOW | MEDIUM | HIGH | CRITICAL
   risk String @default("MEDIUM")
@@ -1084,18 +1085,18 @@ model ApprovalRequest {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
-  requester  Agent?    @relation("ApprovalRequestAgentRequester", fields: [requesterAgentId], references: [id], onDelete: SetNull)
-  requesterUser User?   @relation("ApprovalRequester", fields: [requesterUserId], references: [id], onDelete: SetNull)
-  decidedBy  User?     @relation("ApprovalDecider", fields: [decidedByUserId], references: [id], onDelete: SetNull)
-  company    Company?  @relation(fields: [companyId], references: [id], onDelete: SetNull)
-  world      World?    @relation(fields: [worldId], references: [id], onDelete: SetNull)
-  task       Task?     @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  requester     Agent?   @relation("ApprovalRequestAgentRequester", fields: [requesterAgentId], references: [id], onDelete: SetNull)
+  requesterUser User?    @relation("ApprovalRequester", fields: [requesterUserId], references: [id], onDelete: SetNull)
+  decidedBy     User?    @relation("ApprovalDecider", fields: [decidedByUserId], references: [id], onDelete: SetNull)
+  company       Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  world         World?   @relation(fields: [worldId], references: [id], onDelete: SetNull)
+  task          Task?    @relation(fields: [taskId], references: [id], onDelete: SetNull)
 
-  transactions Transaction[]
-  escalations  Escalation[]
+  transactions   Transaction[]
+  escalations    Escalation[]
   // After approval the request re-drives the original tool invocation exactly
   // once. Guarded by these two columns.
-  executedAt  DateTime?
+  executedAt     DateTime?
   executionError String?
 
   @@index([status])
@@ -1109,12 +1110,12 @@ model ApprovalRequest {
 // =============================================================================
 
 model AgentBlueprint {
-  id       String @id @default(cuid())
+  id        String  @id @default(cuid())
   companyId String?
 
-  name     String
-  roleKey  String
-  title    String
+  name    String
+  roleKey String
+  title   String
 
   systemPrompt String
   personality  String @default("{}")
@@ -1124,14 +1125,14 @@ model AgentBlueprint {
 
   providerId  String
   model       String
-  temperature Float @default(0.3)
+  temperature Float  @default(0.3)
   maxTokens   Int    @default(2048)
 
   /// DRAFT | PENDING_APPROVAL | APPROVED | REJECTED | INSTANTIATED
   status String @default("DRAFT")
 
-  requestedByAgentId String?
-  approvalRequestId  String?
+  requestedByAgentId  String?
+  approvalRequestId   String?
   instantiatedAgentId String?
 
   createdAt DateTime @default(now())
@@ -1151,7 +1152,7 @@ model EventLog {
   /// Monotonic integer id -- the event log's primary ordering key.
   id Int @id @default(autoincrement())
 
-  type String
+  type     String
   /// INFO | WARN | ERROR | CRITICAL
   severity String @default("INFO")
 
@@ -1163,15 +1164,15 @@ model EventLog {
   targetType String?
   targetId   String?
 
-  worldId String?
-  cityId  String?
+  worldId   String?
+  cityId    String?
   companyId String?
 
   /// JSON
   payload String @default("{}")
 
   correlationId String
-  createdAt DateTime @default(now())
+  createdAt     DateTime @default(now())
 
   @@index([correlationId])
   @@index([type])
@@ -1193,17 +1194,17 @@ model ActivityLog {
   targetType String?
   targetId   String?
   /// OK | ERROR
-  result String @default("OK")
-  error  String?
+  result     String  @default("OK")
+  error      String?
 
   correlationId String
   ip            String?
   userAgent     String?
   /// JSON
-  metadata      String @default("{}")
-  createdAt DateTime @default(now())
+  metadata      String   @default("{}")
+  createdAt     DateTime @default(now())
 
-  actor User? @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+  actor       User?   @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
   actorUserId String?
 
   @@index([correlationId])
@@ -1215,20 +1216,20 @@ model ActivityLog {
 model ToolInvocation {
   id Int @id @default(autoincrement())
 
-  agentId String?
-  toolName String
+  agentId    String?
+  toolName   String
   /// JSON -- validated arguments
-  arguments String
+  arguments  String
   /// SUCCESS | DENIED | PENDING_APPROVAL | ERROR
-  status String
+  status     String
   /// JSON
-  result  String?
-  error   String?
+  result     String?
+  error      String?
   durationMs Int?
 
-  correlationId String
+  correlationId     String
   approvalRequestId String?
-  createdAt DateTime @default(now())
+  createdAt         DateTime @default(now())
 
   agent Agent? @relation(fields: [agentId], references: [id], onDelete: SetNull)
 
@@ -1272,14 +1273,14 @@ model Workspace {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  agent   Agent?   @relation(fields: [agentId], references: [id], onDelete: SetNull)
-  project Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  agent   Agent?            @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  project Project?          @relation(fields: [projectId], references: [id], onDelete: SetNull)
   members WorkspaceMember[]
 
-  sessions   AgentSession[]
-  artifacts  Artifact[]
-  executions ExecutionJob[]
-  testRuns   TestRun[]
+  sessions    AgentSession[]
+  artifacts   Artifact[]
+  executions  ExecutionJob[]
+  testRuns    TestRun[]
   factoryRuns FactoryRun[]
 
   @@index([agentId])
@@ -1316,14 +1317,14 @@ model ExecutionJob {
   id String @id @default(cuid())
 
   /// COMMAND | VERIFY | BACKEND
-  kind String @default("COMMAND")
+  kind   String @default("COMMAND")
   /// QUEUED | RUNNING | COMPLETED | FAILED | CANCELLED | TIMEOUT
   status String @default("QUEUED")
 
   /// Backend that will run it: opencode | local | mock.
-  backendId String?
+  backendId  String?
   /// JSON argv array. Security-critical: never a concatenated shell line.
-  command   String?
+  command    String?
   /// Absolute working directory; validated inside the workspace root server-side.
   workingDir String?
 
@@ -1337,17 +1338,17 @@ model ExecutionJob {
   maxAttempts Int @default(1)
   timeoutMs   Int @default(600000)
 
-  scheduledAt DateTime @default(now())
+  scheduledAt DateTime  @default(now())
   startedAt   DateTime?
   finishedAt  DateTime?
   exitCode    Int?
-  stdoutBytes Int @default(0)
-  stderrBytes Int @default(0)
+  stdoutBytes Int       @default(0)
+  stderrBytes Int       @default(0)
 
   /// JSON -- { exitCode, stdoutPath, stderrPath, durationMs, timedOut }.
   /// Paths only; output is spooled to files under the workspace, not into rows.
-  result String?
-  error  String?
+  result        String?
+  error         String?
   /// ErrorCategory value (TRANSIENT | CONFIGURATION | ... | UNKNOWN).
   errorCategory String?
 
@@ -1360,10 +1361,10 @@ model ExecutionJob {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  workspace Workspace?     @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
-  session   AgentSession?  @relation(fields: [sessionId], references: [id], onDelete: SetNull)
-  task      Task?          @relation(fields: [taskId], references: [id], onDelete: SetNull)
-  agent     Agent?         @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  workspace Workspace?    @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  session   AgentSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  task      Task?         @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  agent     Agent?        @relation(fields: [agentId], references: [id], onDelete: SetNull)
 
   artifacts Artifact[]
 
@@ -1393,27 +1394,27 @@ model Credential {
   name String @unique
 
   /// API_KEY | OAUTH | TOKEN | CUSTOM
-  kind String @default("API_KEY")
+  kind  String @default("API_KEY")
   /// PROVIDER | CONNECTOR
   scope String
   /// Provider id (e.g. "openai-compatible") or connector slug, per scope.
   refId String
 
   /// JSON -- {iv, tag, data} base64 ciphertext produced by the vault.
-  payload String
+  payload    String
   /// Vault key version used to seal this row (rotation support).
-  keyVersion Int @default(1)
+  keyVersion Int    @default(1)
 
   /// ACTIVE | REVOKED
-  status String @default("ACTIVE")
+  status   String @default("ACTIVE")
   /// JSON -- non-secret descriptors only (scopes, base url, account label).
   metadata String @default("{}")
 
   lastRotatedAt DateTime?
   lastUsedAt    DateTime?
   expiresAt     DateTime?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   @@index([scope, refId])
   @@index([status])
@@ -1428,22 +1429,22 @@ model AiUsage {
   providerId String
   model      String
   /// OK | ERROR
-  status String @default("OK")
+  status     String @default("OK")
 
-  inputTokens  Int @default(0)
-  outputTokens Int @default(0)
-  cachedTokens Int @default(0)
+  inputTokens        Int    @default(0)
+  outputTokens       Int    @default(0)
+  cachedTokens       Int    @default(0)
   /// Estimated cost in minor units (KW). Estimation only; the ledger owns truth.
-  estimatedCostMinor Int @default(0)
-  currency String @default("KW")
+  estimatedCostMinor Int    @default(0)
+  currency           String @default("KW")
 
-  latencyMs Int @default(0)
+  latencyMs Int     @default(0)
   error     String?
 
-  agentId     String?
-  sessionId   String?
-  taskId      String?
-  companyId   String?
+  agentId       String?
+  sessionId     String?
+  taskId        String?
+  companyId     String?
   correlationId String?
 
   createdAt DateTime @default(now())
@@ -1462,8 +1463,8 @@ model AiUsage {
 /// An external endpoint subscribed to domain events. Deliveries are signed
 /// (HMAC-SHA256), retried with bounded backoff, and dead-lettered.
 model WebhookSubscription {
-  id   String @id @default(cuid())
-  url  String
+  id          String  @id @default(cuid())
+  url         String
   description String?
 
   /// JSON string[] of event type names, or ["*"] for everything.
@@ -1474,17 +1475,17 @@ model WebhookSubscription {
 
   /// HMAC secret, sealed by the vault (never plaintext, never returned).
   secretPayload String
-  keyVersion    Int @default(1)
+  keyVersion    Int    @default(1)
 
   /// Auto-disabled after too many consecutive dead deliveries.
-  failureCount   Int @default(0)
+  failureCount   Int       @default(0)
   lastDeliveryAt DateTime?
 
   companyId String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  company   Company?           @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  company    Company?          @relation(fields: [companyId], references: [id], onDelete: SetNull)
   deliveries WebhookDelivery[]
 
   @@index([status])
@@ -1498,21 +1499,21 @@ model WebhookDelivery {
   eventType      String
 
   /// JSON -- the event payload exactly as signed.
-  payload String
+  payload   String
   /// Hex HMAC-SHA256 over `${timestamp}.${body}`.
   signature String
 
   /// PENDING | DELIVERED | FAILED | DEAD
-  status String @default("PENDING")
-  attempts    Int @default(0)
-  maxAttempts Int @default(5)
+  status        String   @default("PENDING")
+  attempts      Int      @default(0)
+  maxAttempts   Int      @default(5)
   nextAttemptAt DateTime @default(now())
 
-  responseStatus Int?
+  responseStatus  Int?
   /// Bounded response snippet for debugging (no headers, no secrets).
   responseSnippet String?
-  error  String?
-  deliveredAt DateTime?
+  error           String?
+  deliveredAt     DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1544,7 +1545,7 @@ model ApiKey {
   lastUsedAt DateTime?
   expiresAt  DateTime?
   revokedAt  DateTime?
-  createdAt  DateTime @default(now())
+  createdAt  DateTime  @default(now())
 
   owner User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -1555,23 +1556,23 @@ model ApiKey {
 /// One execution of a test suite through the TestingEngine. Evidence follows
 /// the factory rules: OBSERVED / INFERRED / HYPOTHESIS are labelled explicitly.
 model TestRun {
-  id   String @id @default(cuid())
+  id String @id @default(cuid())
 
   /// UNIT | INTEGRATION | E2E | BROWSER | MOBILE | SECURITY | PERFORMANCE
-  suite String
+  suite   String
   /// Adapter that ran it: vitest | command | testerarmy | http
   adapter String
-  name String
+  name    String
 
   /// QUEUED | RUNNING | PASSED | FAILED | ERROR | CANCELLED | TIMEOUT
   status String @default("QUEUED")
 
   /// JSON -- { passed, failed, skipped, total }
-  summary String @default("{}")
+  summary  String  @default("{}")
   /// JSON -- { observed: [...], inferred: [...], hypothesis: [...] }
-  evidence String @default("{}")
+  evidence String  @default("{}")
   /// Workspace-relative path to raw output, when a workspace was used.
-  rawPath String?
+  rawPath  String?
 
   workspaceId String?
   executionId String?
@@ -1579,12 +1580,12 @@ model TestRun {
   taskId      String?
   agentId     String?
 
-  startedAt  DateTime?
-  finishedAt DateTime?
-  durationMs Int @default(0)
+  startedAt     DateTime?
+  finishedAt    DateTime?
+  durationMs    Int       @default(0)
   correlationId String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   workspace Workspace?    @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
   execution ExecutionJob? @relation(fields: [executionId], references: [id], onDelete: SetNull)
@@ -1602,25 +1603,25 @@ model TestRun {
 /// forward, the loop is bounded by config (attempts, runtime, model calls),
 /// and merge always ends in human approval.
 model FactoryRun {
-  id      String @id @default(cuid())
-  repoUrl String
+  id        String @id @default(cuid())
+  repoUrl   String
   companyId String
 
   /// INTAKE | ANALYZING | PLANNING | BUILDING | TESTING | FIXING | REVIEWING |
   /// AWAITING_APPROVAL | COMPLETED | FAILED | CANCELLED
-  status String @default("INTAKE")
+  status       String @default("INTAKE")
   currentStage String @default("INTAKE")
 
   /// JSON -- { maxFixAttempts, maxRuntimeMs, maxModelCalls, targetBranch }
-  config String @default("{}")
+  config   String @default("{}")
   /// JSON -- ProjectHealthReport from the repository analyzer.
   analysis String @default("{}")
   /// JSON -- plan payload produced during PLANNING.
-  plan String @default("{}")
+  plan     String @default("{}")
   /// JSON -- { owner, repo, branch, prUrl, commits }
-  github String @default("{}")
+  github   String @default("{}")
   /// JSON -- { fixAttempts, modelCalls, costMinor, testRuns }
-  stats String @default("{}")
+  stats    String @default("{}")
 
   workspaceId String?
   taskId      String?
@@ -1644,12 +1645,12 @@ model Artifact {
   name String
 
   /// FILE | LOG | REPORT | DIFF | OUTPUT
-  kind String @default("FILE")
+  kind        String  @default("FILE")
   /// Relative to the workspace root (never an absolute path outside it).
-  path       String
-  sizeBytes  Int    @default(0)
+  path        String
+  sizeBytes   Int     @default(0)
   contentHash String?
-  mimeType   String?
+  mimeType    String?
 
   /// PENDING | READY | MISSING | ARCHIVED
   status String @default("READY")
@@ -1663,11 +1664,11 @@ model Artifact {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  workspace Workspace?     @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
-  session   AgentSession?  @relation(fields: [sessionId], references: [id], onDelete: SetNull)
-  task      Task?          @relation(fields: [taskId], references: [id], onDelete: SetNull)
-  agent     Agent?         @relation(fields: [agentId], references: [id], onDelete: SetNull)
-  execution ExecutionJob?  @relation(fields: [executionId], references: [id], onDelete: SetNull)
+  workspace Workspace?    @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  session   AgentSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  task      Task?         @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  agent     Agent?        @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  execution ExecutionJob? @relation(fields: [executionId], references: [id], onDelete: SetNull)
 
   @@index([workspaceId])
   @@index([sessionId])
@@ -1675,4 +1676,47 @@ model Artifact {
   @@index([agentId])
   @@index([executionId])
   @@index([kind])
+}
+
+// =============================================================================
+// ACADEMY -- Phase 6: measured training runs, never self-declared skill
+// =============================================================================
+
+/// One training attempt on one skill of one agent. A run advances only
+/// forward (RUNNING -> EVALUATED/FAILED), produces a score from an evaluation
+/// function, and only a passed run widens the agent's declared skills. XP
+/// curves from the simulation remain authoritative for numeric skill levels;
+/// Academy adds the lifecycle and the evidence.
+model TrainingRun {
+  id      String @id @default(cuid())
+  agentId String
+
+  /// Skill being trained (matches an entry of Agent.skills when granted).
+  skillName String
+  /// Name of the evaluation function that scored the run (data, not code
+  /// paths): e.g. "quiz", "task-replay", "rubric-review".
+  evaluator String @default("quiz")
+
+  /// RUNNING | EVALUATED | FAILED | CANCELLED
+  status String @default("RUNNING")
+
+  /// 0-100 result of the evaluation. Set only when EVALUATED.
+  score        Int?
+  /// Score at or above this passes. Fixed per run so re-evaluation cannot
+  /// silently move the bar.
+  passingScore Int     @default(70)
+  /// Free-form evaluator feedback, stored as evidence.
+  feedback     String?
+
+  /// Correlates with the tick/session that started the run.
+  correlationId String?
+  startedAt     DateTime  @default(now())
+  finishedAt    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([agentId, skillName])
+  @@index([status])
 }

@@ -28,6 +28,9 @@ import { providerTools } from "./definitions/provider-tools.js";
 import { connectorTools } from "./definitions/connector-tools.js";
 import { testingTools } from "./definitions/testing-tools.js";
 import { factoryTools } from "./definitions/factory-tools.js";
+import { relationshipTools } from "./definitions/relationship-tools.js";
+import { performanceTools } from "./definitions/performance-tools.js";
+import { academyTools } from "./definitions/academy-tools.js";
 import { ToolRegistry } from "./registry.js";
 
 export const BUILT_IN_TOOLS: AnyToolDefinition[] = [
@@ -53,6 +56,9 @@ export const BUILT_IN_TOOLS: AnyToolDefinition[] = [
   ...connectorTools,
   ...testingTools,
   ...factoryTools,
+  ...relationshipTools,
+  ...performanceTools,
+  ...academyTools,
 ];
 
 export function createDefaultRegistry(): ToolRegistry {
@@ -68,6 +74,9 @@ export { communicationTools, messageSendTool, messageReadTool } from "./definiti
 export { memoryTools, memoryStoreTool, memorySearchTool, memoryForgetTool } from "./definitions/memory-tools.js";
 export { economyTools, walletBalanceTool, walletTransferTool, walletStatementTool } from "./definitions/economy-tools.js";
 export { worldTools, worldGetStateTool, worldGetLocationTool } from "./definitions/world-tools.js";
+export { relationshipTools, relationshipListTool, relationshipPeersTool, relationshipGetTool, relationshipObserveTool } from "./definitions/relationship-tools.js";
+export { performanceTools, agentPerformanceTool } from "./definitions/performance-tools.js";
+export { academyTools, academyTrainTool, academyListTool, agentEvolutionTool } from "./definitions/academy-tools.js";
 export { companyTools, companyInfoTool } from "./definitions/company-tools.js";
 export { eventTools, eventEmitTool } from "./definitions/event-tools.js";
 export { approvalTools, approvalListTool, approvalGetTool, approvalDecideTool } from "./definitions/approval-tools.js";

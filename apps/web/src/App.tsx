@@ -9,16 +9,20 @@ const SimulationView = lazy(() =>
 const SkillsView = lazy(() =>
   import("./SkillsView.js").then((m) => ({ default: m.SkillsView })),
 );
+const PerformanceView = lazy(() =>
+  import("./PerformanceView.js").then((m) => ({ default: m.PerformanceView })),
+);
 import { ExecutionsView, WorkspacesView } from "./ExecutionView.js";
 import { FactoryView, TestingView, IntegrationsView } from "./FactoryView.js";
 
-type Section = "simulation" | "world" | "company" | "agents" | "tasks" | "chat" | "economy" | "approvals" | "activity" | "plans" | "sessions" | "workspaces" | "executions" | "escalations" | "skills" | "factory" | "testing" | "integrations";
+type Section = "simulation" | "world" | "company" | "agents" | "tasks" | "chat" | "economy" | "approvals" | "activity" | "plans" | "sessions" | "workspaces" | "executions" | "escalations" | "skills" | "factory" | "testing" | "integrations" | "performance";
 
 const SECTIONS: Array<{ key: Section; label: string }> = [
   { key: "simulation", label: "Simulation" },
   { key: "world", label: "World" },
   { key: "company", label: "Company" },
   { key: "agents", label: "Agents" },
+  { key: "performance", label: "Performance" },
   { key: "tasks", label: "Tasks" },
   { key: "plans", label: "Plans" },
   { key: "sessions", label: "Sessions" },
@@ -116,6 +120,45 @@ function DataTable({ rows }: { rows: Array<Record<string, unknown>> }): JSX.Elem
         </tbody>
       </table>
     </div>
+  );
+}
+
+function AgentsView({ token }: { token: string }): JSX.Element {
+  const { data, error, reload } = useFetch<Array<Record<string, unknown>>>("/agents", token);
+  const agents = data ?? [];
+  return (
+    <Panel title={`Agents (${agents.length})`} error={error}>
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        {agents.map((a) => {
+          const skills = Array.isArray(a.skills) ? (a.skills as string[]) : [];
+          const rep = typeof a.reputation === "number" ? a.reputation : 50;
+          return (
+            <div key={String(a.id)} className="rounded border border-gray-200 p-3 text-sm">
+              <div className="flex items-center justify-between">
+                <span className="font-medium">{String(a.name)}</span>
+                <span className={`rounded-full px-2 py-0.5 text-xs ${rep >= 70 ? "bg-green-100 text-green-800" : rep >= 40 ? "bg-amber-100 text-amber-800" : "bg-red-100 text-red-800"}`}>
+                  rep {rep}
+                </span>
+              </div>
+              <p className="mt-1 text-xs text-gray-500">
+                {String(a.roleKey)} · {String(a.title)}
+                {a.isActive === false && <span className="ml-1 text-red-600">· inactive</span>}
+              </p>
+              <p className="mt-1 text-xs text-gray-500">{a.providerId as string}/{String(a.model)}</p>
+              {skills.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {skills.slice(0, 6).map((s) => (
+                    <span key={s} className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600">{s}</span>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      {agents.length === 0 && <p className="text-sm text-gray-500">No agents.</p>}
+      <button onClick={reload} className="mt-3 text-sm text-blue-600">Refresh</button>
+    </Panel>
   );
 }
 
@@ -240,7 +283,6 @@ export default function App(): JSX.Element {
 
   const world = useFetch<unknown>("/world/snapshot", section === "world" ? token : null);
   const companies = useFetch<unknown[]>("/companies", section === "company" ? token : null);
-  const agents = useFetch<unknown[]>("/agents", section === "agents" ? token : null);
   const tasks = useFetch<{ items: unknown[] }>("/tasks", section === "tasks" ? token : null);
   const wallets = useFetch<unknown[]>("/economy/wallets", section === "economy" ? token : null);
   const activity = useFetch<unknown[]>("/logs/activity", section === "activity" ? token : null);
@@ -266,7 +308,7 @@ export default function App(): JSX.Element {
         <h1 className="font-bold">King World — Dashboard</h1>
         <button onClick={logout} className="text-sm text-blue-600">Sign out</button>
       </header>
-      <nav className="flex flex-wrap gap-1 border-b bg-white px-4 py-2">
+      <nav className="flex gap-1 overflow-x-auto border-b bg-white px-4 py-2">
         {SECTIONS.map((s) => (
           <button
             key={s.key}
@@ -277,7 +319,7 @@ export default function App(): JSX.Element {
           </button>
         ))}
       </nav>
-      <main className="mx-auto max-w-6xl p-4">
+      <main className="mx-auto max-w-6xl p-3 sm:p-4">
         <Suspense fallback={<p className="text-sm text-gray-500">Loading…</p>}>
         {section === "simulation" && <SimulationView token={token} />}
         {section === "world" && (
@@ -290,11 +332,8 @@ export default function App(): JSX.Element {
             <DataTable rows={(companies.data ?? []) as Array<Record<string, unknown>>} />
           </Panel>
         )}
-        {section === "agents" && (
-          <Panel title="Agents" error={agents.error}>
-            <DataTable rows={(agents.data ?? []) as Array<Record<string, unknown>>} />
-          </Panel>
-        )}
+        {section === "agents" && <AgentsView token={token} />}
+        {section === "performance" && <PerformanceView />}
         {section === "tasks" && (
           <Panel title="Tasks" error={tasks.error}>
             <DataTable rows={((tasks.data?.items ?? []) as unknown[]) as Array<Record<string, unknown>>} />

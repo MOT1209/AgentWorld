@@ -110,6 +110,7 @@ try {
     "AiUsage",
     "TestRun",
     "FactoryRun",
+    "TrainingRun",
     "Credential",
     // Phase 3 execution first: artifacts reference everything, jobs reference
     // workspaces/sessions, and sessions now reference workspaces.

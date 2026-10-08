@@ -323,6 +323,13 @@ type TransferInput = {
   amount: Money;
   description: string;
   beneficiaryAgentId?: string;
+  /**
+   * Leg type override. Plain transfers record TRANSFER; typed payments
+   * (`pay()`) pass their own type through so salary/fee/purchase legs are
+   * queryable without parsing descriptions. Defaults to TRANSFER, so every
+   * existing caller keeps its behavior.
+   */
+  type?: TransactionType;
 } & LedgerContext;
 
 export async function transfer(input: TransferInput): Promise<TransferResult> {
@@ -374,13 +381,14 @@ export async function transfer(input: TransferInput): Promise<TransferResult> {
       }
 
       const transferGroupId = randomUUID();
+      const legType = input.type ?? "TRANSFER";
 
       const debit = await applyMovement(
         tx,
         {
           ...input,
           wallet: fromWallet,
-          type: "TRANSFER",
+          type: legType,
           amount: input.amount.negate(),
           description: input.description,
           counterpartyType: "WALLET",
@@ -400,7 +408,7 @@ export async function transfer(input: TransferInput): Promise<TransferResult> {
         {
           ...input,
           wallet: toFresh,
-          type: "TRANSFER",
+          type: legType,
           amount: input.amount,
           description: input.description,
           counterpartyType: "WALLET",
@@ -496,6 +504,7 @@ export async function pay(input: {
   description: string;
   beneficiaryAgentId?: string;
 } & LedgerContext): Promise<TransferResult> {
+  // TransferInput.type carries the typed-payment kind onto both legs.
   const result = await transfer(input);
 
   if (!result.replayed) {

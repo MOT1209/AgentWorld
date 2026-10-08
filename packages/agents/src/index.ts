@@ -73,3 +73,36 @@ export {
 } from "./blueprints.js";
 
 export { syncHierarchyFromRoles, type HierarchySyncResult } from "./hierarchy-sync.js";
+
+export {
+  recordInteraction,
+  listRelationships,
+  getRelationship,
+  closestPeers,
+  type InteractionInput,
+  type RelationshipContext,
+} from "./relationships.js";
+
+export {
+  agentPerformance,
+  agentsPerformance,
+  companyPerformance,
+  type AgentPerformanceSummary,
+} from "./performance.js";
+
+export {
+  evolveReputation,
+  evolveCompanyReputations,
+  type ReputationResult,
+  type EvolutionContext,
+} from "./evolution.js";
+
+export {
+  startTrainingRun,
+  evaluateTrainingRun,
+  failTrainingRun,
+  listTrainingRuns,
+  type StartTrainingInput,
+  type EvaluationInput,
+  type AcademyContext,
+} from "./academy.js";

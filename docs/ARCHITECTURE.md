@@ -142,6 +142,36 @@ Running it: backend `mock` (offline, CI), `local` (real argv processes) or
 `opencode` (needs the CLI; binary name from `OPENCODE_COMMAND`). Live smoke:
 `OPENCODE_SMOKE=1 npx vitest run tests/opencode-smoke.test.ts`.
 
+## Social graph, performance and reputation (Phase 6)
+
+The social graph is evidence, not authority. `packages/agents/src/relationships.ts`
+records observed interactions (kinds CONVERSATION / COLLABORATION /
+CO_LOCATION / OUTCOME) into `AgentRelationship` edges with small bounded
+deltas; affinity/trust influence social choices only and never widen
+permissions — the ToolExecutor still checks RoleProfile grants.
+
+Standing is measured too: `evolveReputation` computes the same summary the
+Performance Center shows from Tasks, TaskReviews, ExecutionJobs and AiUsage
+rows, and applies a bounded movement (≤5 points per pass; a thin sample
+<3 tasks moves nothing). Every change emits `AGENT_REPUTATION_CHANGED` with
+from/to/reason. No code path writes `Agent.reputation` directly.
+
+Awards go through the Academy: a `TrainingRun` evaluates once, and only a
+stored score ≥ the run's passing score widens `Agent.skills` — that widening
+requires human authority (`AGENT_MODIFY`), so an agent cannot self-assert
+competence. Numeric skill *levels* still come from the simulation's XP curve.
+
+## Daily payroll (Phase 7 core)
+
+The first tick of each new simulated day runs `runPayrollCycle`
+(`packages/economy/src/payroll.service.ts`): each active member with salary
+is paid `floor(annual / 365)` minor units from the company treasury through
+the ordinary ledger. Payment is idempotent per (company, agent, day) via the
+ledger's idempotency-key unique index — a repeated pass replays as a no-op,
+so a lost in-memory day marker can never double-pay. A treasury that cannot
+cover payroll yields recorded shortfalls, not an overdraft and not a crash:
+the tick never stops because of money.
+
 ## Database portability
 
 SQLite (Phase 1) has no native `enum` or `Json`: enum-like columns are `String`

@@ -45,3 +45,11 @@ export {
   withdrawFromTreasury,
   type CompanyFinanceSummary,
 } from "./treasury.service.js";
+
+export {
+  runPayrollCycle,
+  dailySalaryMinor,
+  payrollDayKey,
+  type PayrollCycleResult,
+  type PayrollContext,
+} from "./payroll.service.js";

@@ -31,6 +31,12 @@ export const EVENT_TYPES = {
   AGENT_BLUEPRINT_REQUESTED: "AGENT_BLUEPRINT_REQUESTED",
   AGENT_RUN_STARTED: "AGENT_RUN_STARTED",
   AGENT_RUN_FINISHED: "AGENT_RUN_FINISHED",
+  AGENT_REPUTATION_CHANGED: "AGENT_REPUTATION_CHANGED",
+  AGENT_TRAINED: "AGENT_TRAINED",
+  EVALUATION_RECORDED: "EVALUATION_RECORDED",
+
+  // Relationships (social graph as evidence, never authority)
+  RELATIONSHIP_CHANGED: "RELATIONSHIP_CHANGED",
 
   // Communication
   CONVERSATION_CREATED: "CONVERSATION_CREATED",
@@ -187,6 +193,37 @@ export interface EventPayloadMap {
   COMPANY_CREATED: { companyId: string; name: string; ownerId: string };
   COMPANY_STRUCTURE_MODIFIED: { companyId: string; change: string };
   DEPARTMENT_CREATED: { companyId: string; departmentId: string; name: string };
+
+  AGENT_REPUTATION_CHANGED: {
+    agentId: string;
+    fromReputation: number;
+    toReputation: number;
+    reason: string;
+  };
+  AGENT_TRAINED: {
+    trainingRunId: string;
+    agentId: string;
+    skillName: string;
+    status: string;
+    score: number | null;
+  };
+  EVALUATION_RECORDED: {
+    trainingRunId: string;
+    agentId: string;
+    skillName: string;
+    score: number;
+    passed: boolean;
+    feedback: string;
+  };
+  RELATIONSHIP_CHANGED: {
+    sourceAgentId: string;
+    targetAgentId: string;
+    kind: string;
+    outcome: string | null;
+    affinity: number;
+    trust: number;
+    interactionCount: number;
+  };
 
   AGENT_CREATED: { agentId: string; name: string; roleKey: string };
   AGENT_STATE_CHANGED: {

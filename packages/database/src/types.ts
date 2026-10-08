@@ -57,6 +57,8 @@ export type {
   ApiKey,
   TestRun,
   FactoryRun,
+  // Phase 6 academy.
+  TrainingRun,
 } from "@prisma/client";
 
 /** ActorRef lives in shared so no domain package needs the ORM to name a caller. */

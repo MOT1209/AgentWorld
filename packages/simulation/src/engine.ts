@@ -50,6 +50,7 @@ import { decisionEngine, type Decision } from "./decision.js";
 import { executeAction, type AgentAction } from "./actions.js";
 import { controlWorld, type WorldControlAction } from "./clock.js";
 import { evaluateAgentRoutines } from "./routines.js";
+import { runPayrollCycle, payrollDayKey } from "../../economy/src/index.js";
 
 export const DEFAULT_TICK_INTERVAL_MS = 5_000;
 export const DEFAULT_MAX_AGENTS_PER_TICK = 200;
@@ -77,6 +78,8 @@ export interface TickResult {
   decisionRejected: number;
   routinesTriggered: number;
   routinesSkipped: number;
+  /** Set only on ticks that advanced into a new simulated day. */
+  payroll?: { paid: number; replayed: number; shortfalls: number; simulatedDay: string };
   errors: Array<{ agentId: string; message: string }>;
 }
 
@@ -141,6 +144,7 @@ export class SimulationEngine {
   private timer: ReturnType<typeof setInterval> | null = null;
   private ticking = false;
   private tickCount = 0;
+  private lastPayrollDay: string | null = null;
 
   constructor(db: DbClient, options: SimulationEngineOptions = {}) {
     this.db = db;
@@ -254,6 +258,7 @@ export class SimulationEngine {
       let decisionRejected = 0;
       let routinesTriggered = 0;
       let routinesSkipped = 0;
+      let payroll: TickResult["payroll"];
       const errors: Array<{ agentId: string; message: string }> = [];
 
       for (const agent of agents) {
@@ -297,6 +302,14 @@ export class SimulationEngine {
         }
       }
 
+      // Payroll runs once per simulated day, on the first tick that crosses
+      // the day boundary. The idempotency key (company, agent, day) makes a
+      // repeated pass a no-op even if this in-memory guard is lost.
+      const payrollResult = await this.runPayrollIfNewDay(simulated.simulatedNow, correlationId);
+      if (payrollResult !== undefined) {
+        payroll = payrollResult;
+      }
+
       return {
         worldId: updated.id,
         skipped: false,
@@ -308,6 +321,7 @@ export class SimulationEngine {
         decisionRejected,
         routinesTriggered,
         routinesSkipped,
+        payroll,
         errors,
       };
     } finally {
@@ -429,6 +443,51 @@ export class SimulationEngine {
 
     return { activitiesCompleted, decisionsExecuted, decisionRejected, routinesTriggered, routinesSkipped };
   }
+
+  /**
+   * Daily payroll pass. Fires on the first tick of a new simulated day;
+   * ledger-side idempotency keys make a repeated pass a no-op.
+   */
+  private async runPayrollIfNewDay(
+    simulatedNow: Date,
+    correlationId: string,
+  ): Promise<TickResult["payroll"]> {
+    const day = payrollDayKey(simulatedNow);
+    if (this.lastPayrollDay === day) return undefined;
+    this.lastPayrollDay = day;
+    try {
+      const cycle = await runPayrollCycle(
+        this.db,
+        { simulatedNow },
+        { actor: this.actor, correlationId },
+      );
+      if (cycle.paid.length > 0 || cycle.shortfalls.length > 0) {
+        this.log.info("Daily payroll ran", {
+          action: "economy.payroll_cycle",
+          simulatedDay: cycle.simulatedDay,
+          paid: cycle.paid.length,
+          replayed: cycle.paid.filter((p) => p.replayed).length,
+          shortfalls: cycle.shortfalls.length,
+        });
+      }
+      return {
+        simulatedDay: cycle.simulatedDay,
+        paid: cycle.paid.length,
+        replayed: cycle.paid.filter((p) => p.replayed).length,
+        shortfalls: cycle.shortfalls.length,
+      };
+    } catch (error) {
+      // Payroll failing must never stop the world ticking.
+      this.log.error("Daily payroll failed", {
+        action: "economy.payroll_failed",
+        result: "ERROR",
+        simulatedDay: day,
+        error,
+      });
+      return { simulatedDay: day, paid: 0, replayed: 0, shortfalls: 0 };
+    }
+  }
+
 
   /** Completing an activity has consequences beyond the row's status. */
   private async applyCompletion(

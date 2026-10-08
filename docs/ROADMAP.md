@@ -80,21 +80,39 @@ them (single ledger, single ToolExecutor, single event bus).
 - Simulation decides within routines (decision engine respects scheduled
   activity); missed/overdue routines are surfaced, never crash the tick
 
-### Phase 6: relationship graph
+### Phase 6: relationship graph — ✅ delivered
 
-- `AgentRelationship` edges updated from co-location and conversation/memory
-  history via `recordInteraction`-style service; scores evolve, never grant
-  permissions
-- `relationship.*` tools behind ToolExecutor + REST + dashboard graph view
-- Social decision branch in the simulation may read relationship scores
+- `AgentRelationship` edges updated from interaction evidence via
+  `packages/agents/src/relationships.ts` (`recordInteraction` with kinds
+  CONVERSATION / COLLABORATION / CO_LOCATION / OUTCOME); scores evolve,
+  never grant permissions
+- `relationship.*` tools behind ToolExecutor+ REST (`/api/v1/relationships`)
+- Evolution is measured, not asserted: `evolveReputation` derives
+  `Agent.reputation` movement from the same evidence the Performance Center
+  shows, capped at 5 points per pass, with `AGENT_REPUTATION_CHANGED` audited
 
-### Phase 7: payroll heartbeat + market purchases
+### Phase 6b: Performance Center + Academy — ✅ delivered
 
-- Salary payroll: idempotent per-cycle run triggered from the existing
-  heartbeat path (single-writer ledger, `PAYROLL_*` events)
+- Performance Center: `agentPerformance` / `companyPerformance` computed from
+  real Task / TaskReview / ExecutionJob / AiUsage rows; REST
+  `/api/v1/performance` + PerformanceView dashboard (rates color-coded, no
+  data shown as "no data", never 0%)
+- Academy: `TrainingRun` lifecycle (start → evaluate/fail, terminal-once);
+  only a passed run (stored score ≥ passing score) widens `Agent.skills`;
+  evaluation requires human authority (AGENT_MODIFY). `academy.train` /
+  `academy.list` tools, `EVALUATION_RECORDED` / `AGENT_TRAINED` events,
+  REST `/api/v1/academy`
+
+### Phase 7: payroll heartbeat — ✅ core delivered; market purchases pending
+
+- Salary payroll: `runPayrollCycle` triggered from the existing tick path on
+  the first tick of a new simulated day; idempotent per (company, agent,
+  day) via ledger idempotency keys — a retried pass replays as a no-op, and
+  shortfalls are recorded, never crash the tick (single-writer ledger
+  preserved, `SALARY_PAID` events)
 - Market purchases with price modifiers: catalog/price rows, `market.*` tools
   that route through `payPurchase`/treasury withdrawal (no new financial
-  system — extend `packages/economy`)
+  system — extend `packages/economy`) — **not yet delivered**
 
 ### Phase 8: vector-backed memory retrieval
 

@@ -25,6 +25,9 @@ import { integrationsRouter } from "../routes/integrations.routes.js";
 import { mcpRouter } from "../routes/mcp.routes.js";
 import { testingRouter } from "../routes/testing.routes.js";
 import { factoryRouter } from "../routes/factory.routes.js";
+import { relationshipRouter } from "../routes/relationship.routes.js";
+import { performanceRouter } from "../routes/performance.routes.js";
+import { academyRouter } from "../routes/academy.routes.js";
 
 export function registerRoutes(app: Express): void {
   app.use("/api/v1/auth", authRouter);
@@ -53,4 +56,7 @@ export function registerRoutes(app: Express): void {
   app.use("/api/v1/mcp", mcpRouter);
   app.use("/api/v1/testing", testingRouter);
   app.use("/api/v1/factory", factoryRouter);
+  app.use("/api/v1/relationships", relationshipRouter);
+  app.use("/api/v1/performance", performanceRouter);
+  app.use("/api/v1/academy", academyRouter);
 }
