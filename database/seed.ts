@@ -73,14 +73,42 @@ async function main(): Promise<void> {
     });
   }
 
-  // 3. Locations
-  const locations: Array<{ name: string; kind: string; address: string | null; capacity?: number }> = [
-    { name: "King AI Corporation HQ", kind: "HQ", address: "1 King Plaza", capacity: 50 },
-    { name: "Ahmad Workspace", kind: "OFFICE", address: "1 King Plaza, Floor 3", capacity: 4 },
-    { name: "Rashid Workspace", kind: "OFFICE", address: "1 King Plaza, Floor 2", capacity: 4 },
-    { name: "Common Area", kind: "PUBLIC_SPACE", address: "1 King Plaza, Lobby", capacity: 100 },
-    { name: "Central Bank", kind: "BANK", address: "2 Vault Street" },
-    { name: "Central Market", kind: "MARKET", address: "3 Bazaar Road" },
+  // 3. Locations + Districts
+  // Create districts with spatial layout for the Three.js world.
+  const districts: Array<{ name: string; kind: string; cityId: string }> = [
+    { name: "City Centre", kind: "CITY_CENTRE", cityId: city.id },
+    { name: "Residential", kind: "RESIDENTIAL", cityId: city.id },
+    { name: "Business", kind: "BUSINESS", cityId: city.id },
+    { name: "Village", kind: "VILLAGE", cityId: city.id },
+    { name: "Public Spaces", kind: "PUBLIC", cityId: city.id },
+  ];
+  const districtIds: Record<string, string> = {};
+  for (const d of districts) {
+    const existing = await prisma.district.findUnique({
+      where: { cityId_name: { cityId: d.cityId, name: d.name } },
+    });
+    const row =
+      existing ??
+      (await prisma.district.create({
+        data: {
+          cityId: d.cityId,
+          name: d.name,
+          kind: d.kind,
+        },
+      }));
+    districtIds[d.name] = row.id;
+  }
+
+  const locations: Array<{ name: string; kind: string; address: string | null; capacity?: number; district?: string }> = [
+    { name: "King AI Corporation HQ", kind: "HQ", address: "1 King Plaza", capacity: 50, district: "Business" },
+    { name: "Ahmad Residence", kind: "HOUSE", address: "4 Oak Lane", capacity: 1, district: "Residential" },
+    { name: "Rashid Residence", kind: "HOUSE", address: "4 Oak Lane", capacity: 1, district: "Residential" },
+    { name: "Common Area", kind: "PUBLIC_SPACE", address: "1 King Plaza, Lobby", capacity: 100, district: "Public Spaces" },
+    { name: "Central Bank", kind: "BANK", address: "2 Vault Street", capacity: 20, district: "City Centre" },
+    { name: "Central Market", kind: "MARKET", address: "3 Bazaar Road", capacity: 30, district: "Business" },
+    { name: "Village Hall", kind: "PUBLIC_SPACE", address: "Maple Farm", capacity: 20, district: "Village" },
+    { name: "Farmhouse A", kind: "HOUSE", address: "1 Meadow View", capacity: 2, district: "Village" },
+    { name: "Farmhouse B", kind: "HOUSE", address: "2 Meadow View", capacity: 2, district: "Village" },
   ];
   const locationIds: Record<string, string> = {};
   for (const loc of locations) {
@@ -95,7 +123,8 @@ async function main(): Promise<void> {
           name: loc.name,
           kind: loc.kind,
           address: loc.address,
-          ...(loc.capacity !== undefined ? { capacity: loc.capacity } : {}),
+          capacity: loc.capacity ?? null,
+          districtId: districtIds[loc.district ?? "Public Spaces"],
         },
       }));
     locationIds[loc.name] = row.id;

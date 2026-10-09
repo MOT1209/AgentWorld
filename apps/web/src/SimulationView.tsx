@@ -1,11 +1,19 @@
 /**
- * Minimal three.js view of the simulated world.
+ * Three.js view of the simulated world — Phase 1 explorable environment.
  *
- * The scene is a faithful, deliberately low-poly projection of the SAME data the
- * API serves: every location is a marker arranged on a ring, every agent is a
- * sphere that sits at its current location and changes colour with its state.
- * Nothing here is a source of truth -- the view polls /simulation/state and
- * refreshes on the SSE event stream, so it can never disagree with the engine.
+ * Districts are laid out spatially:
+ *   • City centre : central crossroads with public buildings
+ *   • Residential : houses and apartment blocks
+ *   • Business    : offices and shops
+ *   • Village     : rural settlement with scattered houses
+ *   • Public spaces: parks, plazas, green areas
+ *
+ * Every location/building is positioned according to its district.
+ * Agents have recognizable silhouettes that change colour with state.
+ * Selection highlights and info panels are supported.
+ *
+ * The view polls /simulation/state and refreshes on the SSE event stream,
+ * so it can never disagree with the engine.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
@@ -68,13 +76,19 @@ const STATE_COLORS: Record<string, number> = {
   ERROR: 0xef4444,
 };
 
-const KIND_COLORS: Record<string, number> = {
-  HQ: 0x2563eb,
-  OFFICE: 0x0ea5e9,
-  BANK: 0x16a34a,
-  MARKET: 0xf59e0b,
-  PUBLIC_SPACE: 0x8b5cf6,
-  RESTAURANT: 0xdb2777,
+const DISTRICT_LAYOUT: Record<string, { x: number; z: number; radius: number }> = {
+  CITY_CENTRE: { x: 0, z: 0, radius: 0 },
+  RESIDENTIAL: { x: -20, z: 0, radius: 12 },
+  BUSINESS: { x: 20, z: 0, radius: 12 },
+  VILLAGE: { x: 0, z: -20, radius: 15 },
+  PUBLIC: { x: 0, z: 20, radius: 8 },
+};
+
+const DISTRICT_COLORS: Record<string, number> = {
+  RESIDENTIAL: 0xffe0b2,
+  BUSINESS: 0xcaf0f8,
+  VILLAGE: 0xbbdefb,
+  PUBLIC: 0xf4cccc,
 };
 
 const RELOAD_EVENTS = [
@@ -93,11 +107,11 @@ interface SceneContext {
   scene: THREE.Scene;
   camera: THREE.PerspectiveCamera;
   renderer: THREE.WebGLRenderer;
-  locationGroup: THREE.Group;
-  agentGroup: THREE.Group;
+  districtGroups: Map<string, THREE.Group>;
   locationMeshes: Map<string, THREE.Mesh>;
   agentMeshes: Map<string, THREE.Mesh>;
-  positions: Map<string, THREE.Vector3>;
+  agentIcons: Map<string, THREE.Group>;
+  positions: Map<string, { x: number; z: number; district: string }>;
   yaw: number;
 }
 
@@ -109,6 +123,14 @@ function disposeMesh(group: THREE.Group, mesh: THREE.Mesh): void {
   else material.dispose();
 }
 
+function disposeGroup(group: THREE.Group): void {
+  for (const child of group.children) {
+    if (child instanceof THREE.Mesh) {
+      disposeMesh(group, child as THREE.Mesh);
+    }
+  }
+}
+
 export function SimulationView({ token }: { token: string }): JSX.Element {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const sceneRef = useRef<SceneContext | null>(null);
@@ -116,6 +138,7 @@ export function SimulationView({ token }: { token: string }): JSX.Element {
   const [locations, setLocations] = useState<LocationRow[]>([]);
   const [districts, setDistricts] = useState<DistrictRow[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
 
   const load = useCallback(async (): Promise<void> => {
     try {
@@ -139,21 +162,50 @@ export function SimulationView({ token }: { token: string }): JSX.Element {
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x0b1020);
+
+    // District groups for spatial layout.
+    const districtGroups: Map<string, THREE.Group> = new Map();
+    ["CITY_CENTRE", "RESIDENTIAL", "BUSINESS", "VILLAGE", "PUBLIC"].forEach((did) => {
+      const g = new THREE.Group();
+      g.position.set(DISTRICT_LAYOUT[did as keyof typeof DISTRICT_LAYOUT].x, 0, DISTRICT_LAYOUT[did as keyof typeof DISTRICT_LAYOUT].z);
+      scene.add(g);
+      districtGroups.set(did, g);
+    });
+    ctx.districtGroups = districtGroups;
+
     const camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 500);
-    camera.position.set(0, 16, 22);
+    camera.position.set(0, 30, 40);
     camera.lookAt(0, 0, 0);
+
+    // Camera orbit controls (manual, no dependency).
+    let phi = Math.PI / 4;
+    let theta = Math.PI * 2;
+    const radius = 45;
+    const animateCamera = (): void => {
+      camera.position.x = radius * Math.sin(phi) * Math.cos(theta);
+      camera.position.y = radius * Math.cos(phi);
+      camera.position.z = radius * Math.sin(phi) * Math.sin(theta);
+      camera.lookAt(0, 0, 0);
+    };
+    animateCamera();
+    const clock = new THREE.Clock();
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
     renderer.setSize(width, height);
     mount.appendChild(renderer.domElement);
 
-    scene.add(new THREE.AmbientLight(0xffffff, 0.75));
-    const light = new THREE.DirectionalLight(0xffffff, 1.1);
-    light.position.set(10, 18, 12);
-    scene.add(light);
-    const grid = new THREE.GridHelper(40, 40, 0x2a3550, 0x18203a);
-    scene.add(grid);
+    scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+    const topLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    topLight.position.set(10, 20, 10);
+    scene.add(topLight);
+    const fillLight = new THREE.DirectionalLight(0xffffff, 0.4);
+    fillLight.position.set(-10, -10, -10);
+    scene.add(fillLight);
+
+    // Add some ambient occlusion feel with a hemisphere light.
+    const hemiLight = new THREE.HemisphereLight(0x87ceeb, 0x2c3e50, 0.3);
+    scene.add(hemiLight);
 
     const locationGroup = new THREE.Group();
     const agentGroup = new THREE.Group();
@@ -164,8 +216,7 @@ export function SimulationView({ token }: { token: string }): JSX.Element {
       scene,
       camera,
       renderer,
-      locationGroup,
-      agentGroup,
+      districtGroups,
       locationMeshes: new Map(),
       agentMeshes: new Map(),
       positions: new Map(),
@@ -173,17 +224,13 @@ export function SimulationView({ token }: { token: string }): JSX.Element {
     };
     sceneRef.current = ctx;
 
-    const clock = new THREE.Clock();
-    let frame = 0;
     const render = (): void => {
       const dt = Math.min(0.1, clock.getDelta());
+      animateCamera();
       for (const mesh of ctx.agentMeshes.values()) {
         const target = mesh.userData.target as THREE.Vector3 | undefined;
         if (target !== undefined) mesh.position.lerp(target, Math.min(1, dt * 4));
       }
-      ctx.yaw += dt * 0.06;
-      locationGroup.rotation.y = ctx.yaw;
-      agentGroup.rotation.y = ctx.yaw;
       renderer.render(scene, camera);
       frame = requestAnimationFrame(render);
     };
@@ -198,9 +245,50 @@ export function SimulationView({ token }: { token: string }): JSX.Element {
     };
     window.addEventListener("resize", onResize);
 
+    // Mouse drag for orbit control.
+    let isDragging = false;
+    let lastMouseX = 0;
+    let lastMouseY = 0;
+
+    const onMouseDown = (e: MouseEvent): void => {
+      isDragging = true;
+      lastMouseX = e.clientX;
+      lastMouseY = e.clientY;
+    };
+    const onMouseMove = (e: MouseEvent): void => {
+      if (!isDragging) return;
+      const deltaX = e.clientX - lastMouseX;
+      const deltaY = e.clientY - lastMouseY;
+      theta -= deltaX * 0.01;
+      phi += deltaY * 0.01;
+      phi = Math.max(0.1, Math.min(Math.PI - 0.1, phi));
+      lastMouseX = e.clientX;
+      lastMouseY = e.clientY;
+      animateCamera();
+    };
+    const onMouseUp = (): void => {
+      isDragging = false;
+    };
+    const onMouseWheel = (e: WheelEvent): void {
+      const scale = Math.exp(-e.deltaY * 0.001);
+      radius *= scale;
+      radius = Math.max(20, Math.min(80, radius));
+      animateCamera();
+    };
+    mount.addEventListener("mousedown", onMouseDown);
+    mount.addEventListener("mousemove", onMouseMove);
+    mount.addEventListener("mouseup", onMouseUp);
+    mount.addEventListener("mousewheel", onMouseWheel);
+    mount.addEventListener("DOMMouseScroll", onMouseWheel);
+
     return () => {
       cancelAnimationFrame(frame);
       window.removeEventListener("resize", onResize);
+      mount.removeEventListener("mousedown", onMouseDown);
+      mount.removeEventListener("mousemove", onMouseMove);
+      mount.removeEventListener("mouseup", onMouseUp);
+      mount.removeEventListener("mousewheel", onMouseWheel);
+      mount.removeEventListener("DOMMouseScroll", onMouseWheel);
       for (const mesh of ctx.locationMeshes.values()) disposeMesh(locationGroup, mesh);
       for (const mesh of ctx.agentMeshes.values()) disposeMesh(agentGroup, mesh);
       renderer.dispose();
@@ -214,26 +302,93 @@ export function SimulationView({ token }: { token: string }): JSX.Element {
     const ctx = sceneRef.current;
     if (ctx === null) return;
 
-    const count = Math.max(1, locations.length);
-    locations.forEach((location, index) => {
-      const angle = (index / count) * Math.PI * 2;
-      const position = new THREE.Vector3(Math.cos(angle) * 9, 0, Math.sin(angle) * 9);
-      ctx.positions.set(location.id, position);
-      let mesh = ctx.locationMeshes.get(location.id);
-      if (mesh === undefined) {
-        mesh = new THREE.Mesh(
-          new THREE.CylinderGeometry(1.05, 1.05, 0.6, 24),
-          new THREE.MeshStandardMaterial({
-            color: KIND_COLORS[location.kind] ?? 0x64748b,
-            transparent: true,
-            opacity: 0.9,
-          }),
-        );
-        ctx.locationGroup.add(mesh);
-        ctx.locationMeshes.set(location.id, mesh);
-      }
-      mesh.position.copy(position);
+    // Organize locations by district.
+    const locationsByDistrict: Map<string, LocationRow[]> = new Map();
+    for (const location of locations) {
+      const did = location.districtId ?? "PUBLIC";
+      if (!locationsByDistrict.has(did)) locationsByDistrict.set(did, []);
+      locationsByDistrict.get(did)!.push(location);
+    }
+
+    // Position each district group spatially.
+    ctx.districtGroups.forEach((group, districtId) => {
+      const layout = DISTRICT_LAYOUT[districtId];
+      if (!layout) return;
+      group.position.set(layout.x, 0, layout.z);
     });
+
+    // Create/update location meshes per district.
+    locationsByDistrict.forEach((districtLocations, districtId) => {
+      const layout = DISTRICT_LAYOUT[districtId] ?? DISTRICT_LAYOUT.PUBLIC;
+      const centerX = layout.x;
+      const centerZ = layout.z;
+      const radius = layout.radius || 8;
+
+      districtLocations.forEach((location, index) => {
+        const angle = (index / Math.max(1, districtLocations.length)) * Math.PI * 2;
+        const x = centerX + Math.cos(angle) * radius;
+        const z = centerZ + Math.sin(angle) * radius;
+        const posKey = `${location.id}-${districtId}`;
+        ctx.positions.set(location.id, { x, z, district: districtId });
+
+        let mesh = ctx.locationMeshes.get(location.id);
+        if (mesh === undefined) {
+          const kind = location.kind ?? "OTHER";
+          let geometry: THREEGeometry;
+          let color: number;
+
+          // Choose geometry based on kind for recognizable building types.
+          switch (kind) {
+            case "HOUSE":
+            case "APARTMENT":
+              geometry = new THREE.CylinderGeometry(1.2, 1.2, 3.5, 24);
+              color = 0xffe0b2; // warm residential
+              break;
+            case "SHOP":
+              geometry = new THREE.BoxGeometry(4, 3, 3);
+              color = 0xf59e0b; // market orange
+              break;
+            case "OFFICE":
+              geometry = new THREE.BoxGeometry(6, 5, 4);
+              color = 0x0ea5e9; // office blue
+              break;
+            case "PUBLIC_SPACE":
+            case "PARK":
+              geometry = new THREE.SphereGeometry(2, 24, 24, 8);
+              color = 0x22c55e; // park green
+              break;
+            case "PLATZ":
+            case "PLAZA":
+              geometry = new THREE.BoxGeometry(5, 0.5, 5);
+              color = 0x8b5cf6; // plaza purple
+              break;
+            case "CHURCH":
+            // Fall through to PUBLIC
+            case "GOVERNMENT":
+              geometry = new THREE.CylinderGeometry(1.5, 1.5, 6, 24);
+              color = 0x6366f1; // civic blue
+              break;
+            default:
+              geometry = new THREE.CylinderGeometry(1.05, 1.05, 2, 24);
+              color = DISTRICT_COLORS[districtId as keyof typeof DISTRICT_COLORS] ?? 0x94a3b8;
+          }
+
+          mesh = new THREE.Mesh(
+            geometry,
+            new THREE.MeshStandardMaterial({
+              color,
+              transparent: true,
+              opacity: 0.9,
+            }),
+          );
+          ctx.locationGroup.add(mesh);
+          ctx.locationMeshes.set(location.id, mesh);
+        }
+        mesh.position.set(x, 0, z);
+      });
+    });
+
+    // Remove stale location meshes.
     for (const [id, mesh] of ctx.locationMeshes) {
       if (!locations.some((location) => location.id === id)) {
         disposeMesh(ctx.locationGroup, mesh);
@@ -242,37 +397,75 @@ export function SimulationView({ token }: { token: string }): JSX.Element {
       }
     }
 
+    // Position agents with recognizable silhouettes.
     const agents = state?.agents ?? [];
-    const perLocation = new Map<string, number>();
+    const perLocation: Map<string, number> = new Map();
+
     for (const agent of agents) {
-      const base = agent.locationId === null ? undefined : ctx.positions.get(agent.locationId);
-      let target: THREE.Vector3;
+      const base = agent.locationId === null
+        ? { x: 0, z: 0, district: "PUBLIC" }
+        : ctx.positions.get(agent.locationId);
+
+      let target: { x: number; z: number; district: string };
       if (base === undefined) {
-        target = new THREE.Vector3(0, 1.4, 0);
+        target = { x: 0, z: 0, district: "PUBLIC" };
       } else {
         const slot = perLocation.get(agent.locationId as string) ?? 0;
         perLocation.set(agent.locationId as string, slot + 1);
-        target = new THREE.Vector3(
-          base.x + Math.cos(slot * 1.6) * 1.5,
-          1.4,
-          base.z + Math.sin(slot * 1.6) * 1.5,
-        );
+        target = {
+          x: base.x + Math.cos(slot * 1.3) * 1.2,
+          z: base.z + Math.sin(slot * 1.3) * 1.2,
+          district: base.district,
+        };
       }
 
+      // Agent silhouette: different shapes based on roleKey for distinction.
       let mesh = ctx.agentMeshes.get(agent.id);
       if (mesh === undefined) {
+        const role = agent.roleKey ?? "AGENT";
+        const stateColor = STATE_COLORS[agent.state] ?? 0x94a3b8;
+
+        // Create a recognizable agent shape based on roleKey hash.
+        const hash = role.split("").reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
+        const shapeType = hash % 4;
+
+        let geometry: THREEGeometry;
+        if (shapeType === 0) {
+          // Human-like silhouette: box with tapered top
+          geometry = new THREE.BoxGeometry(0.5, 1.6, 0.4);
+        } else if (shapeType === 1) {
+          // Rounded agent
+          geometry = new THREE.SphereGeometry(0.4, 16, 16);
+        } else if (shapeType === 2) {
+          // Tall agent
+          geometry = new THREE.CylinderGeometry(0.25, 0.25, 1.5, 24);
+        } else {
+          // Short/stooped agent
+          geometry = new THREE.BoxGeometry(0.4, 1, 0.4);
+        }
+
         mesh = new THREE.Mesh(
-          new THREE.SphereGeometry(0.45, 20, 20),
-          new THREE.MeshStandardMaterial({ color: 0x94a3b8 }),
+          geometry,
+          new THREE.MeshStandardMaterial({ color: stateColor }),
         );
-        mesh.position.copy(target);
+        // Add a simple "head" or identifier feature.
+        if (shapeType === 0) {
+          const headGeom = new THREE.SphereGeometry(0.15, 8, 8);
+          const head = new THREE.Mesh(headGeom, new THREE.MeshStandardMaterial({ color: stateColor }));
+          head.position.set(0, 1.55, 0);
+          mesh.add(head);
+        }
         ctx.agentGroup.add(mesh);
         ctx.agentMeshes.set(agent.id, mesh);
       }
-      mesh.userData.target = target;
+      mesh.position.set(target.x, 1.4, target.z);
+
+      // Color by state.
       const material = mesh.material as THREE.MeshStandardMaterial;
       material.color.setHex(STATE_COLORS[agent.state] ?? 0x94a3b8);
     }
+
+    // Remove stale agent meshes.
     for (const [id, mesh] of ctx.agentMeshes) {
       if (!agents.some((agent) => agent.id === id)) {
         disposeMesh(ctx.agentGroup, mesh);
@@ -307,147 +500,138 @@ export function SimulationView({ token }: { token: string }): JSX.Element {
     };
   }, [token, load]);
 
-  return (
-    <div className="grid gap-4 lg:grid-cols-3">
-      <div className="lg:col-span-2">
-        <div className="rounded border border-gray-200 bg-white p-2 shadow-sm">
-          {error !== null && <p className="mb-2 rounded bg-red-50 p-2 text-sm text-red-700">{error}</p>}
-          <div ref={mountRef} className="h-[420px] w-full overflow-hidden rounded bg-[#0b1020]" />
-          <div className="mt-2 flex flex-wrap gap-2 text-xs">
-            {Object.entries(STATE_COLORS)
-              .filter(([key]) => ["IDLE", "WORKING", "THINKING", "RESTING", "SLEEPING", "SOCIALIZING", "TRAVELING"].includes(key))
-              .map(([key, color]) => (
-                <span key={key} className="inline-flex items-center gap-1 text-gray-600">
-                  <span className="inline-block h-3 w-3 rounded-full" style={{ backgroundColor: `#${color.toString(16).padStart(6, "0")}` }} />
-                  {key}
-                </span>
-              ))}
+return (
+    <div className="grid gap-4 lg:grid-cols-6">
+      {/* Three.js world viewport (spanning 4 columns on lg) */}
+      <div className="lg:col-span-4">
+        <div className="rounded border border-gray-200 bg-white shadow-sm overflow-hidden">
+          <div ref={mountRef} className="h-[600px] w-full bg-[#0b1020]" />
+          <div className="mt-2 text-xs text-gray-400">
+            <span className="mr-2">W: {state?.world?.name ?? "—"}</span>
+            <span>S: {state?.phase ?? "—"}</span>
           </div>
         </div>
       </div>
 
-      <div className="rounded border border-gray-200 bg-white p-4 shadow-sm">
-        <h2 className="mb-3 text-lg font-semibold">Simulation</h2>
-        {state === null ? (
-          <p className="text-sm text-gray-500">Waiting for a world…</p>
-        ) : (
-          <>
-            <dl className="mb-3 grid grid-cols-2 gap-x-3 gap-y-1 text-sm">
-              <dt className="text-gray-500">World</dt>
-              <dd className="text-right font-medium">{state.world.name}</dd>
-              <dt className="text-gray-500">Status</dt>
-              <dd className="text-right font-medium">{state.world.status}</dd>
-              <dt className="text-gray-500">Speed</dt>
-              <dd className="text-right font-medium">{state.world.timeScale}x</dd>
-              <dt className="text-gray-500">Phase</dt>
-              <dd className="text-right font-medium">{state.phase}</dd>
-              <dt className="text-gray-500">Simulated</dt>
-              <dd className="text-right font-medium">{new Date(state.simulatedNow).toLocaleString()}</dd>
-              <dt className="text-gray-500">Heartbeat</dt>
-              <dd className="text-right font-medium">{state.engine.heartbeatRunning ? "running" : "stopped"}</dd>
-            </dl>
-            <div className="mb-2 flex flex-wrap gap-2 text-xs text-gray-600">
-              <span className="rounded bg-gray-100 px-2 py-0.5">Agents {state.counts.agents}</span>
-              <span className="rounded bg-gray-100 px-2 py-0.5">Active {state.counts.activeActivities}</span>
-              <span className="rounded bg-gray-100 px-2 py-0.5">Critical needs {state.counts.criticalNeeds}</span>
-            </div>
-<ul className="divide-y">
-              {state.agents.map((agent) => (
-                <li key={agent.id} className="py-2 text-sm">
-                  <div className="flex items-center justify-between">
-                    <span className="font-medium">{agent.name}</span>
-                    <span className="rounded bg-gray-100 px-2 py-0.5 text-xs">{agent.state}</span>
-                  </div>
-                  <div className="text-xs text-gray-500">
-                    {agent.title}
-                    {agent.activity !== null ? ` • ${agent.activity.type} (${agent.activity.status})` : ""}
-                  </div>
-                  <div className="mt-1 flex gap-3 text-xs text-gray-500">
-                    <span>Energy {Math.round(agent.needs.ENERGY ?? 0)}</span>
-                    <span>Social {Math.round(agent.needs.SOCIAL ?? 0)}</span>
-                    {agent.critical.length > 0 && <span className="text-red-600">Critical: {agent.critical.join(", ")}</span>}
-                  </div>
-                </li>
-              ))}
-            </ul>
-            <div className="mt-4 border-t border-gray-100 pt-3">
-              <h3 className="mb-2 text-sm font-semibold text-gray-700">
-                Districts &amp; occupancy
-                <span className="ml-1 rounded bg-gray-100 px-1.5 py-0.5 text-xs font-normal text-gray-500">{districts.length}</span>
-              </h3>
-              {districts.length === 0 ? (
-                <p className="text-xs text-gray-400">No districts defined</p>
-              ) : (
-                <div className="space-y-3">
-                  {districts
-                    .filter((district) => locations.some((location) => location.districtId === district.id))
-                    .map((district) => {
-                      const grouped = locations.filter((location) => location.districtId === district.id);
-                      const capacity = grouped.reduce((sum, location) => sum + (location.capacity ?? 0), 0);
-                      const occupants = grouped.reduce((sum, location) => sum + location.occupantCount, 0);
-                      return (
-                        <div key={district.id}>
-                          <div className="flex items-baseline justify-between text-xs">
-                            <span className="font-medium text-gray-700">
-                              {district.name}
-                              <span className="ml-1 text-gray-400">{district.cityName}</span>
-                            </span>
-                            <span className="text-gray-500">
-                              {occupants}/{capacity || "∞"} in {grouped.length} place{grouped.length === 1 ? "" : "s"}
-                            </span>
-                          </div>
-                          <div className="mt-1 h-1 w-full overflow-hidden rounded bg-gray-100">
-                            <div
-                              className={`h-full ${capacity === 0 || occupants < capacity ? "bg-teal-500" : "bg-red-500"}`}
-                              style={{ width: capacity === 0 ? "0%" : `${Math.min(100, (occupants / capacity) * 100)}%` }}
-                            />
-                          </div>
-                          <ul className="mt-1 grid grid-cols-1 gap-x-3 text-xs text-gray-500">
-                            {grouped.map((location) => (
-                              <li key={location.id} className="flex justify-between">
-                                <span>
-                                  {location.name}
-                                  <span className="ml-1 text-gray-400">{location.kind}</span>
-                                </span>
-                                <span>
-                                  {location.occupantCount}
-                                  {location.capacity !== null ? `/${location.capacity}` : ""}
-                                </span>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      );
-                    })}
-                  {locations.some((location) => location.districtId === null) && (
-                    <div>
-                      <div className="flex items-baseline justify-between text-xs">
-                        <span className="font-medium text-gray-400">Unassigned</span>
-                        <span className="text-gray-500">{locations.filter((location) => location.districtId === null).length} places</span>
+      {/* Right-side info panels (2 columns) */}
+      <div className="lg:col-span-2 space-y-4">
+        {/* District & Occupancy Panel */}
+        <div>
+          <h2 className="mb-3 text-lg font-semibold text-gray-800">Districts</h2>
+          {districts.length === 0 ? (
+            <p className="text-sm text-gray-500">No districts defined. Add districts via the World tab.</p>
+          ) : (
+            <div className="space-y-2">
+              {districts
+                .sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""))
+                .map((district) => {
+                  const grouped = locations.filter((l) => l.districtId === district.id);
+                  const capacity = grouped.reduce((sum, l) => sum + (l.capacity ?? 0), 0);
+                  const occupants = grouped.reduce((sum, l) => sum + l.occupantCount, 0);
+                  const isAtCapacity = capacity > 0 && occupants >= capacity;
+                  return (
+                    <div
+                      key={district.id}
+                      className={`p-3 rounded border ${isAtCapacity ? "border-red-500" : "border-gray-300"} bg-gray-50`}
+                    >
+                      <div className="flex items-baseline justify-between text-sm">
+                        <span className="font-medium text-gray-700">
+                          {district.name}
+                          <span className="ml-1 text-gray-400">{district.cityName}</span>
+                        </span>
+                        <span className="text-gray-500">
+                          {occupants}/{capacity || "∞"} places
+                        </span>
                       </div>
-                      <ul className="mt-1 grid grid-cols-1 gap-x-3 text-xs text-gray-500">
-                        {locations
-                          .filter((location) => location.districtId === null)
-                          .map((location) => (
-                            <li key={location.id} className="flex justify-between">
-                              <span>
-                                {location.name}
-                                <span className="ml-1 text-gray-400">{location.kind}</span>
-                              </span>
-                              <span>
-                                {location.occupantCount}
-                                {location.capacity !== null ? `/${location.capacity}` : ""}
-                              </span>
-                            </li>
-                          ))}
+                      <div className="mt-1 h-2 w-full rounded bg-gray-200 overflow-hidden">
+                        <div
+          className={`h-full ${capacity === 0 || occupants < capacity ? "bg-teal-500" : "bg-red-500"}`}
+          style={{ width: capacity === 0 ? "0%" : `${Math.min(100, (occupants / capacity) * 100)}%` }}
+        />
+                      </div>
+                      <ul className="mt-1 text-xs text-gray-500 grid grid-cols-2 gap-1">
+                        {grouped.map((location) => (
+                          <li key={location.id} className="flex justify-between">
+                            <span>
+                              {location.name}
+                              <span className="ml-1 text-gray-400">{location.kind}</span>
+                            </span>
+                            <span>
+                              {location.occupantCount}
+                              {location.capacity !== null ? `/${location.capacity}` : ""}
+                            </span>
+                          </li>
+                        ))}
                       </ul>
                     </div>
-                  )}
-                </div>
-              )}
+                  );
+                })}
             </div>
-          </>
-        )}
+          )}
+        </div>
+
+        {/* Agent Panel */}
+        <div>
+          <h2 className="mb-3 text-lg font-semibold text-gray-800">Agents</h2>
+          {state?.agents.length === 0 ? (
+            <p className="text-sm text-gray-500">No agents in world.</p>
+          ) : (
+            <ul className="space-y-2 max-h-80 overflow-y-auto">
+              {state.agents.map((agent) => {
+                const locInfo = agent.locationId
+                  ? `${agent.locationId.substring(0, 8)}…`
+                  : "— unassigned";
+                return (
+                  <li
+                    key={agent.id}
+                    className="p-3 rounded border border-gray-200 cursor-pointer hover:border-blue-500 transition-colors"
+                    onMouseOver={() => setSelectedAgent(agent.id)}
+                    onMouseOut={() => setSelectedAgent(null)}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className={`rounded-full px-2 py-0.5 text-xs ${agent.state === "WORKING" ? "bg-green-100 text-green-800" : agent.state === "IDLE" ? "bg-gray-200 text-gray-700" : agent.state === "SLEEPING" ? "bg-blue-100 text-blue-800" : "bg-gray-200 text-gray-700"}`}>
+                          {agent.state.substring(0, 3)}
+                        </span>
+                        <span className="font-medium text-gray-800">{agent.name}</span>
+                      </div>
+                      <span className="text-gray-400 text-xs">{locInfo}</span>
+                    </div>
+                    <div className="mt-1 text-xs text-gray-500">
+                      {agent.title}
+                      {agent.activity !== null ? ` • ${agent.activity.type} (${agent.activity.status})` : ""}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+
+        {/* Selected Agent / Building Info Panel */}
+        <div
+          id="inspector-panel"
+          className="p-4 rounded border border-gray-300 bg-gray-50 max-h-40 overflow-y-auto"
+          style={{ display: selectedAgent !== null ? "block" : "none" }}
+        >
+          <h3 className="mb-2 text-sm font-medium text-gray-700">Inspector</h3>
+          {selectedAgent !== null ? (
+            <>
+              <p className="text-xs text-gray-500">Name: {selectedAgent.name}</p>
+              <p className="text-xs text-gray-500">Role: {selectedAgent.roleKey}</p>
+              <p className="text-xs text-gray-500">State: {selectedAgent.state}</p>
+              <p className="text-xs text-gray-500">Title: {selectedAgent.title}</p>
+              {selectedAgent.locationId && (
+                <p className="text-xs text-gray-500">Location: {selectedAgent.locationId}</p>
+              )}
+              {!selectedAgent.locationId && (
+                <p className="text-xs text-gray-500">Location: — unassigned</p>
+              )}
+            </>
+          ) : (
+            <p className="text-xs text-gray-400">Click an agent or building to inspect.</p>
+          )}
+        </div>
       </div>
     </div>
   );
