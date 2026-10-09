@@ -124,6 +124,26 @@ export const MARKETPLACE: ConnectorDescriptor[] = [
     setupNotes: "Use a Slack app bot token (xoxb...) with chat:write and channels:read scopes only.",
   },
   {
+    slug: "prompts-chat",
+    displayName: "prompts.chat",
+    version: "1.0.0",
+    category: "ai",
+    provider: "prompts.chat",
+    kind: "REST",
+    description: "Search, retrieve, and improve community AI prompts from the prompts.chat library (https://prompts.chat).",
+    baseUrl: "https://prompts.chat",
+    auth: "API_KEY",
+    actions: [
+      { name: "search_prompts", description: "Search public prompts by keyword with optional type/category/tag filters.", parameters: { query: { type: "string", description: "Search keywords (required)" }, limit: { type: "string", description: "Max results 1-50, default 10" }, type: { type: "string", description: "TEXT, STRUCTURED, IMAGE, VIDEO or AUDIO" }, category: { type: "string", description: "Category slug filter" }, tag: { type: "string", description: "Tag slug filter" } } },
+      { name: "get_prompt", description: "Fetch one public prompt by id.", parameters: { id: { type: "string", description: "Prompt id" } } },
+      { name: "improve_prompt", description: "Rewrite a rough prompt into a structured one with AI (needs an installed credential).", parameters: { prompt: { type: "string", description: "Rough prompt, max 10k chars" }, outputType: { type: "string", description: "text, image, video or sound" }, outputFormat: { type: "string", description: "text, structured_json or structured_yaml" } } },
+    ],
+    capabilities: ["rest:get", "rest:post", "prompts:search", "prompts:read", "prompts:improve"],
+    requiredScopes: ["connector.use"],
+    security: { dataAccess: "Public prompt library entries; private prompts only with an installed key", credentialType: "SHARED_TOKEN", egress: "FIXED_HOSTS" },
+    setupNotes: "Search and retrieval are public. For improve_prompt, install a prompts.chat API key (pchat_...) as a CONNECTOR credential with refId 'prompts-chat'.",
+  },
+  {
     slug: "http",
     displayName: "Generic HTTP",
     version: "1.0.0",
@@ -441,6 +461,74 @@ async function executeAction(
       `Connector '${descriptor.slug}' is registered but not configured in this deployment. ` +
       `No command was executed and nothing reached the network.`,
     );
+  }
+
+  if (descriptor.slug === "prompts-chat") {
+    const base = (auth.baseUrl ?? "https://prompts.chat").replace(/\/+$/, "");
+    // Public actions deliberately carry no Authorization header: the library
+    // search API needs none, and least privilege beats convenience.
+    const publicHeaders: Record<string, string> = {
+      "user-agent": "AgentWorld-Connector/1.0",
+      accept: "application/json",
+    };
+    if (action.name === "search_prompts") {
+      const query = str("query").trim();
+      if (query === "" || query.length > 500) throw validationError("query is required (max 500 chars)");
+      let limit = 10;
+      const rawLimit = str("limit").trim();
+      if (rawLimit !== "") {
+        limit = Number.parseInt(rawLimit, 10);
+        if (!Number.isInteger(limit)) throw validationError("limit must be an integer between 1 and 50");
+      }
+      if (limit < 1 || limit > 50) throw validationError("limit must be an integer between 1 and 50");
+      const params = new URLSearchParams({ q: query, perPage: String(limit) });
+      const promptType = str("type").trim().toUpperCase();
+      if (promptType !== "") {
+        if (!["TEXT", "STRUCTURED", "IMAGE", "VIDEO", "AUDIO"].includes(promptType)) {
+          throw validationError("type must be TEXT, STRUCTURED, IMAGE, VIDEO or AUDIO");
+        }
+        params.set("type", promptType);
+      }
+      for (const key of ["category", "tag"] as const) {
+        const value = str(key).trim();
+        if (value !== "") {
+          if (!/^[A-Za-z0-9_-]{1,60}$/.test(value)) {
+            throw validationError(`${key} must be a slug (letters, digits, '-' or '_')`);
+          }
+          params.set(key, value);
+        }
+      }
+      return request(fetchImpl, "GET", `${base}/api/prompts?${params.toString()}`, publicHeaders);
+    }
+    if (action.name === "get_prompt") {
+      const id = str("id").trim();
+      if (!/^[A-Za-z0-9_-]{1,120}$/.test(id)) {
+        throw validationError("id must be a prompt id (letters, digits, '-' or '_')");
+      }
+      return request(fetchImpl, "GET", buildUrl(base, `/api/prompts/${id}`), publicHeaders);
+    }
+    if (action.name === "improve_prompt") {
+      if (auth.token === null) {
+        throw validationError("improve_prompt needs an installed prompts.chat credential (CONNECTOR / prompts-chat)");
+      }
+      const prompt = str("prompt");
+      if (prompt === "" || prompt.length > 10_000) throw validationError("prompt is required (max 10,000 chars)");
+      const outputType = str("outputType").trim() !== "" ? str("outputType").trim() : "text";
+      if (!["text", "image", "video", "sound"].includes(outputType)) {
+        throw validationError("outputType must be text, image, video or sound");
+      }
+      const outputFormat = str("outputFormat").trim() !== "" ? str("outputFormat").trim() : "text";
+      if (!["text", "structured_json", "structured_yaml"].includes(outputFormat)) {
+        throw validationError("outputFormat must be text, structured_json or structured_yaml");
+      }
+      // prompts.chat authenticates this endpoint with X-API-Key, not Bearer.
+      const authed: Record<string, string> = {
+        ...publicHeaders,
+        "content-type": "application/json",
+        "x-api-key": auth.token,
+      };
+      return request(fetchImpl, "POST", buildUrl(base, "/api/improve-prompt"), authed, { prompt, outputType, outputFormat });
+    }
   }
 
   if (descriptor.slug === "http") {
