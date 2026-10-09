@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useEffect, useState } from "react";
+import { Component, Suspense, lazy, useCallback, useEffect, useState, type ErrorInfo, type ReactNode } from "react";
 import { api, getToken, setToken } from "./api.js";
 
 // Lazily loaded so the heavy three.js dependency (SimulationView) and the
@@ -96,6 +96,60 @@ function renderValue(value: unknown): string {
   return JSON.stringify(value);
 }
 
+/**
+ * Agents store skills as records (`{name, level, experience, ...}`), not bare
+ * strings. Rendering one directly throws "Objects are not valid as a React
+ * child" and, with no error boundary, takes the whole dashboard down -- so the
+ * shapes are flattened (and de-duplicated, which keeps React keys unique)
+ * before they reach the DOM.
+ */
+function skillNames(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const names = value
+    .map((entry) => {
+      if (typeof entry === "string") return entry;
+      if (typeof entry === "object" && entry !== null && "name" in entry) {
+        const name = (entry as { name: unknown }).name;
+        return typeof name === "string" ? name : "";
+      }
+      return "";
+    })
+    .filter((name) => name !== "");
+  return [...new Set(names)];
+}
+
+/**
+ * One view throwing must not blank the dashboard: React unmounts the whole
+ * tree when a render error escapes, which is how a single bad DTO shape turned
+ * into a dead page. This keeps the shell alive and says what failed.
+ */
+class ViewErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state: { error: Error | null } = { error: null };
+
+  static getDerivedStateFromError(error: Error): { error: Error } {
+    return { error };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo): void {
+    console.error("Dashboard view failed to render", error, info.componentStack);
+  }
+
+  render(): ReactNode {
+    if (this.state.error !== null) {
+      return (
+        <section className="rounded border border-red-200 bg-red-50 p-4 text-sm">
+          <h2 className="mb-1 font-semibold text-red-800">This view failed to render</h2>
+          <p className="mb-2 text-red-700">{this.state.error.message}</p>
+          <button onClick={() => this.setState({ error: null })} className="text-blue-700 underline">
+            Try again
+          </button>
+        </section>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 function DataTable({ rows }: { rows: Array<Record<string, unknown>> }): JSX.Element {
   if (rows.length === 0) return <p className="text-sm text-gray-500">No rows.</p>;
   const cols = Object.keys(rows[0] as Record<string, unknown>);
@@ -130,7 +184,7 @@ function AgentsView({ token }: { token: string }): JSX.Element {
     <Panel title={`Agents (${agents.length})`} error={error}>
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
         {agents.map((a) => {
-          const skills = Array.isArray(a.skills) ? (a.skills as string[]) : [];
+          const skills = skillNames(a.skills);
           const rep = typeof a.reputation === "number" ? a.reputation : 50;
           return (
             <div key={String(a.id)} className="rounded border border-gray-200 p-3 text-sm">
@@ -320,6 +374,8 @@ export default function App(): JSX.Element {
         ))}
       </nav>
       <main className="mx-auto max-w-6xl p-3 sm:p-4">
+        {/* key: switching tabs clears a previous view's error. */}
+        <ViewErrorBoundary key={section}>
         <Suspense fallback={<p className="text-sm text-gray-500">Loading…</p>}>
         {section === "simulation" && <SimulationView token={token} />}
         {section === "world" && (
@@ -373,6 +429,7 @@ export default function App(): JSX.Element {
           </Panel>
         )}
         </Suspense>
+        </ViewErrorBoundary>
       </main>
     </div>
   );

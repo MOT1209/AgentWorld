@@ -34,5 +34,7 @@ Thumbs.db
 
 # environment junk: bash crash dumps, local scratch reports
 *.stackdump
-التقرير.html.playwright-mcp/
+
+# browser-automation scratch output (agent-browser / Playwright MCP)
+.playwright-mcp/
 

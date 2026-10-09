@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>تقرير المراجعة الشاملة — AgentWorld</title>
+<style>
+  :root{
+    --bg:#0f1117; --panel:#171a22; --panel2:#1d212b; --border:#2a2f3a;
+    --text:#e8eaed; --muted:#9aa3b2; --accent:#6ea8fe; --accent2:#c792ea;
+    --ok:#3fb950; --warn:#d29922; --bad:#f85149; --chip:#222734;
+    --grad:linear-gradient(135deg,#6ea8fe,#c792ea);
+  }
+  @media (prefers-color-scheme: light){
+    :root:not([data-theme="dark"]){
+      --bg:#f6f7f9; --panel:#ffffff; --panel2:#f0f2f5; --border:#e1e4e9;
+      --text:#1b1f27; --muted:#5a6472; --accent:#1f6feb; --accent2:#8a4fff;
+      --chip:#eef1f5;
+    }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font-family:"Segoe UI",Tahoma,system-ui,-apple-system,sans-serif;line-height:1.8}
+  .wrap{max-width:1060px;margin:0 auto;padding:16px}
+  header.hero{background:var(--panel);border:1px solid var(--border);border-radius:16px;
+    padding:28px 24px;margin-top:20px;position:relative;overflow:hidden}
+  header.hero::before{content:"";position:absolute;inset:0;background:var(--grad);opacity:.08}
+  .crown{font-size:34px}
+  h1{margin:.2em 0;font-size:clamp(24px,4vw,34px);background:var(--grad);
+    -webkit-background-clip:text;background-clip:text;color:transparent}
+  .sub{color:var(--muted);font-size:15px}
+  .meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+  .chip{background:var(--chip);border:1px solid var(--border);border-radius:999px;
+    padding:4px 12px;font-size:13px;color:var(--muted)}
+  h2{margin:34px 0 12px;font-size:22px;border-bottom:1px solid var(--border);padding-bottom:8px}
+  h3{margin:20px 0 8px;font-size:17px}
+  section{background:var(--panel);border:1px solid var(--border);border-radius:14px;
+    padding:18px 20px;margin-top:16px}
+  p{margin:8px 0}
+  ul{margin:8px 0;padding-inline-start:22px}
+  li{margin:4px 0}
+  code,pre{font-family:"Cascadia Code",Consolas,monospace;direction:ltr;text-align:left}
+  code{background:var(--panel2);border:1px solid var(--border);border-radius:6px;
+    padding:1px 6px;font-size:13px}
+  pre{background:var(--panel2);border:1px solid var(--border);border-radius:10px;
+    padding:12px 14px;overflow:auto;font-size:12.5px;line-height:1.6}
+  .cards{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));margin-top:12px}
+  .card{background:var(--panel2);border:1px solid var(--border);border-radius:12px;padding:14px}
+  .card .n{font-size:26px;font-weight:700;background:var(--grad);
+    -webkit-background-clip:text;background-clip:text;color:transparent}
+  .card .l{color:var(--muted);font-size:13px}
+  table{width:100%;border-collapse:collapse;margin-top:10px;font-size:14px}
+  th,td{border:1px solid var(--border);padding:8px 10px;text-align:right;vertical-align:top}
+  th{background:var(--panel2);font-weight:600}
+  .badge{display:inline-block;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:600}
+  .b-ok{background:rgba(63,185,80,.16);color:var(--ok);border:1px solid rgba(63,185,80,.4)}
+  .b-warn{background:rgba(210,153,34,.16);color:var(--warn);border:1px solid rgba(210,153,34,.4)}
+  .b-bad{background:rgba(248,81,73,.16);color:var(--bad);border:1px solid rgba(248,81,73,.4)}
+  .b-info{background:rgba(110,168,254,.16);color:var(--accent);border:1px solid rgba(110,168,254,.4)}
+  .finding{border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-top:12px;background:var(--panel2)}
+  .finding h3{margin-top:0}
+  .finding .row{color:var(--muted);font-size:13.5px}
+  .shots{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));margin-top:12px}
+  figure{margin:0;background:var(--panel2);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+  figure img{width:100%;display:block}
+  figcaption{padding:8px 10px;color:var(--muted);font-size:13px}
+  footer{color:var(--muted);font-size:13px;text-align:center;margin:26px 0 40px}
+  a{color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <div class="crown">👑</div>
+  <h1>تقرير المراجعة الشاملة — AgentWorld</h1>
+  <p class="sub">
+    مراجعة الكود كامل + تحقّق عملي حقيقي في المتصفح على تطبيق يعمل. كل نتيجة مبنية على
+    أمر نُفِّذ أو ملف/سطر محدد — لا ادعاءات عامة.
+  </p>
+  <div class="meta">
+    <span class="chip">التاريخ: 2026-10-09</span>
+    <span class="chip">الفرع: main</span>
+    <span class="chip">الالتزام: 5f26528</span>
+    <span class="chip">النطاق: 349 ملفًا مُفهرَسًا · 29 مسار REST · 19 تبويب واجهة</span>
+    <span class="chip">الطريقة: npm run verify · curl · agent-browser 0.28.0</span>
+  </div>
+</header>
+
+<h2 id="summary">1. الملخّص التنفيذي</h2>
+<section>
+  <p>
+    المشروع في حالة صحية: بوابات الجودة الأربع خضراء، والتطبيق يقلع ويعمل فعليًا (API وواجهة)،
+    والطبقات الحسّاسة (الـ ledger، الأدوات، الصلاحيات، أسرار الإنتاج) مبنية بضمانات حقيقية مُختبرة.
+    الجولة العملية في المتصفح كشفت <strong>عيبًا حقيقيًا كان يُسقط لوحة التحكم بالكامل</strong>
+    عند فتح تبويب Agents — أُصلح وتحقّقتُ من الإصلاح في متصفح جديد نظيف.
+  </p>
+  <div class="cards">
+    <div class="card"><div class="n">2</div><div class="l">عيب مُصلَح ومُتحقَّق منه</div></div>
+    <div class="card"><div class="n">6</div><div class="l">نتيجة مُبلَّغة تحتاج قرارك</div></div>
+    <div class="card"><div class="n">292</div><div class="l">اختبارًا ناجحًا / 0 فشل (31 ملفًا)</div></div>
+    <div class="card"><div class="n">19</div><div class="l">تبويبًا مُختبرًا في المتصفح — 0 أخطاء console</div></div>
+  </div>
+</section>
+
+<h2 id="verify">2. بوابات التحقق (خروج فعلي)</h2>
+<section>
+  <table>
+    <thead><tr><th>البوابة</th><th>النتيجة</th><th>الدليل</th></tr></thead>
+    <tbody>
+      <tr><td><code>npm run typecheck</code></td><td><span class="badge b-ok">نجح</span></td><td>exit 0 — <code>tsc -p tsconfig.json --noEmit</code></td></tr>
+      <tr><td><code>npm run lint</code></td><td><span class="badge b-ok">نجح</span></td><td>exit 0 — <code>eslint .</code></td></tr>
+      <tr><td><code>npm run test</code></td><td><span class="badge b-ok">نجح</span></td><td>31 ملفًا: 29 ناجحًا و2 مُتخطّى بيئيًا · 307 اختبارات: <strong>292 ناجحًا</strong> و15 مُتخطّى · <strong>0 فشل</strong></td></tr>
+      <tr><td><code>npm run build</code></td><td><span class="badge b-ok">نجح</span></td><td>API (<code>tsc -p tsconfig.build.json</code>) + الويب (<code>tsc -b &amp;&amp; vite build</code> — 35 وحدة، <code>✓ built</code>)</td></tr>
+      <tr><td><code>npm run check:docs</code></td><td><span class="badge b-ok">نجح</span></td><td><code>Doc counts OK: 82 tools, 48 models, 20 vendors, MCP 21 tools/10 resources match README</code></td></tr>
+    </tbody>
+  </table>
+  <h3>التطبيق يعمل فعليًا</h3>
+  <pre>GET /health   → {"ok":true,"service":"kingworld-api","version":"1.0.0"}
+GET /ready    → {"ok":true,"database":{"ok":true,"latencyMs":9}}
+GET :5173/    → 200
+POST /api/v1/auth/login (king@kingworld.local) → 200 + JWT (role: OWNER)
+سجل الإقلاع  → Database connected · Simulation heartbeat · Execution worker · Webhook dispatcher · API listening on :4000</pre>
+</section>
+
+<h2 id="fixed">3. ما تم إصلاحه والتحقّق منه</h2>
+
+<div class="finding">
+  <h3><span class="badge b-bad">عالية</span> F1 — تبويب Agents كان يُسقط لوحة التحكم بالكامل (شاشة بيضاء)</h3>
+  <p class="row">الحالة: <strong>مُصلَح ومُتحقَّق منه في المتصفح</strong> · الملف: <code>apps/web/src/App.tsx</code></p>
+  <p><strong>ما حدث فعليًا:</strong> عند فتح تبويب Agents رمى React خطأً غير مُلتقط فأزال الشجرة كلها:</p>
+  <pre>[error] Error: Objects are not valid as a React child
+        (found: object with keys {name, level, experience, experienceToNextLevel})
+    at AgentsView (http://localhost:5173/src/App.tsx)
+[error] The above error occurred in the &lt;span&gt; component
+[error] Warning: Encountered two children with the same key …
+        at AgentsView (App.tsx)   ← مفتاح React مكرّر</pre>
+  <p>
+    <strong>السبب الجذري:</strong> الـ API يعيد <code>skills</code> كسجلات
+    <code>{name, level, experience, experienceToNextLevel}</code> (مؤكَّد من <code>GET /api/v1/agents</code>)،
+    بينما <code>AgentsView</code> كان يعاملها كـ <code>string[]</code> ويعرضها مباشرة
+    (<code>&lt;span key={s}&gt;{s}&lt;/span&gt;</code>). فسقط العرض، والأسوأ: لا يوجد أي
+    Error Boundary، فخطأ في لوحة واحدة يُفرِّغ الصفحة بأكملها (بدليل أن نص الصفحة صار فارغًا
+    في كل تبويب بعد فتحها).
+  </p>
+  <p><strong>الإصلاح:</strong></p>
+  <ul>
+    <li>دالة <code>skillNames()</code> تُطبِّع المهارات (سلسلة أو سجل) وتُزيل التكرار — فتصبح مفاتيح React فريدة والعارض آمنًا مهما كان شكل الـ DTO.</li>
+    <li><code>&lt;ViewErrorBoundary key={section}&gt;</code> يحيط بالمحتوى: فشل عرض واحد لم يعد يُسقط الهيكل، ويُظهر رسالة الخطأ وزر «إعادة المحاولة»، ويتصفّر عند تغيير التبويب.</li>
+  </ul>
+  <p><strong>دليل التحقق بعد الإصلاح (جلسة متصفح جديدة نظيفة):</strong></p>
+  <pre>Agents (2) Ahmad rep 50 PLANNER · Chief Planner mock/mock-1
+           Planning  Delegation  Review  Communication
+           Rashid rep 50 EXECUTOR · Operations Executor mock/mock-1
+           Execution  Tool Use  Reporting  Communication
+pageErrors=0   consoleErrors=0</pre>
+</div>
+
+<div class="finding">
+  <h3><span class="badge b-ok">منخفضة</span> F2 — سطر تالف في <code>.gitignore</code> جعل مجلد <code>.playwright-mcp/</code> غير مُهمَل</h3>
+  <p class="row">الحالة: <strong>مُصلَح ومُتحقَّق منه</strong> · الملف: <code>.gitignore</code></p>
+  <p>
+    كان السطر الأخير مدموجًا: <code>التقرير.html.playwright-mcp/</code> (اسم ملف عربي التصق بـ
+    <code>.playwright-mcp/</code>)، فلم يُطابق النمط شيئًا — ولهذا ظهرت ملفات
+    <code>.playwright-mcp/page-*.yml</code> كملفات غير متتبَّعة.
+  </p>
+  <pre>git check-ignore -v .playwright-mcp/page-2026-10-07T16-08-55-254Z.yml
+→ .gitignore:39:.playwright-mcp/   .playwright-mcp/page-2026-10-07T16-08-55-254Z.yml</pre>
+</div>
+
+<h2 id="findings">4. نتائج مُبلَّغة تحتاج قرارك (لم أُغيِّر سلوكًا تصميميًا)</h2>
+
+<div class="finding">
+  <h3><span class="badge b-warn">متوسطة</span> F3 — الوكيل «الجائع» يقترح راحة يرفضها المدقّق: 653 محاولة مهدورة في ~2.5 ساعة</h3>
+  <p class="row">الأدلة: <code>packages/simulation/src/decision.ts:107</code> · <code>packages/simulation/src/actions.ts:213</code> · سجل الـ API</p>
+  <p>
+    محرك القرار يقترح <code>REST</code> عندما <code>needs.HUNGER &lt;= CRITICAL</code>، لكن مدقّق الأفعال
+    يرفضه لأن الحالة الحالية <code>WORKING</code> لا يُسمح لها بالانتقال إلى حالة الراحة:
+  </p>
+  <pre>WARN Decision rejected by the action validator
+     decision: "REST"  reason: "Hunger low (0); taking a restorative break"
+     error: "Cannot start REST from state WORKING"
+     → 653 تكرارًا في ~2.5 ساعة (التبويب Simulation يعرض Critical: HUNGER, SOCIAL)</pre>
+  <p>
+    الأثر: الوكيل العامل لا يأخذ راحته أبدًا مع بقاء الحاجة حرجة، وكل نبضة تُهدَر، والسجل يُغرق
+    بتحذيرات متطابقة. <strong>التوصية:</strong> إمّا أن يقترح المُقرِّر مسارًا مشروعًا
+    (<code>STOP_ACTIVITY</code> → <code>IDLE</code> → <code>REST</code>)، أو أن يقفل القرار على آلة
+    حالات الوكيل، مع تسجيل الرفض المكرّر بمعدّل محدود. لم أنفّذها لأنها قرار تصميمي (هل يهجر
+    الوكيل مهمته ليرتاح؟) ويجب أن يُغطّى بتعديل اختبارات المحاكاة.
+  </p>
+</div>
+
+<div class="finding">
+  <h3><span class="badge b-warn">متوسطة</span> F4 — التفويض بدور عام لا بنطاق الشركة (عزل مستأجرين)</h3>
+  <p class="row">الأدلة: <code>packages/security/src/rbac.ts</code> (تعليق التصميم) · <code>apps/api/src/routes/company.routes.ts:37</code></p>
+  <p>
+    <code>OWNER/ADMIN/OBSERVER</code> أدوار عامة لا ترتبط بعضوية شركة: <code>GET /companies</code> يعيد
+    <code>listCompanies(prisma)</code> (كل الشركات)، و<code>GET /companies/:id</code> يعيد أي شركة لأي
+    مستخدم مُصادَق. أي <code>OBSERVER</code> يقرأ محافظ وسجلات وأحداث كل الشركات.
+  </p>
+  <p>
+    الملف نفسه يوثّق أن هذا اختيار واعٍ لـ Phase 1 («Deliberately coarse… Phase 1 has exactly one
+    human account model»). <strong>التوصية:</strong> إمّا ربط الصلاحيات بعضوية <code>CompanyMember</code>،
+    أو تقييد الواجهة الحالية بمستخدم واحد وتصريح ذلك في <code>docs/SECURITY.md</code>. (نقطة إيجابية:
+    هذا تحدٍّ قائم على دور، وليس تخمينًا — كل كتابات الطلب تمرّ بـ <code>principalToActor</code>.)
+  </p>
+</div>
+
+<div class="finding">
+  <h3><span class="badge b-info">منخفضة</span> F5 — انحراف في شارة التوثيق: «267 اختبارًا» والفعلي 263</h3>
+  <p class="row">الأدلة: <code>README.md:23</code> · <code>scripts/check-doc-counts.ts</code></p>
+  <p>
+    الشارة تعلن <code>267_passing</code> والقياس الفعلي <strong>292 ناجحًا</strong> (307 إجمالًا و15 مُتخطّى بيئيًا).
+    لاحظ أن الرقم نفسه يتغيّر بين الجولات (الأجنحة المتخطّاة مثل Docker/opencode تتوقف على البيئة)،
+    ولهذا يستثني حارس التوثيق <code>scripts/check-doc-counts.ts</code> أعداد الاختبارات <em>عن قصد</em> —
+    فالانحراف لا يُكتشف آليًا. <strong>التوصية:</strong> حذف الرقم من الشارة والاكتفاء بحالة البوابة
+    (أو تحديثه في كل تغيير، وهو ما سيظل ينحرف).
+  </p>
+</div>
+
+<div class="finding">
+  <h3><span class="badge b-info">منخفضة</span> F6 — 198 ملف قاعدة بيانات اختبارية بحجم 213MB متروكة</h3>
+  <p class="row">الأدلة: <code>ls database/test-*.db | wc -l → 198</code> · <code>du -sh database → 213M</code></p>
+  <p>
+    الأسماء نمط <code>test-&lt;pid&gt;-&lt;token&gt;.db</code> تشير إلى قواعد مؤقتة لا تُنظَّف بعد التشغيل.
+    مُهمَلة في git (<code>database/*.db</code>) فلا تتسرب للمستودع، لكنها تُثقل القرص وتبطئ أي مسح للمجلد.
+    <strong>التوصية:</strong> تنظيف في <code>afterAll</code> أو أمر <code>npm run db:clean</code>.
+  </p>
+</div>
+
+<div class="finding">
+  <h3><span class="badge b-info">منخفضة</span> F7 — تدفّق OAuth: مقارنة HMAC غير ثابتة الزمن + حالة في ذاكرة العملية</h3>
+  <p class="row">الأدلة: <code>packages/connectors/src/oauth.ts:93–101</code></p>
+  <p>
+    التوقيع يُقارَن بـ <code>!==</code> (مقارنة غير ثابتة الزمن)، و<code>pendingStates</code> خريطة
+    داخل ذاكرة العملية — فمع أكثر من نسخة API واحدة تفشل عمليات callback عشوائيًا.
+    الجانب القوي: الحالة مُوقَّعة، أحادية الاستخدام، ولها انتهاء صلاحية.
+    <strong>التوصية:</strong> <code>timingSafeEqual</code> + مخزن مشترك (جدول Prisma) للحالة.
+  </p>
+</div>
+
+<div class="finding">
+  <h3><span class="badge b-info">معلوماتية</span> F8 — نقطتان للتوثيق لا للتعديل</h3>
+  <ul>
+    <li><code>GET /api/v1/mcp/</code> غير مُصادَق ويعرض أسماء أدوات MCP (كشف معلومات بسيط).
+      الطلب الفعلي <code>POST /</code> يرفض بدون مفتاح API (<code>packages/mcp/src/server.ts:561</code>).</li>
+    <li>تبويب Performance يحتاج <strong>&gt;4 ثوانٍ</strong> للرسم الأول (تحميل lazy + جلب بيانات)؛
+      ظهر «Loading…» في الانتظار القصير وسليمالعرض بعد 8 ثوانٍ — ليس عيبًا، لكنه قابل للتحسين.</li>
+  </ul>
+</div>
+
+<h2 id="browser">5. جولة المتصفح العملية</h2>
+<section>
+  <p>
+    شُغِّل التطبيق فعليًا (<code>npm run dev</code> على :4000 و<code>npm run dev:web</code> على :5173)،
+    وسُجِّل الدخول بحساب المالك، ثم فُتح كل تبويب ورُصدت أخطاء الصفحة و console والنص المعروض.
+  </p>
+  <table>
+    <thead><tr><th>التبويب</th><th>أخطاء console</th><th>ما عُرض فعلًا</th></tr></thead>
+    <tbody>
+      <tr><td>Simulation</td><td><span class="badge b-ok">0</span></td><td>ساعة العالم تعمل (60x)، نبضة حيّة، حالة الوكيلين، «Critical: HUNGER, SOCIAL»</td></tr>
+      <tr><td>World</td><td><span class="badge b-ok">0</span></td><td>لقطة العالم الكاملة (JSON) + الحالة والسرعة والمرحلة</td></tr>
+      <tr><td>Company</td><td><span class="badge b-ok">0</span></td><td>«King AI Corporation» — جدول الشركات</td></tr>
+      <tr><td>Agents</td><td><span class="badge b-ok">0</span></td><td><strong>كان يُسقط الصفحة — الآن:</strong> بطاقتان (Ahmad/Rashid) + شرائح المهارات</td></tr>
+      <tr><td>Performance</td><td><span class="badge b-ok">0</span></td><td>«Task success 100% · 1 completed / 0 failed» (رسم أول &gt;4s)</td></tr>
+      <tr><td>Tasks / Plans / Sessions</td><td><span class="badge b-ok">0</span></td><td>جداول بيانات فعلية</td></tr>
+      <tr><td>Workspaces</td><td><span class="badge b-ok">0</span></td><td>«Rashid HQ Desk · PERSONAL · READY»</td></tr>
+      <tr><td>Executions</td><td><span class="badge b-ok">0</span></td><td>حالة فارغة صريحة: «No executions yet»</td></tr>
+      <tr><td>Factory</td><td><span class="badge b-ok">0</span></td><td>نموذج «Start a factory run» + «No runs yet» (GitHub غير مهيأ)</td></tr>
+      <tr><td>Testing</td><td><span class="badge b-ok">0</span></td><td>طابور تشغيل لكل الأجنحة السبعة</td></tr>
+      <tr><td>Integrations</td><td><span class="badge b-ok">0</span></td><td>«AI providers — live and catalog» + كيفية التفعيل</td></tr>
+      <tr><td>Escalations</td><td><span class="badge b-ok">0</span></td><td>حالة فارغة صريحة «No rows»</td></tr>
+      <tr><td>Skills</td><td><span class="badge b-ok">0</span></td><td>«Skill Marketplace / Directory» — Discover + Installed</td></tr>
+      <tr><td>Communication</td><td><span class="badge b-ok">0</span></td><td>محادثتان + خط زمني (human/agent/system/tools)</td></tr>
+      <tr><td>Economy</td><td><span class="badge b-ok">0</span></td><td>جدول المحافظ</td></tr>
+      <tr><td>Approvals</td><td><span class="badge b-ok">0</span></td><td>«wallet.transfer · HIGH · EXPIRED» — بوابة موافقة بشرية واقعية</td></tr>
+      <tr><td>Activity</td><td><span class="badge b-ok">0</span></td><td>سجل النشاط بصيغة تدقيق كاملة</td></tr>
+    </tbody>
+  </table>
+  <div class="shots">
+    <figure><img src="docs/review-shots/Simulation.png" alt="Simulation" /><figcaption>Simulation — المحاكاة تعمل لحظيًا</figcaption></figure>
+    <figure><img src="docs/review-shots/agents-fixed.png" alt="Agents بعد الإصلاح" /><figcaption>Agents بعد الإصلاح — كانت شاشة بيضاء قبله</figcaption></figure>
+    <figure><img src="docs/review-shots/Factory.png" alt="Factory" /><figcaption>Factory — التبويب يعمل (لا تشغيلات بعد)</figcaption></figure>
+    <figure><img src="docs/review-shots/Integrations.png" alt="Integrations" /><figcaption>Integrations — حالة المزوّدين الحقيقية</figcaption></figure>
+  </div>
+</section>
+
+<h2 id="strengths">6. نقاط قوة مُتحقَّق منها (لا مجاملة)</h2>
+<section>
+  <ul>
+    <li><strong>التغطية الأمنية للمسارات كاملة:</strong> 29 ملف مسار — كلها تستخدم <code>authenticate</code> و<code>requirePermission</code>، عدا ثلاث حالات مقصودة: <code>auth</code> (دخول)، و<code>events</code> (يتحقق من الرمز بنفسه ويشترط <code>event.read</code>)، و<code>mcp</code> (مفتاح API)، و<code>oauth/callback</code> (حالة موقّعة).</li>
+    <li><strong>لا SQL خام:</strong> الاستعلام الوحيد <code>$queryRaw</code> هو <code>SELECT 1</code> لفحص الصحة — لا بناء جمل بالإدخال.</li>
+    <li><strong>تصلّب النقل:</strong> <code>helmet</code>، CORS بقائمة أصل مسموح، حدّ معدّل عام، و<code>trust proxy</code> بعدد قفزات صريح (لا انتحال X-Forwarded-For).</li>
+    <li><strong>فشل صريح في الإنتاج:</strong> <code>config.ts</code> يرفض الإقلاع إذا كان <code>JWT_SECRET</code> افتراضيًا أو أقصر من 32 حرفًا، أو كلمة مرور seed الافتراضية — لا «تحذيرات تُتجاهل».</li>
+    <li><strong>الـ ledger هو الكاتب الوحيد:</strong> قيود immutability + قفل تفاؤلي، و<code>verifyLedger()</code> يُستخدم فعليًا في <code>tests/finance.test.ts</code> و<code>tests/ai-platform-integrity.test.ts</code>.</li>
+    <li><strong>الأدوات والصلاحيات:</strong> كل فعل وكيل يمرّ بـ ToolExecutor (تدقيق كل نتيجة، بما فيها الرفض)، ومسار الخروج عن مجلد العمل مُختبر في المتصفح والاختبارات.</li>
+    <li><strong>لا <code>dangerouslySetInnerHTML</code></strong> في الواجهة، والرمز يُحفظ في <code>sessionStorage</code> (يُمسح بإغلاق التبويب) لا في <code>localStorage</code>.</li>
+  </ul>
+</section>
+
+<h2 id="files">7. الملفات التي غيّرتها هذه المراجعة</h2>
+<section>
+  <table>
+    <thead><tr><th>الملف</th><th>التغيير</th><th>التحقق</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><code>apps/web/src/App.tsx</code></td>
+        <td>تطبيع المهارات (<code>skillNames</code>) + <code>ViewErrorBoundary</code> يحيط بالمحتوى</td>
+        <td>typecheck ✅ · lint ✅ · build:web ✅ · المتصفح: 0 أخطاء و«Agents» يعرض</td>
+      </tr>
+      <tr>
+        <td><code>.gitignore</code></td>
+        <td>إصلاح السطر التالف وإضافة <code>.playwright-mcp/</code> نصًّا</td>
+        <td><code>git check-ignore</code> يطابق السطر 39 ✅ واختفاء الملفات غير المتتبَّعة</td>
+      </tr>
+      <tr>
+        <td><code>docs/review-shots/*.png</code></td>
+        <td>لقطات شاشة كدليل بصري لهذا التقرير</td>
+        <td>من إخراج agent-browser أثناء الجولة</td>
+      </tr>
+    </tbody>
+  </table>
+  <p class="row">
+    ملاحظة: التزام <code>5f26528</code> على <code>main</code> يخصّ إصلاحات سابقة (بوابة الذكاء الاصطناعي،
+    كلفة الاستخدام في الـ ledger، نطاق أدلة TESTING). لم أُنشئ أي commit جديد في هذه المراجعة.
+  </p>
+</section>
+
+<h2 id="method">8. المنهجية والقيود</h2>
+<section>
+  <ul>
+    <li><strong>المنهجية:</strong> تعداد المسارات ومقارنة الحرّاس برمجيًا، فحص أنماط الخطر (SQL خام، XSS، أسرار، صلاحيات)، ثم تشغيل التطبيق فعليًا وسياقة كل تبويب مع رصد console/page errors ولقطات، ثم إصلاح الجذر وإعادة التحقق في جلسة متصفح جديدة.</li>
+    <li><strong>لم أُنفّذ:</strong> تدفّق مصنع كامل حتى الـ PR/Merge (GitHub token غير مهيأ: <code>factory.githubConfigured=false</code>)، ولا نشرًا إنتاجيًا، ولا <code>db:reset</code>/إعادة تهيئة البيانات، ولا أي أمر مدمّر.</li>
+    <li><strong>جاهزية الإنتاج</strong> لم تُختبر ضد بيئة إنتاج حقيقية؛ أحكام الإنتاج مبنية على قراءة الشيفرة وليس على نشر فعلي.</li>
+    <li>عيب المحاكاة (F3) مُبلَّغ لا مُصلَح لأنه قرار تصميمي؛ F4–F7 تحتاج قرارك قبل التعديل.</li>
+  </ul>
+</section>
+
+<footer>
+  أُعِدّ هذا التقرير آليًا بعد تشغيل التطبيق واختباره فعليًا — 2026-10-09 · AgentWorld (King World)
+</footer>
+
+</div>
+</body>
+</html>
