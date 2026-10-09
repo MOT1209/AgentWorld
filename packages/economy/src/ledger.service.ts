@@ -67,7 +67,19 @@ interface MovementInput extends LedgerContext {
 
 /** Runs inside an existing transaction when given one, else opens one. */
 function run<T>(client: DbClient | undefined, fn: (db: DbClient) => Promise<T>): Promise<T> {
-  return client !== undefined ? fn(client) : withTransaction(prisma, fn);
+  if (client === undefined) return withTransaction(prisma, fn);
+  // A TransactionClient is already inside a transaction: enlist directly.
+  // A PrismaClient is a top-level handle: wrap the work in $transaction so a
+  // multi-statement movement (balance update + ledger append, or the two legs
+  // of a transfer) commits atomically instead of as separate statements.
+  if (hasTransactionMethod(client)) {
+    return withTransaction(client, fn);
+  }
+  return fn(client);
+}
+
+function hasTransactionMethod(client: DbClient): client is Parameters<typeof withTransaction>[0] {
+  return typeof (client as { $transaction?: unknown }).$transaction === "function";
 }
 
 function db(client: DbClient | undefined): DbClient {

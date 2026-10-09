@@ -150,9 +150,15 @@ async function assertNoSlotConflict(
   agentId: string,
   slotMinutes: number,
   activityType: string,
+  excludeRoutineId?: string,
 ): Promise<void> {
   const existing = await db.agentRoutine.findFirst({
-    where: { agentId, slotMinutes, activityType },
+    where: {
+      agentId,
+      slotMinutes,
+      activityType,
+      ...(excludeRoutineId !== undefined ? { id: { not: excludeRoutineId } } : {}),
+    },
   });
   if (existing !== null) {
     throw conflict("A routine already exists for this agent at this slot", {
@@ -242,7 +248,7 @@ export async function updateAgentRoutine(
 
   const nextSlot = input.slotMinutes ?? routine.slotMinutes;
   const nextType = input.activityType ?? routine.activityType;
-  await assertNoSlotConflict(db, routine.agentId, nextSlot, nextType);
+  await assertNoSlotConflict(db, routine.agentId, nextSlot, nextType, routine.id);
 
   const updated = await db.agentRoutine.update({
     where: { id: routineId },
@@ -506,14 +512,14 @@ export async function evaluateAgentRoutines(
   return { triggered, skipped, evaluated: triggered.length + skipped.length };
 }
 
-/** The simulated day a timestamp belongs to. */
+/** The simulated day a timestamp belongs to (UTC, matching payrollDayKey). */
 export function simDateKey(of: Date): string {
-  const month = String(of.getMonth() + 1).padStart(2, "0");
-  const day = String(of.getDate()).padStart(2, "0");
-  return `${of.getFullYear()}-${month}-${day}`;
+  const month = String(of.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(of.getUTCDate()).padStart(2, "0");
+  return `${of.getUTCFullYear()}-${month}-${day}`;
 }
 
-/** Minutes since simulated midnight (0..1439). */
+/** Minutes since simulated midnight (0..1439, UTC for determinism). */
 function minutesOfDayOf(of: Date): number {
-  return of.getHours() * 60 + of.getMinutes();
+  return of.getUTCHours() * 60 + of.getUTCMinutes();
 }

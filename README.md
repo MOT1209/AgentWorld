@@ -232,8 +232,16 @@ Agent ──▶ ToolExecutor ──▶ AI Gateway ──▶ Model Router ──�
 - **Routing by capability, task type, context size, cost budget and
   availability.** Fallback is bounded (never infinite) and every fallback is
   recorded. No agent ever calls a provider directly.
+- **One path in**: the agent runtime's *own* thinking calls go through the
+  same gateway as the `provider.complete` tool — no agent dials a provider
+  adapter directly. A scripted `mock` fallback is allowed only for an agent
+  pinned to `mock`; a pinned real provider that fails is reported, never
+  silently answered by a script.
 - **Usage & cost**: every call appends an `AiUsage` row (tokens, estimated
-  cost, latency, correlation ID); real money moves only through the ledger.
+  cost, latency, correlation ID). Above `AI_CHARGE_THRESHOLD_MINOR` the
+  estimate is charged to the company treasury as a `FEE` through the one
+  ledger, keyed by the usage row — a retry replays as a no-op instead of
+  double-charging.
 - **Secrets**: API keys and OAuth tokens live sealed in the Vault and are
   injected server-side. Agents never see credentials; CAPTCHAs, paywalls and
   provider auth are never bypassed.
@@ -269,6 +277,10 @@ URL → INTAKE → ANALYZING → PLANNING → BUILDING → TESTING ⇄ FIXING
   → REVIEWING → AWAITING_APPROVAL → (human merge) → COMPLETED → DEPLOYED
 ```
 
+- **Evidence belongs to its run**: the TESTING stage only reads test runs in
+  its own task/workspace scope, consumes a settled verdict exactly once, and
+  waits while a job is in flight. Re-advancing queues a retest rather than
+  re-entering FIXING on stale evidence, and never spawns a duplicate job.
 - **Repository analyzer** separates *observed facts* (tree, manifests, CI,
   docs, secrets hygiene, score) from *inferred* findings and *hypotheses*.
   LLM output is advisory and never overwrites facts.
@@ -325,7 +337,7 @@ Communication, Economy, Approvals, Activity |
 | `packages/{shared,database,security}` | enums, `Money`, errors, config, JWT, RBAC, rate limits, sanitisation |
 | `packages/{economy,events,tasks,memory,world,company}` | ledger, event bus + audit, state machines, decay-ranked memory, dual clock |
 | `packages/{agents,orchestration,runtime}` | runtime loop, roles, capabilities, hierarchy, relationships, performance center, plans, delegation, reviews + rework budgets, reports, escalations, sessions |
-| `packages/{ai,tools}` | provider abstraction + `ModelRouter` + vendor catalog, 79-tool registry + single enforcement point |
+| `packages/{ai,tools}` | provider abstraction + `ModelRouter` + vendor catalog, 82-tool registry + single enforcement point |
 | `packages/{connectors,vault,webhooks,mcp}` | connector marketplace + OAuth, sealed credentials, signed deliveries, scoped MCP server |
 | `packages/{factory}` | pipeline, repository analyzer, GitHub client, testing engine (7 adapters), project mapping, team suggestions, fix loop, review gate, deployment adapters |
 | `packages/simulation` | needs, routines, goals, activities, deterministic decision engine, world tick loop |

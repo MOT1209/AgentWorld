@@ -19,21 +19,28 @@
  *    THINKING.
  */
 import {
+  canTransitionAgentState,
   getConfig,
   logger,
   newCorrelationId,
   type ActorRef,
+  type AgentState,
 } from "../../shared/src/index.js";
 import { prisma, type DbClient } from "../../database/src/index.js";
 import type { AgentMemory } from "../../database/src/types.js";
 import { eventBus } from "../../events/src/index.js";
 import { recordActivity } from "../../events/src/audit.js";
 import { EVENT_TYPES } from "../../events/src/index.js";
-import { getProviderRegistry, type ChatMessage, type ToolCall } from "../../ai/src/index.js";
+import {
+  complete,
+  type ChatMessage,
+  type ProviderRegistry,
+  type ToolCall,
+} from "../../ai/src/index.js";
 import { retrieveMemories, storeMemory, formatMemoriesForPrompt } from "../../memory/src/index.js";
 import { getActiveTask, getTaskDetail } from "../../tasks/src/index.js";
 import type { ToolExecutionContext, ToolExecutionResult, ToolSpec } from "../../tools/src/types.js";
-import { buildRuntimeProfile, changeAgentState, type AgentRuntimeProfile } from "./agent.service.js";
+import { buildRuntimeProfile, changeAgentState, getAgentState, type AgentRuntimeProfile } from "./agent.service.js";
 import { sendMessage } from "./communication.service.js";
 import { buildSystemPrompt, buildTurnMessages } from "./prompt-builder.js";
 import type { MAX_CONTEXT_MESSAGES } from "./prompt-builder.js";
@@ -90,8 +97,8 @@ export interface AgentRunResult {
 export interface RuntimeDeps {
   db?: DbClient;
   invoker: ToolInvoker;
-  /** Test seam for the provider registry. */
-  providerRegistry?: ReturnType<typeof getProviderRegistry>;
+  /** Test seam for the provider registry; handed to the AI Gateway. */
+  providerRegistry?: ProviderRegistry;
   maxIterationsOverride?: number;
 }
 
@@ -108,14 +115,16 @@ export async function runAgent(
   const agent = profile.agent;
   const actor: ActorRef = { actorType: "AGENT", actorId: agent.id, actorName: agent.name };
 
-  const registry = deps.providerRegistry ?? getProviderRegistry();
-  const provider = registry.require(agent.providerId);
+  // Boot through the lifecycle table: a freshly created agent is OFFLINE and
+  // OFFLINE -> THINKING is not a legal jump (OFFLINE boots via IDLE/ONLINE).
+  // Step through IDLE when the direct transition is illegal so a first-ever
+  // run does not fail with INVALID_STATE_TRANSITION.
+  await enterThinking(db, agent.id, input.trigger, actor, correlationId);
 
-  await changeAgentState(
-    db,
-    { agentId: agent.id, state: "THINKING", activity: `run:${input.trigger}` },
-    { actor, correlationId },
-  );
+  // The agent never dials a vendor directly. Every completion goes through
+  // the AI Gateway, which owns routing, bounded retry/fallback, usage and
+  // cost tracking and correlation. `deps.providerRegistry` remains a test
+  // seam and is handed to the gateway instead of being used here.
 
   await eventBus.publishAndDispatch(db, {
     type: EVENT_TYPES.AGENT_RUN_STARTED,
@@ -145,6 +154,10 @@ export async function runAgent(
   let finalMessage: string | null = null;
   let iterations = 0;
   let runError: string | undefined;
+  // The provider/model that actually served the last turn (may differ from the
+  // agent's pin only when the call itself fell back, which is recorded).
+  let servingProviderId = agent.providerId;
+  let servingModel = agent.model;
 
   const maxIterations = Math.min(
     deps.maxIterationsOverride ?? profile.role.maxIterations,
@@ -155,15 +168,33 @@ export async function runAgent(
     for (let iteration = 1; iteration <= maxIterations; iteration += 1) {
       iterations = iteration;
 
-      const completion = await provider.complete({
-        model: agent.model,
-        messages,
-        tools,
-        temperature: profile.role.temperature ?? agent.temperature,
-        maxTokens: agent.maxTokens,
-        timeoutMs: config.agent.requestTimeoutMs,
-        correlationId,
-      });
+      const completion = await complete(
+        db,
+        {
+          model: agent.model,
+          messages,
+          tools,
+          temperature: profile.role.temperature ?? agent.temperature,
+          maxTokens: agent.maxTokens,
+          timeoutMs: config.agent.requestTimeoutMs,
+          correlationId,
+          providerId: agent.providerId,
+          // A scripted stand-in must never silently answer for a pinned real
+          // provider: a vendor outage is an error the run reports, not a
+          // fabricated turn. Only a mock-pinned agent may fall back to mock.
+          allowMockFallback: agent.providerId === "mock",
+          agentId: agent.id,
+          companyId: agent.currentCompanyId ?? null,
+          taskId: input.taskId ?? null,
+        },
+        {
+          actor,
+          correlationId,
+          ...(deps.providerRegistry !== undefined ? { registry: deps.providerRegistry } : {}),
+        },
+      );
+      servingProviderId = completion.providerId;
+      servingModel = completion.model;
 
       if (completion.content.trim() !== "") {
         finalMessage = completion.content.trim();
@@ -275,8 +306,8 @@ export async function runAgent(
         correlationId,
         ...(input.taskId !== undefined ? { taskId: input.taskId } : {}),
         metadata: {
-          providerId: provider.id,
-          model: agent.model,
+          providerId: servingProviderId,
+          model: servingModel,
           outcome,
           iterations,
           toolCallCount: toolCalls.length,
@@ -338,8 +369,8 @@ export async function runAgent(
       outcome,
       iterations,
       toolCallCount: toolCalls.length,
-      providerId: provider.id,
-      model: agent.model,
+      providerId: servingProviderId,
+      model: servingModel,
       durationMs,
       approvalRequestIds,
     },
@@ -349,14 +380,42 @@ export async function runAgent(
     agentId: agent.id,
     outcome,
     iterations,
-    providerId: provider.id,
-    model: agent.model,
+    providerId: servingProviderId,
+    model: servingModel,
     durationMs,
     finalMessage,
     toolCalls,
     approvalRequestIds,
     ...(runError !== undefined ? { error: runError } : {}),
   };
+}
+
+async function enterThinking(
+  db: DbClient,
+  agentId: string,
+  trigger: AgentRunTrigger,
+  actor: ActorRef,
+  correlationId: string,
+): Promise<void> {
+  const current = await getAgentState(db, agentId);
+  if (current.state === "THINKING") {
+    await changeAgentState(
+      db,
+      { agentId, state: "THINKING", activity: `run:${trigger}` },
+      { actor, correlationId },
+    );
+    return;
+  }
+  if (!canTransitionAgentState(current.state as AgentState, "THINKING")) {
+    // Every non-thinking state in the table can reach IDLE, and IDLE can
+    // reach THINKING, so this two-step boot is universal.
+    await changeAgentState(db, { agentId, state: "IDLE", reason: "run boot" }, { actor, correlationId });
+  }
+  await changeAgentState(
+    db,
+    { agentId, state: "THINKING", activity: `run:${trigger}` },
+    { actor, correlationId },
+  );
 }
 
 async function invokeTool(

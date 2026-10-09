@@ -5,16 +5,16 @@
 Historical snapshot at Phase 1 close; current totals in brackets.
 
 - Monorepo + strict toolchain (typecheck, lint, test, build)
-- SQLite schema (27 models) + ledger immutability triggers [now 38 models]
+- SQLite schema (27 models) + ledger immutability triggers [now 48 models]
 - Integer-minor-unit money, single-writer ledger, `verifyLedger`
-- Event bus + audit log, typed catalogue (~45 events) [now ~80 types]
+- Event bus + audit log, typed catalogue (~45 events) [now ~119 types]
 - Swappable AI providers + deterministic mock + `ModelRouter`
 - Tasks (state machine, dependencies, cycle detection), memory (4 kinds, decay),
   world (dual clock), company, approvals (freeze + single-flight replay)
 - Agent runtime (think-act-observe) + 4 role profiles + 19 tools
-  [now 55 tools]
+  [now 82 tools]
 - REST API (auth, RBAC, approvals replay, agent wakeup), seed, 25 tests
-  [now 161 tests: 149 passing + 12 Docker-sandbox skipped when Docker is absent],
+  [now 282 tests: 267 passing + 15 environment-gated skips when Docker/CLI runtimes are absent],
   operator dashboard, docs
 
 ## Phase 2 (done): orchestration
@@ -181,6 +181,36 @@ runtime).
   endpoints), this roadmap entry.
 - Tests: `tests/factory-platform.test.ts` (catalog, routing, transports,
   MCP, QA adapters, factory intelligence).
+
+### Phase 11 integrity repairs (Agent 2 follow-up)
+
+Audit of the shipped platform found four places where the documented
+contract was not actually wired. All four are repaired and covered by tests;
+nothing was rebuilt and no security check was weakened.
+
+- **The AI Gateway is now the only path to a model.** The agent runtime's own
+  thinking calls were invoking `provider.complete` directly, so routing,
+  bounded fallback, `AiUsage` tracking, cost estimation and correlation were
+  all skipped for every agent turn. `runAgent` now calls `gateway.complete`
+  (the provider registry stays a test seam, passed through the gateway).
+- **Fallback honesty.** An agent pinned to a real provider runs with
+  `allowMockFallback: false`, so a vendor outage becomes a reported failure
+  instead of a turn silently answered by the scripted mock. Agents pinned to
+  `mock` are unaffected.
+- **AI cost actually reaches the ledger.** `chargeAiSpend` was exported but
+  never called, and its `treasuryWalletId` was never supplied, so the
+  documented "AI spend crosses into the ledger" behaviour never fired. The
+  gateway now charges the company treasury as a `FEE` through the one ledger
+  once per `AiUsage` row above `AI_CHARGE_THRESHOLD_MINOR`, idempotent by the
+  usage-row id; the treasury wallet is resolved from the company.
+- **Factory TESTING stage integrity.** Evidence is scoped to the run (an
+  unbound run refuses to advance instead of matching an arbitrary `TestRun`,
+  matching the guard `fixloop.ts` and `review.ts` already had), a settled
+  verdict is consumed exactly once so a stale failure can no longer re-enter
+  FIXING without a retest, and an in-flight job is waited on instead of
+  queueing a duplicate execution on every `advance()`.
+- **Tests:** `tests/ai-platform-integrity.test.ts` (6) plus 4 testing-stage
+  tests in `tests/factory-platform.test.ts`.
 
 Remaining (genuine limitations, not roadmap debt):
 

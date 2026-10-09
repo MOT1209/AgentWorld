@@ -8,7 +8,7 @@
  * Numeric skill levels from the simulation's XP curve stay authoritative --
  * Academy owns the lifecycle and the evidence, not the levels.
  */
-import { newCorrelationId, validationError } from "../../shared/src/index.js";
+import { newCorrelationId, toJsonArray, validationError } from "../../shared/src/index.js";
 import type { ActorRef } from "../../shared/src/index.js";
 import type { DbClient } from "../../database/src/index.js";
 import type { TrainingRun } from "../../database/src/types.js";
@@ -91,7 +91,9 @@ export async function evaluateTrainingRun(
       where: { id: run.agentId },
       select: { skills: true },
     });
-    const skills: string[] = agent ? JSON.parse(agent.skills) : [];
+    // Tolerate malformed rows: a corrupt skills column degrades to empty
+    // rather than crashing the evaluation with a SyntaxError.
+    const skills: string[] = agent ? toJsonArray(agent.skills) : [];
     if (!skills.includes(run.skillName)) {
       skills.push(run.skillName);
       await db.agent.update({ where: { id: run.agentId }, data: { skills: JSON.stringify(skills) } });

@@ -57,7 +57,12 @@ export const memoryStoreTool: ToolDefinition<{
         kind: input.kind,
         content: input.content,
         importance: input.importance,
-        source: "AGENT",
+        // MemorySourceSchema has no AGENT value (sources are CONVERSATION,
+        // TASK, EVENT, TOOL, OBSERVATION, HUMAN, SYSTEM): an agent-authored
+        // note recorded through this tool is a TOOL observation. Passing
+        // "AGENT" here failed Zod validation, so every memory.store call
+        // through the executor errored and agents could never remember.
+        source: "TOOL",
         ...(input.taskId !== undefined ? { taskId: input.taskId } : {}),
       },
       {

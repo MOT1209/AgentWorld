@@ -14,6 +14,7 @@
  */
 import {
   AgentStateSchema,
+  canTransitionAgentState,
   newCorrelationId,
   slugify,
   toJsonArray,
@@ -22,14 +23,14 @@ import {
   type ActorRef,
   type AgentState as AgentStateValue,
 } from "../../shared/src/index.js";
-import { conflict, notFound } from "../../shared/src/index.js";
+import { conflict, invalidStateTransition, notFound } from "../../shared/src/index.js";
 import type { Prisma } from "@prisma/client";
 import type { DbClient } from "../../database/src/index.js";
 import type { Agent, AgentState, AgentStateHistory } from "../../database/src/types.js";
 import { eventBus } from "../../events/src/index.js";
 import { recordActivity } from "../../events/src/audit.js";
 import { EVENT_TYPES } from "../../events/src/index.js";
-import { PERMISSIONS, type Permission } from "../../security/src/permissions.js";
+import { PERMISSIONS, isPermission, type Permission } from "../../security/src/permissions.js";
 import { roleProfiles, type RoleProfile } from "./role-profiles.js";
 
 export interface AgentContext {
@@ -285,6 +286,14 @@ export async function changeAgentState(
 
   if (current.state === state && input.activity === undefined) return current;
 
+  // The lifecycle table is authoritative: an illegal transition is rejected
+  // here, not just in the simulation engine's private guard, so API routes and
+  // tools cannot teleport an agent (e.g. OFFLINE -> WORKING or ERROR -> WORKING).
+  const from = AgentStateSchema.parse(current.state);
+  if (!canTransitionAgentState(from, state)) {
+    throw invalidStateTransition(current.state, state, "Agent");
+  }
+
   const updated = await db.agentState.update({
     where: { agentId: input.agentId },
     data: {
@@ -373,7 +382,7 @@ export async function buildRuntimeProfile(
   const role = roleProfiles.get(agent.roleKey);
 
   const declared = toJsonArray(agent.capabilities).filter(
-    (value): value is Permission => value in PERMISSIONS,
+    (value): value is Permission => isPermission(value),
   );
   const declaredSet = new Set<Permission>(declared);
 

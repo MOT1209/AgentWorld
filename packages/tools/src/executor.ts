@@ -23,7 +23,7 @@ import {
   logger,
   type RiskLevel,
 } from "../../shared/src/index.js";
-import { prisma } from "../../database/src/index.js";
+import type { DbClient } from "../../database/src/index.js";
 import { eventBus } from "../../events/src/index.js";
 import { EVENT_TYPES } from "../../events/src/index.js";
 import { isAlwaysApproved, riskForAction } from "../../approvals/src/index.js";
@@ -342,7 +342,13 @@ export class ToolExecutor {
     extra: { durationMs?: number; error?: string; summary?: string; approvalRequestId?: string },
   ): Promise<void> {
     try {
-      await prisma.toolInvocation.create({
+      // The audit row belongs to the caller's database handle, not a global
+      // singleton: tool effects and their audit trail stay on the same
+      // connection (and inside the same transaction when the caller enlisted
+      // one). A global client would split them across connections and, in
+      // tests, across isolated database files.
+      const db: DbClient = context.db;
+      await db.toolInvocation.create({
         data: {
           agentId: context.agentId ?? null,
           toolName: name,

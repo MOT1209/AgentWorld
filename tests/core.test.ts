@@ -50,6 +50,7 @@ describe("agents", () => {
     const fetched = await getAgent(prisma, agent.id);
     expect(fetched.id).toBe(agent.id);
 
+    await changeAgentState(prisma, { agentId: agent.id, state: "IDLE", reason: "boot" }, agentCtx);
     await changeAgentState(prisma, { agentId: agent.id, state: "WORKING", activity: "testing" }, agentCtx);
     const state = await getAgentState(prisma, agent.id);
     expect(state.state).toBe("WORKING");

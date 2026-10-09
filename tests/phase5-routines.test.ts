@@ -28,14 +28,14 @@ import { SYSTEM, CORRELATION, createTestAgent, unique } from "./helpers.js";
 
 const CTX = { actor: SYSTEM, correlationId: CORRELATION };
 
-/** Deterministic wall-clock anchors: 09:00 and 10:00 on a fixed local day. */
-const BASE = new Date(2026, 2, 16, 9, 0, 0);
-const TEN = new Date(2026, 2, 16, 10, 0, 0);
+/** Deterministic wall-clock anchors: 09:00 and 10:00 UTC on a fixed day. */
+const BASE = new Date(Date.UTC(2026, 2, 16, 9, 0, 0));
+const TEN = new Date(Date.UTC(2026, 2, 16, 10, 0, 0));
 
 function simDateKey(of: Date): string {
-  const month = String(of.getMonth() + 1).padStart(2, "0");
-  const day = String(of.getDate()).padStart(2, "0");
-  return `${of.getFullYear()}-${month}-${day}`;
+  const month = String(of.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(of.getUTCDate()).padStart(2, "0");
+  return `${of.getUTCFullYear()}-${month}-${day}`;
 }
 
 async function makeWorld(): Promise<{ worldId: string; officeId: string; commonId: string }> {
@@ -218,8 +218,24 @@ describe("phase5 routine CRUD", () => {
     expect(seen).toBe("WORK");
     expect(updated.slotMinutes).toBe(540);
 
+    // Re-saving the routine's own slot is a no-op, not a conflict: the
+    // uniqueness check excludes the row being updated.
+    const same = await updateAgentRoutine(
+      prisma,
+      routine.id,
+      { slotMinutes: 540, activityType: "WORK" },
+      { ...CTX, worldId },
+    );
+    expect(same.slotMinutes).toBe(540);
+
+    // Colliding with a DIFFERENT routine at the same slot still fails.
+    const other = await createAgentRoutine(
+      prisma,
+      { agentId: agent.id, slotMinutes: 600, activityType: "REST", durationSimMinutes: 30 },
+      { ...CTX, worldId },
+    );
     await expect(
-      updateAgentRoutine(prisma, routine.id, { slotMinutes: 540, activityType: "WORK" }, { ...CTX, worldId }),
+      updateAgentRoutine(prisma, other.id, { slotMinutes: 540, activityType: "WORK" }, { ...CTX, worldId }),
     ).rejects.toThrow(/already exists/i);
 
     const audit = await listActivity(prisma, { action: "routine.update", take: 5 });
@@ -306,7 +322,7 @@ describe("phase5 routine evaluation", () => {
     });
     await changeAgentState(prisma, { agentId: agent.id, state: "IDLE" }, { ...CTX, worldId });
 
-    const tomorrow = new Date(2026, 2, 17, 10, 0, 0);
+    const tomorrow = new Date(Date.UTC(2026, 2, 17, 10, 0, 0));
     const next = await evaluateAgentRoutines(prisma, { agentId: agent.id, simulatedNow: tomorrow }, { ...CTX, worldId });
     expect(next.triggered.map((r) => r.id)).toEqual([routine.id]);
 
