@@ -15,9 +15,10 @@
  *   4. TRACK       - every call appends an AiUsage row (tokens, estimated
  *                    cost, latency, correlation) and emits
  *                    AI_PROVIDER_CALL_RECORDED. Real money moves only when
- *                    the estimate crosses the configured threshold, and then
- *                    exclusively through LedgerService (type FEE) -- never a
- *                    second ledger.
+ *                    the call's estimate reaches the configured threshold,
+ *                    and then exclusively through LedgerService (type FEE,
+ *                    keyed by the usage row so a replay is a no-op) -- never
+ *                    a second ledger.
  *   5. REDACT      - provider errors are surfaced as AI_PROVIDER_ERROR with a
  *                    bounded message; raw provider responses never carry
  *                    credentials.
@@ -26,7 +27,8 @@ import { aiProviderError, logger, newCorrelationId, toJson, type ActorRef } from
 import type { DbClient } from "../../database/src/index.js";
 import { eventBus, EVENT_TYPES } from "../../events/src/index.js";
 import { estimateCostMinor, modelRegistry, type ModelEntry, type ModelQuery } from "./model-registry.js";
-import { getProviderRegistry } from "./registry.js";
+import { getProviderRegistry, type ProviderRegistry } from "./registry.js";
+import { chargeAiSpend } from "./ai-cost.service.js";
 import { routeModel, type ModelRequest } from "./router.js";
 import type { CompletionRequest, CompletionResult } from "./types.js";
 
@@ -44,8 +46,16 @@ export interface GatewayRequest extends CompletionRequest {
   sessionId?: string | null;
   taskId?: string | null;
   companyId?: string | null;
-  /** Wallet to charge when the accumulated estimate crosses the threshold. */
+  /** Wallet to charge when the call's estimate reaches the charge threshold.
+   *  When absent the company treasury wallet is resolved from `companyId`. */
   treasuryWalletId?: string | null;
+  /**
+   * Allow the scripted `mock` provider to serve the call as a last-resort
+   * fallback. Default true (a clone with no credentials still works). The
+   * agent runtime sets it false when the agent is pinned to a real provider,
+   * so a vendor outage is reported instead of silently answered by a script.
+   */
+  allowMockFallback?: boolean;
 }
 
 export interface GatewayResult extends CompletionResult {
@@ -93,8 +103,10 @@ async function track(db: DbClient, input: TrackInput): Promise<void> {
       ? estimateCostMinor(entry, inputTokens, outputTokens)
       : 0;
 
+  // AiUsage uses an autoincrement integer id (unlike the cuid-keyed models).
+  let usageId: number | null = null;
   try {
-    await db.aiUsage.create({
+    const usage = await db.aiUsage.create({
       data: {
         providerId: input.providerId,
         model: input.model,
@@ -112,12 +124,33 @@ async function track(db: DbClient, input: TrackInput): Promise<void> {
         correlationId: input.correlationId,
       },
     });
+    usageId = usage.id;
   } catch (error) {
     // Observability must never break a completion.
     log.warn("AiUsage row failed", {
       action: "ai.usage_failed",
       result: "ERROR",
       error: error instanceof Error ? error.message : String(error),
+      correlationId: input.correlationId,
+    });
+  }
+
+  // Charge the company treasury once per usage row, above the configured
+  // threshold. Idempotent by construction: the ledger key is the usage row id,
+  // so a retried track() cannot double-charge. Failures are logged inside
+  // chargeAiSpend and never break the completion that produced the usage.
+  if (
+    input.status === "OK" &&
+    estimatedCostMinor > 0 &&
+    usageId !== null &&
+    input.request.companyId !== undefined &&
+    input.request.companyId !== null
+  ) {
+    await chargeAiSpend(db, {
+      companyId: input.request.companyId,
+      treasuryWalletId: input.request.treasuryWalletId ?? null,
+      amountMinor: estimatedCostMinor,
+      idempotencyKey: `ai-usage:${usageId}`,
       correlationId: input.correlationId,
     });
   }
@@ -155,10 +188,9 @@ function isTransient(message: string): boolean {
   );
 }
 
-function candidatesFor(request: GatewayRequest): Array<{ providerId?: string; model?: string }> {
+function candidatesFor(request: GatewayRequest, registry: ProviderRegistry): Array<{ providerId?: string; model?: string }> {
   const routing = request.routing ?? {};
   const directModel = request.model !== undefined && request.model !== "" ? request.model : routing.model;
-  const registry = getProviderRegistry();
   // Rank fallback candidates by the registry: cheapest-capable first, mock
   // last (a scripted stand-in is a last resort, not a peer).
   const contextNeed = routing.minContextWindow ?? routing.estimatedTokens;
@@ -188,7 +220,7 @@ function candidatesFor(request: GatewayRequest): Array<{ providerId?: string; mo
   for (const candidate of ranked) {
     if (candidate.providerId !== chain[0]?.providerId) chain.push(candidate);
   }
-  if (!chain.some((candidate) => candidate.providerId === "mock")) {
+  if (!chain.some((candidate) => candidate.providerId === "mock") && request.allowMockFallback !== false) {
     // No hardcoded model: routeModel resolves the mock provider's own
     // defaultModel from its descriptor.
     chain.push({ providerId: "mock" });
@@ -211,15 +243,15 @@ function capabilityList(capability: string): string[] {
 export async function complete(
   db: DbClient,
   request: GatewayRequest,
-  options: { actor: ActorRef; correlationId?: string },
+  options: { actor: ActorRef; correlationId?: string; /** Test/embedding seam; defaults to the process registry. */ registry?: ProviderRegistry },
 ): Promise<GatewayResult> {
   const correlationId = options.correlationId ?? newCorrelationId();
-  const registry = getProviderRegistry();
+  const registry = options.registry ?? getProviderRegistry();
   modelRegistry.refreshAvailability(
     new Set(registry.list().filter((descriptor) => descriptor.configured).map((descriptor) => descriptor.id)),
   );
 
-  const candidates = candidatesFor(request);
+  const candidates = candidatesFor(request, registry);
   const errors: string[] = [];
   const fallbackFrom: string[] = [];
 

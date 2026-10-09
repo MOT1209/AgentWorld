@@ -269,7 +269,10 @@ export class MockProvider implements AIProvider {
       displayName: "Mock (deterministic, offline)",
       configured: true,
       defaultModel: "deterministic-scheduler-v1",
-      models: ["deterministic-scheduler-v1"],
+      // The model registry declares `mock-1` for this provider; list both so an
+      // agent pinned to either id routes through the ModelRouter without a
+      // spurious "unknown model on this provider" rejection.
+      models: ["deterministic-scheduler-v1", "mock-1"],
       notes:
         "Scripted stand-in for offline development and tests. Produces no real reasoning. Configure a real provider for actual model behaviour.",
     };

@@ -8,6 +8,9 @@
  * asserted only when they genuinely execute.
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { prisma } from "../packages/database/src/client.js";
 import { createTestUser, createTestAgent, unique, SYSTEM, CORRELATION } from "./helpers.js";
 import { resetConfigCache } from "../packages/shared/src/index.js";
@@ -27,9 +30,12 @@ import { callConnector, getDescriptor, marketplaceCatalog } from "../packages/co
 import { createCredential, revokeCredential } from "../packages/vault/src/index.js";
 import { createApiKey } from "../packages/security/src/api-keys.js";
 import { handleMcpRequest } from "../packages/mcp/src/index.js";
+import { createWorkspace, type WorkspaceActorContext } from "../packages/workspace/src/index.js";
 import {
   runTestSuite,
   startFactoryRun,
+  advanceFactoryRun,
+  GithubClient,
   lifecycleFor,
   getProjectStatus,
   suggestTeam,
@@ -392,5 +398,127 @@ describe("factory intelligence", () => {
 
     const deployments = await refreshDeployments(prisma, run.id, { actor: SYSTEM });
     expect(deployments.some((deployment) => deployment.id === blocked.id)).toBe(true);
+  });
+});
+
+describe("factory testing-stage integrity", () => {
+  const SYSTEM_CTX: WorkspaceActorContext = { actor: SYSTEM, correlationId: CORRELATION };
+
+  async function workspaceBoundRun(companyId: string): Promise<{ runId: string; workspaceId: string; root: string }> {
+    const root = mkdtempSync(join(tmpdir(), "agentworld-factory-"));
+    const workspace = await createWorkspace(prisma, { name: unique("Factory WS") }, SYSTEM_CTX, { root });
+    const run = await startFactoryRun(prisma, {
+      repoUrl: "https://github.com/acme/widgets",
+      companyId,
+      actor: SYSTEM,
+      workspaceId: workspace.id,
+    });
+    await prisma.factoryRun.update({
+      where: { id: run.id },
+      data: { currentStage: "TESTING", status: "TESTING" },
+    });
+    return { runId: run.id, workspaceId: workspace.id, root };
+  }
+
+  it("never borrows another run's test evidence", async () => {
+    const companyId = await createCompany();
+    // A green verdict that belongs to somebody else must not move this run.
+    const unrelated = await runTestSuite(prisma, { adapter: "security", name: "unrelated green run" });
+    expect(unrelated.status).toBe("PASSED");
+
+    const run = await startFactoryRun(prisma, {
+      repoUrl: "https://github.com/acme/widgets",
+      companyId,
+      actor: SYSTEM,
+    });
+    await prisma.factoryRun.update({
+      where: { id: run.id },
+      data: { currentStage: "TESTING", status: "TESTING" },
+    });
+
+    await expect(advanceFactoryRun(prisma, run.id, new GithubClient())).rejects.toThrow(
+      /no task or workspace bound/,
+    );
+    const after = await prisma.factoryRun.findUniqueOrThrow({ where: { id: run.id } });
+    expect(after.currentStage).toBe("TESTING");
+  });
+
+  it("queues exactly one verification while a job is in flight", async () => {
+    const companyId = await createCompany();
+    const { runId, workspaceId, root } = await workspaceBoundRun(companyId);
+    try {
+      const first = await advanceFactoryRun(prisma, runId, new GithubClient());
+      expect(first.currentStage).toBe("TESTING");
+      expect(await prisma.testRun.count({ where: { workspaceId } })).toBe(1);
+      const queued = await prisma.testRun.findFirstOrThrow({ where: { workspaceId } });
+      expect(queued.status).toBe("QUEUED");
+      const jobs = await prisma.executionJob.count({ where: { workspaceId } });
+
+      // Re-advancing while the job is in flight must not spawn a duplicate.
+      const second = await advanceFactoryRun(prisma, runId, new GithubClient());
+      expect(second.currentStage).toBe("TESTING");
+      expect(await prisma.testRun.count({ where: { workspaceId } })).toBe(1);
+      expect(await prisma.executionJob.count({ where: { workspaceId } })).toBe(jobs);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("consumes a failing verdict once, fixes, then queues a real retest", async () => {
+    const companyId = await createCompany();
+    const { runId, workspaceId, root } = await workspaceBoundRun(companyId);
+    try {
+      await prisma.testRun.create({
+        data: {
+          suite: "UNIT",
+          adapter: "command",
+          name: "failing verification",
+          status: "FAILED",
+          summary: JSON.stringify({ passed: 0, failed: 1, skipped: 0, total: 1 }),
+          evidence: JSON.stringify({ observed: ["1 test failed"], inferred: [], hypothesis: [] }),
+          workspaceId,
+          correlationId: CORRELATION,
+        },
+      });
+
+      const fixing = await advanceFactoryRun(prisma, runId, new GithubClient());
+      expect(fixing.currentStage).toBe("FIXING");
+
+      const backToTesting = await advanceFactoryRun(prisma, runId, new GithubClient());
+      expect(backToTesting.currentStage).toBe("TESTING");
+
+      // The stale verdict was already acted on, so TESTING queues a retest
+      // instead of re-entering FIXING with the same evidence.
+      const retesting = await advanceFactoryRun(prisma, runId, new GithubClient());
+      expect(retesting.currentStage).toBe("TESTING");
+      expect(await prisma.testRun.count({ where: { workspaceId } })).toBe(2);
+      const stats = JSON.parse(retesting.stats) as { consumedTestRunId?: string };
+      expect(typeof stats.consumedTestRunId).toBe("string");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("advances to review on a passing verdict", async () => {
+    const companyId = await createCompany();
+    const { runId, workspaceId, root } = await workspaceBoundRun(companyId);
+    try {
+      await prisma.testRun.create({
+        data: {
+          suite: "UNIT",
+          adapter: "command",
+          name: "passing verification",
+          status: "PASSED",
+          summary: JSON.stringify({ passed: 1, failed: 0, skipped: 0, total: 1 }),
+          evidence: JSON.stringify({ observed: ["exit 0"], inferred: [], hypothesis: [] }),
+          workspaceId,
+          correlationId: CORRELATION,
+        },
+      });
+      const reviewing = await advanceFactoryRun(prisma, runId, new GithubClient());
+      expect(reviewing.currentStage).toBe("REVIEWING");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });

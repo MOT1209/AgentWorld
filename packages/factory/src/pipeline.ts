@@ -114,7 +114,13 @@ export async function advanceFactoryRun(
   if (run === null) throw validationError("FactoryRun not found");
   const startedAt = run.createdAt.getTime();
   const bounds = parseJson(run.config) as { maxRuntimeMs?: number; maxFixAttempts?: number };
-  const stats = parseJson(run.stats) as { fixAttempts?: number; modelCalls?: number; testRuns?: number };
+  const stats = parseJson(run.stats) as {
+    fixAttempts?: number;
+    modelCalls?: number;
+    testRuns?: number;
+    /** Id of the newest TestRun this run has already acted on. */
+    consumedTestRunId?: string;
+  };
 
   const checkRuntime = (): void => {
     if (bounds.maxRuntimeMs !== undefined && Date.now() - startedAt > bounds.maxRuntimeMs) {
@@ -194,13 +200,31 @@ export async function advanceFactoryRun(
 
   if (stage === "TESTING") {
     stats.testRuns = (stats.testRuns ?? 0) + 1;
+
+    // Evidence must belong to THIS run. An unbound run owns no test scope, so
+    // consulting TestRun with an empty filter would let it borrow another
+    // run's result -- exactly what fixloop.ts and review.ts already refuse.
+    if (run.taskId === null && run.workspaceId === null) {
+      run = await db.factoryRun.update({ where: { id: run.id }, data: { stats: toJson(stats) } });
+      throw validationError(
+        "Factory run has no task or workspace bound, so no test evidence can belong to it. Bind one (factory.project) and advance again.",
+      );
+    }
+
     const lastTest = await db.testRun.findFirst({
-      where: { taskId: run.taskId ?? undefined, workspaceId: run.workspaceId ?? undefined },
+      where: {
+        ...(run.taskId !== null ? { taskId: run.taskId } : {}),
+        ...(run.workspaceId !== null ? { workspaceId: run.workspaceId } : {}),
+      },
       orderBy: { createdAt: "desc" },
     });
-    // Reuse the latest settled result when present; otherwise queue a fresh
-    // verification run for the workspace.
-    if (lastTest !== null && (lastTest.status === "PASSED" || lastTest.status === "FAILED")) {
+
+    // A verdict the run has not acted on yet is consumed exactly once: PASSED
+    // moves to review, anything else is a failure the fix loop owns (the same
+    // mapping analyzeFailure() uses).
+    const settled = lastTest !== null && lastTest.status !== "QUEUED" && lastTest.status !== "RUNNING";
+    if (lastTest !== null && settled && lastTest.id !== stats.consumedTestRunId) {
+      stats.consumedTestRunId = lastTest.id;
       run = await db.factoryRun.update({
         where: { id: run.id },
         data: { stats: toJson(stats) },
@@ -210,6 +234,19 @@ export async function advanceFactoryRun(
       }
       return transition(db, run, "FIXING");
     }
+
+    // Evidence still running: wait for it. Queueing here spawned a duplicate
+    // execution for every advance() call while a job was in flight.
+    if (lastTest !== null && !settled) {
+      run = await db.factoryRun.update({
+        where: { id: run.id },
+        data: { stats: toJson(stats) },
+      });
+      return run;
+    }
+
+    // No fresh evidence (none yet, or the last verdict was already acted on):
+    // queue exactly one verification run for the workspace and wait for it.
     if (run.workspaceId !== null) {
       await runTestSuite(db, {
         workspaceId: run.workspaceId,

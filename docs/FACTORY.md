@@ -36,8 +36,12 @@ status DEPLOYED exists), FAILED, CANCELLED.
 - PLANNING: derived tasks, risks and the working branch are recorded.
 - BUILDING: creates (or reuses) the working branch. Code changes come from
   executor agents in workspaces through the Phase 3 execution runtime.
-- TESTING: reuses the latest settled TestRun when present, otherwise queues
-  a verification run. PASSED moves to REVIEWING, anything else to FIXING.
+- TESTING: reads only TestRuns in the run's own task/workspace scope (an
+  unbound run refuses to advance instead of borrowing another run's result),
+  consumes each settled verdict exactly once, and waits while one is in
+  flight rather than queueing a duplicate job. PASSED moves to REVIEWING,
+  anything else to FIXING; once the verdict is spent, the next pass queues a
+  real retest.
 - FIXING: increments the attempt counter and returns to TESTING. Developer
   fix work happens in the workspace against a fix task created by
   `POST /runs/:id/fix-task` (exactly one per call, refused past budget).

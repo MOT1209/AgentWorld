@@ -1,10 +1,15 @@
 /**
  * AI cost charging -- the bridge from estimated usage to the real economy.
  *
- * One rule, stated once: the ledger is the only writer of balances. When
- * accumulated AI spend for a company crosses the configured threshold, this
- * module moves FEE money through LedgerService and records the fact once per
- * charge (AI_COST_CHARGED). No parallel balance, no direct wallet writes.
+ * One rule, stated once: the ledger is the only writer of balances. When a
+ * call's estimated cost reaches the configured threshold
+ * (AI_CHARGE_THRESHOLD_MINOR), this module moves FEE money from the company
+ * treasury through LedgerService and records the fact once per charge
+ * (AI_COST_CHARGED). No parallel balance, no direct wallet writes.
+ *
+ * The gateway calls this once per recorded `AiUsage` row, keyed by that row's
+ * id, so a retried or replayed charge is a ledger no-op rather than a double
+ * charge.
  */
 import { Money } from "../../shared/src/index.js";
 import type { DbClient } from "../../database/src/index.js";
@@ -17,16 +22,24 @@ import { logger } from "../../shared/src/index.js";
 const log = logger.child({ component: "ai.cost" });
 
 /**
- * Charges `amountMinor` of accumulated AI spend to the company treasury as a
- * FEE, when a treasury wallet is known. Returns the transaction id, or null
- * when there is nothing to charge (below threshold / no wallet).
+ * Charges `amountMinor` of AI spend to the company treasury as a FEE.
+ *
+ * The treasury wallet is resolved from the company (the only wallet the
+ * ledger will debit here); `treasuryWalletId` is an optional cross-check for
+ * callers that already know it -- when supplied and different, the charge is
+ * refused rather than debited from an unexpected wallet. Returns the
+ * transaction id, or null when there is nothing to charge (below threshold /
+ * no wallet / already charged).
  */
 export async function chargeAiSpend(
   db: DbClient,
   input: {
     companyId: string;
-    treasuryWalletId: string;
+    /** Optional explicit treasury wallet; resolved from the company when absent. */
+    treasuryWalletId?: string | null;
     amountMinor: number;
+    /** Stable per-charge key so a retry replays as a ledger no-op. */
+    idempotencyKey?: string;
     correlationId?: string;
   },
 ): Promise<{ transactionId: string; chargedMinor: number } | null> {
@@ -37,7 +50,10 @@ export async function chargeAiSpend(
   const wallet = await db.wallet.findFirst({
     where: { ownerType: "COMPANY", ownerId: input.companyId },
   });
-  if (wallet === null || wallet.id !== input.treasuryWalletId) return null;
+  if (wallet === null) return null;
+  if (input.treasuryWalletId !== undefined && input.treasuryWalletId !== null && wallet.id !== input.treasuryWalletId) {
+    return null;
+  }
 
   const description = `AI usage fees (${input.amountMinor} minor units estimated cost)`;
   try {
@@ -52,6 +68,7 @@ export async function chargeAiSpend(
       description,
       actor: SYSTEM_ACTOR,
       correlationId: input.correlationId,
+      ...(input.idempotencyKey !== undefined ? { idempotencyKey: input.idempotencyKey } : {}),
     });
     if (result.replayed) return null;
     await eventBus.publishAndDispatch(db, {
