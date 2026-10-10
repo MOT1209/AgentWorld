@@ -11,12 +11,15 @@ import {
   defaultPersonalityForRole,
   getOpenActivity,
   grantSkillExperience,
+  legalizeDecision,
   needsFromInitial,
   parsePersonality,
   parseSkills,
+  serializeVitals,
   startActivity,
   completeActivity,
   skillForActivity,
+  type Decision,
 } from "../packages/simulation/src/index.js";
 import { getAgentState } from "../packages/agents/src/index.js";
 import { EVENT_TYPES } from "../packages/events/src/index.js";
@@ -152,6 +155,51 @@ describe("decision engine", () => {
   });
 });
 
+// The lifecycle forbids WORKING -> RESTING, so a decision engine that proposes
+// a restorative break to a working agent used to have it rejected on every
+// tick: the need stayed critical and the log filled with identical warnings.
+describe("decision legalization", () => {
+  const rest: Decision = { action: "REST", reason: "Hunger low (0); restorative break.", priority: 75, metadata: {} };
+
+  it("downgrades an unreachable break to going idle first", () => {
+    const legal = legalizeDecision(rest, "WORKING");
+    expect(legal.action).toBe("IDLE");
+    expect(legal.priority).toBe(75);
+    expect(legal.reason).toMatch(/cannot start from WORKING/);
+  });
+
+  it("leaves a break that is already reachable untouched", () => {
+    expect(legalizeDecision(rest, "IDLE")).toBe(rest);
+    expect(legalizeDecision(rest, "ONLINE").action).toBe("REST");
+  });
+
+  it("applies the same rule to sleep and socialising but never blocks work", () => {
+    const sleep: Decision = {
+      action: "START_ACTIVITY",
+      reason: "Night in the simulated day; sleeping.",
+      priority: 85,
+      metadata: { activityType: "SLEEP" },
+    };
+    const social: Decision = {
+      action: "START_ACTIVITY",
+      reason: "Social need low; socialising.",
+      priority: 70,
+      metadata: { activityType: "SOCIALIZE" },
+    };
+    const work: Decision = {
+      action: "START_ACTIVITY",
+      reason: "Working hours; working.",
+      priority: 60,
+      metadata: { activityType: "WORK" },
+    };
+    const move: Decision = { action: "MOVE", reason: "Heading to work.", priority: 60, metadata: { toLocationId: "w" } };
+    expect(legalizeDecision(sleep, "WORKING").action).toBe("IDLE");
+    expect(legalizeDecision(social, "WORKING").action).toBe("IDLE");
+    expect(legalizeDecision(work, "WORKING")).toBe(work);
+    expect(legalizeDecision(move, "WORKING")).toBe(move);
+  });
+});
+
 describe("agent state transitions", () => {
   it("allows a legal work lifecycle but refuses ERROR shortcuts", () => {
     expect(canTransitionAgentState("IDLE", "WORKING")).toBe(true);
@@ -229,6 +277,38 @@ describe("simulation engine", () => {
     expect(snapshot.world.id).toBe(worldId);
     expect(snapshot.counts.agents).toBe(1);
     expect(snapshot.agents[0]?.needs.ENERGY).toBeGreaterThan(0);
+  });
+
+  it("breaks a critical-need agent out of WORKING instead of rejecting every tick", async () => {
+    const { worldId, officeId } = await makeWorld();
+    const agent = await createTestAgent({ worldId });
+    // A working agent with a critical need: the break it deserves cannot start
+    // from WORKING, which is what produced a rejection per tick before.
+    await prisma.agent.update({ where: { id: agent.id }, data: { currentLocationId: officeId } });
+    await prisma.agentState.update({
+      where: { agentId: agent.id },
+      data: { state: "WORKING", vitals: serializeVitals({ needs: needsFromInitial({ HUNGER: 0 }) }) },
+    });
+
+    const engine = new SimulationEngine(prisma, {
+      now: () => BASE,
+      tickIntervalMs: 1_000,
+      housekeepingEveryTicks: 0,
+    });
+
+    const first = await engine.tick({ at: BASE, worldId });
+    expect(first.skipped).toBe(false);
+    expect(first.decisionRejected).toBe(0);
+    const afterFirst = await getAgentState(prisma, agent.id);
+    expect(afterFirst.state).toBe("IDLE");
+
+    // The next tick starts the break the first tick could not, and still
+    // rejects nothing.
+    const second = await engine.tick({ at: new Date(BASE.getTime() + 30_000), worldId });
+    expect(second.decisionRejected).toBe(0);
+    const open = await getOpenActivity(prisma, agent.id);
+    expect(open?.type).toBe("REST");
+    engine.dispose();
   });
 
   it("does not tick a world that is not RUNNING", async () => {

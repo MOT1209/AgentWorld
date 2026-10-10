@@ -20,7 +20,9 @@
   <img src="https://img.shields.io/badge/Phase_2-complete-brightgreen" alt="Phase 2 complete" />
   <img src="https://img.shields.io/badge/Phase_3-execution_runtime_landed-blue" alt="Phase 3 execution runtime landed" />
   <img src="https://img.shields.io/badge/Phase_11-AI_platform_%2B_factory-blue" alt="Phase 11 AI platform and factory" />
-  <img src="https://img.shields.io/badge/tests-267_passing-brightgreen" alt="267 tests passing" />
+  <!-- No test count here: it drifts every time a suite is added, and the doc guard
+       deliberately does not check it. CI runs `npm run test` on every push. -->
+  <img src="https://img.shields.io/badge/tests-CI_suite-brightgreen" alt="test suite runs in CI (npm run test)" />
   <img src="https://img.shields.io/badge/verify-typecheck_%E2%80%A2_lint_%E2%80%A2_test_%E2%80%A2_build-blue" alt="verify pipeline" />
   <img src="https://img.shields.io/badge/keys-zero_required-black" alt="zero API keys needed" />
 </p>
@@ -345,7 +347,7 @@ Communication, Economy, Approvals, Activity |
 | `packages/execution` | Phase 3 execution runtime — `ExecutionBackend` (mock/local/OpenCode), guarded idempotent queue, non-blocking worker, spooled output, orphan recovery, verification pipeline |
 | `packages/skills` | external skill manifests — trust, security analysis, prompt-injection screening, installer, lockfile |
 | `database/` | Prisma SQLite schema (48 models) + migrations + idempotent `seed.ts` |
-| `tests/` | 29 suites, **282 tests** (267 passing, 15 environment-gated skips when Docker/CLI runtimes are absent) — finance races, ledger proofs, review loops, permissions, API, simulation, sandbox, AI platform, factory, QA, social/academy, payroll |
+| `tests/` | 31 suites, **313 tests** (298 passing, 15 environment-gated skips when Docker/CLI runtimes are absent — `npm run test` prints the current numbers on your machine) — finance races, ledger proofs, review loops, permissions, API, simulation, sandbox, AI platform, factory, QA, social/academy, payroll |
 | `docs/` | `ARCHITECTURE` · `SIMULATION_ENGINE` · `SECURITY` · `API` · `ROADMAP` · `FACTORY` · `AGENTWORLD_PHASE_3_ARCHITECTURE` · `PHASE3-AUDIT` |
 
 ---

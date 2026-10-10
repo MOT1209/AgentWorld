@@ -47,7 +47,7 @@ import {
   xpForActivity,
 } from "./skills.js";
 import { decisionEngine, type Decision } from "./decision.js";
-import { executeAction, type AgentAction } from "./actions.js";
+import { ACTIVITY_STATE, executeAction, type AgentAction } from "./actions.js";
 import { controlWorld, type WorldControlAction } from "./clock.js";
 import { evaluateAgentRoutines } from "./routines.js";
 import { runPayrollCycle, payrollDayKey } from "../../economy/src/index.js";
@@ -144,6 +144,13 @@ export class SimulationEngine {
   private timer: ReturnType<typeof setInterval> | null = null;
   private ticking = false;
   private tickCount = 0;
+  /**
+   * Rejection-log throttle: a deterministic engine can propose the same
+   * impossible action on every tick, which used to write one identical
+   * warning per agent per tick (hundreds of lines per hour).
+   */
+  private readonly rejectionLog = new Map<string, { tick: number; suppressed: number }>();
+  private static readonly REJECTION_LOG_EVERY_TICKS = 60;
   private lastPayrollDay: string | null = null;
 
   constructor(db: DbClient, options: SimulationEngineOptions = {}) {
@@ -415,7 +422,10 @@ export class SimulationEngine {
         commonLocationId: landmarks.common[0]?.id ?? null,
       });
 
-      const action = decisionToAction(decision);
+      // The proposal is legalized before it reaches the validator: see
+      // legalizeDecision for why a reachable state matters.
+      const executable = legalizeDecision(decision, state.state as AgentState);
+      const action = decisionToAction(executable);
       if (action !== null) {
         try {
           await executeAction(this.db, agent.id, action, {
@@ -426,15 +436,29 @@ export class SimulationEngine {
           });
           decisionsExecuted += 1;
         } catch (error) {
-          // A decision the validator rejects is a normal outcome, not a crash.
+          // A decision the validator rejects is a normal outcome, not a crash
+          // -- and a repeated identical rejection is logged at most once per
+          // REJECTION_LOG_EVERY_TICKS, with the suppressed count carried on the
+          // next line.
           decisionRejected += 1;
-          this.log.warn("Decision rejected by the action validator", {
-            action: "simulation.decision_rejected",
-            agentId: agent.id,
-            decision: decision.action,
-            reason: decision.reason,
-            error,
-          });
+          const key = `${agent.id}:${decision.action}`;
+          const previous = this.rejectionLog.get(key);
+          if (
+            previous === undefined ||
+            this.tickCount - previous.tick >= SimulationEngine.REJECTION_LOG_EVERY_TICKS
+          ) {
+            this.log.warn("Decision rejected by the action validator", {
+              action: "simulation.decision_rejected",
+              agentId: agent.id,
+              decision: decision.action,
+              reason: decision.reason,
+              suppressedSinceLast: previous?.suppressed ?? 0,
+              error,
+            });
+            this.rejectionLog.set(key, { tick: this.tickCount, suppressed: 0 });
+          } else {
+            this.rejectionLog.set(key, { tick: previous.tick, suppressed: previous.suppressed + 1 });
+          }
         }
       } else if (state.state !== "IDLE" && canTransitionAgentState(state.state as AgentState, "IDLE")) {
         await this.transition(agent.id, state.state, "IDLE", decision.reason);
@@ -658,6 +682,31 @@ export class SimulationEngine {
       agents: summaries,
     };
   }
+}
+
+/**
+ * Turns a decision the state machine cannot honour into its legal first step.
+ *
+ * The lifecycle forbids WORKING -> RESTING (and WORKING -> SLEEPING), so an
+ * engine that proposes "rest now" to a working agent produced a decision the
+ * ActionValidator refused on every single tick: the need stayed critical
+ * forever and the log filled with identical rejections. Every state can reach
+ * IDLE, so an unreachable activity start is downgraded to "go idle first" and
+ * the next tick starts the activity from there.
+ */
+export function legalizeDecision(decision: Decision, current: AgentState): Decision {
+  if (decision.action !== "REST" && decision.action !== "START_ACTIVITY") return decision;
+  const activityType: ActivityType | undefined =
+    decision.action === "REST" ? "REST" : decision.metadata.activityType;
+  if (activityType === undefined) return decision;
+  const desired = ACTIVITY_STATE[activityType];
+  if (canTransitionAgentState(current, desired)) return decision;
+  return {
+    action: "IDLE",
+    reason: `${decision.reason} (${activityType} cannot start from ${current}; going idle first)`,
+    priority: decision.priority,
+    metadata: {},
+  };
 }
 
 /** Maps a decision to an executable action, or null when no action is needed. */

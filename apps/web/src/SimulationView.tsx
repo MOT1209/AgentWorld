@@ -91,6 +91,10 @@ const DISTRICT_COLORS: Record<string, number> = {
   PUBLIC: 0xf4cccc,
 };
 
+// Fallback used when a district id is not in the layout table. A literal (not an
+// indexed lookup) so `noUncheckedIndexedAccess` cannot make it `undefined`.
+const DEFAULT_DISTRICT_LAYOUT = { x: 0, z: 20, radius: 8 };
+
 const RELOAD_EVENTS = [
   "WORLD_STATUS_CHANGED",
   "WORLD_TICK",
@@ -108,9 +112,10 @@ interface SceneContext {
   camera: THREE.PerspectiveCamera;
   renderer: THREE.WebGLRenderer;
   districtGroups: Map<string, THREE.Group>;
+  locationGroup: THREE.Group;
+  agentGroup: THREE.Group;
   locationMeshes: Map<string, THREE.Mesh>;
   agentMeshes: Map<string, THREE.Mesh>;
-  agentIcons: Map<string, THREE.Group>;
   positions: Map<string, { x: number; z: number; district: string }>;
   yaw: number;
 }
@@ -123,14 +128,6 @@ function disposeMesh(group: THREE.Group, mesh: THREE.Mesh): void {
   else material.dispose();
 }
 
-function disposeGroup(group: THREE.Group): void {
-  for (const child of group.children) {
-    if (child instanceof THREE.Mesh) {
-      disposeMesh(group, child as THREE.Mesh);
-    }
-  }
-}
-
 export function SimulationView({ token }: { token: string }): JSX.Element {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const sceneRef = useRef<SceneContext | null>(null);
@@ -138,7 +135,7 @@ export function SimulationView({ token }: { token: string }): JSX.Element {
   const [locations, setLocations] = useState<LocationRow[]>([]);
   const [districts, setDistricts] = useState<DistrictRow[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
+  const [selectedAgent, setSelectedAgent] = useState<AgentSummary | null>(null);
 
   const load = useCallback(async (): Promise<void> => {
     try {
@@ -167,11 +164,11 @@ export function SimulationView({ token }: { token: string }): JSX.Element {
     const districtGroups: Map<string, THREE.Group> = new Map();
     ["CITY_CENTRE", "RESIDENTIAL", "BUSINESS", "VILLAGE", "PUBLIC"].forEach((did) => {
       const g = new THREE.Group();
-      g.position.set(DISTRICT_LAYOUT[did as keyof typeof DISTRICT_LAYOUT].x, 0, DISTRICT_LAYOUT[did as keyof typeof DISTRICT_LAYOUT].z);
+      const layout = DISTRICT_LAYOUT[did] ?? DEFAULT_DISTRICT_LAYOUT;
+      g.position.set(layout.x, 0, layout.z);
       scene.add(g);
       districtGroups.set(did, g);
     });
-    ctx.districtGroups = districtGroups;
 
     const camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 500);
     camera.position.set(0, 30, 40);
@@ -180,7 +177,7 @@ export function SimulationView({ token }: { token: string }): JSX.Element {
     // Camera orbit controls (manual, no dependency).
     let phi = Math.PI / 4;
     let theta = Math.PI * 2;
-    const radius = 45;
+    let radius = 45;
     const animateCamera = (): void => {
       camera.position.x = radius * Math.sin(phi) * Math.cos(theta);
       camera.position.y = radius * Math.cos(phi);
@@ -217,6 +214,8 @@ export function SimulationView({ token }: { token: string }): JSX.Element {
       camera,
       renderer,
       districtGroups,
+      locationGroup,
+      agentGroup,
       locationMeshes: new Map(),
       agentMeshes: new Map(),
       positions: new Map(),
@@ -224,6 +223,7 @@ export function SimulationView({ token }: { token: string }): JSX.Element {
     };
     sceneRef.current = ctx;
 
+    let frame = 0;
     const render = (): void => {
       const dt = Math.min(0.1, clock.getDelta());
       animateCamera();
@@ -269,7 +269,7 @@ export function SimulationView({ token }: { token: string }): JSX.Element {
     const onMouseUp = (): void => {
       isDragging = false;
     };
-    const onMouseWheel = (e: WheelEvent): void {
+    const onMouseWheel = (e: WheelEvent): void => {
       const scale = Math.exp(-e.deltaY * 0.001);
       radius *= scale;
       radius = Math.max(20, Math.min(80, radius));
@@ -278,8 +278,10 @@ export function SimulationView({ token }: { token: string }): JSX.Element {
     mount.addEventListener("mousedown", onMouseDown);
     mount.addEventListener("mousemove", onMouseMove);
     mount.addEventListener("mouseup", onMouseUp);
-    mount.addEventListener("mousewheel", onMouseWheel);
-    mount.addEventListener("DOMMouseScroll", onMouseWheel);
+    // "mousewheel" / "DOMMouseScroll" are legacy non-standard events absent from
+    // HTMLElementEventMap, so the typed handler is cast to a generic listener.
+    mount.addEventListener("mousewheel", onMouseWheel as EventListener);
+    mount.addEventListener("DOMMouseScroll", onMouseWheel as EventListener);
 
     return () => {
       cancelAnimationFrame(frame);
@@ -287,8 +289,8 @@ export function SimulationView({ token }: { token: string }): JSX.Element {
       mount.removeEventListener("mousedown", onMouseDown);
       mount.removeEventListener("mousemove", onMouseMove);
       mount.removeEventListener("mouseup", onMouseUp);
-      mount.removeEventListener("mousewheel", onMouseWheel);
-      mount.removeEventListener("DOMMouseScroll", onMouseWheel);
+      mount.removeEventListener("mousewheel", onMouseWheel as EventListener);
+      mount.removeEventListener("DOMMouseScroll", onMouseWheel as EventListener);
       for (const mesh of ctx.locationMeshes.values()) disposeMesh(locationGroup, mesh);
       for (const mesh of ctx.agentMeshes.values()) disposeMesh(agentGroup, mesh);
       renderer.dispose();
@@ -319,7 +321,7 @@ export function SimulationView({ token }: { token: string }): JSX.Element {
 
     // Create/update location meshes per district.
     locationsByDistrict.forEach((districtLocations, districtId) => {
-      const layout = DISTRICT_LAYOUT[districtId] ?? DISTRICT_LAYOUT.PUBLIC;
+      const layout = DISTRICT_LAYOUT[districtId] ?? DEFAULT_DISTRICT_LAYOUT;
       const centerX = layout.x;
       const centerZ = layout.z;
       const radius = layout.radius || 8;
@@ -328,13 +330,12 @@ export function SimulationView({ token }: { token: string }): JSX.Element {
         const angle = (index / Math.max(1, districtLocations.length)) * Math.PI * 2;
         const x = centerX + Math.cos(angle) * radius;
         const z = centerZ + Math.sin(angle) * radius;
-        const posKey = `${location.id}-${districtId}`;
         ctx.positions.set(location.id, { x, z, district: districtId });
 
         let mesh = ctx.locationMeshes.get(location.id);
         if (mesh === undefined) {
           const kind = location.kind ?? "OTHER";
-          let geometry: THREEGeometry;
+          let geometry: THREE.BufferGeometry;
           let color: number;
 
           // Choose geometry based on kind for recognizable building types.
@@ -429,7 +430,7 @@ export function SimulationView({ token }: { token: string }): JSX.Element {
         const hash = role.split("").reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
         const shapeType = hash % 4;
 
-        let geometry: THREEGeometry;
+        let geometry: THREE.BufferGeometry;
         if (shapeType === 0) {
           // Human-like silhouette: box with tapered top
           geometry = new THREE.BoxGeometry(0.5, 1.6, 0.4);
@@ -502,6 +503,9 @@ export function SimulationView({ token }: { token: string }): JSX.Element {
 
 return (
     <div className="grid gap-4 lg:grid-cols-6">
+      {error !== null && (
+        <p className="lg:col-span-6 mb-2 rounded bg-red-50 p-2 text-sm text-red-700">{error}</p>
+      )}
       {/* Three.js world viewport (spanning 4 columns on lg) */}
       <div className="lg:col-span-4">
         <div className="rounded border border-gray-200 bg-white shadow-sm overflow-hidden">
@@ -573,11 +577,11 @@ return (
         {/* Agent Panel */}
         <div>
           <h2 className="mb-3 text-lg font-semibold text-gray-800">Agents</h2>
-          {state?.agents.length === 0 ? (
+          {(state?.agents.length ?? 0) === 0 ? (
             <p className="text-sm text-gray-500">No agents in world.</p>
           ) : (
             <ul className="space-y-2 max-h-80 overflow-y-auto">
-              {state.agents.map((agent) => {
+              {(state?.agents ?? []).map((agent) => {
                 const locInfo = agent.locationId
                   ? `${agent.locationId.substring(0, 8)}…`
                   : "— unassigned";
@@ -585,7 +589,7 @@ return (
                   <li
                     key={agent.id}
                     className="p-3 rounded border border-gray-200 cursor-pointer hover:border-blue-500 transition-colors"
-                    onMouseOver={() => setSelectedAgent(agent.id)}
+                    onMouseOver={() => setSelectedAgent(agent)}
                     onMouseOut={() => setSelectedAgent(null)}
                   >
                     <div className="flex items-center justify-between">

@@ -31,6 +31,7 @@
     "db:migrate:deploy": "prisma migrate deploy",
     "db:reset": "prisma migrate reset --force",
     "db:seed": "tsx database/seed.ts",
+    "db:clean:test": "tsx scripts/clean-test-dbs.ts",
     "db:studio": "prisma studio",
     "setup": "npm install && npm run db:generate && npm run db:migrate && npm run db:seed",
     "verify": "npm run typecheck && npm run lint && npm run test && npm run build"

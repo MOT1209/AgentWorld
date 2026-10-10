@@ -9,7 +9,7 @@
  * State parameter is a signed, single-use, short-TTL token so callbacks cannot
  * be forged or replayed.
  */
-import { createHmac, randomBytes } from "node:crypto";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type { DbClient } from "../../database/src/index.js";
 import { createCredential } from "../../vault/src/index.js";
 import { eventBus, EVENT_TYPES } from "../../events/src/index.js";
@@ -41,6 +41,18 @@ export interface PendingState {
 }
 
 const pendingStates = new Map<string, PendingState>();
+
+/**
+ * Constant-time comparison of the state signature. A `!==` compare leaks how
+ * many leading bytes of a forged signature were correct, which is exactly what
+ * an attacker needs to reconstruct a valid one byte by byte.
+ */
+function signaturesMatch(provided: string, expected: string): boolean {
+  const a = Buffer.from(provided);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
+}
 
 export function beginAuthorization(
   connectorSlug: string,
@@ -93,11 +105,15 @@ export async function completeAuthorization(
   const [rawState, signature] = input.state.split(".");
   if (rawState === undefined || signature === undefined) throw validationError("Malformed OAuth state");
   const expected = createHmac("sha256", stateSecret()).update(rawState).digest("base64url");
-  if (signature !== expected) throw validationError("OAuth state signature mismatch");
+  if (!signaturesMatch(signature, expected)) throw validationError("OAuth state signature mismatch");
   const pending = pendingStates.get(rawState);
   pendingStates.delete(rawState);
   if (pending === undefined || pending.expiresAt < Date.now()) {
-    throw conflict("OAuth state is expired or already used");
+    // A signature that verifies but has no pending entry means the state was
+    // already used, expired, or was issued by another API instance (the
+    // pending map is process-local, so a multi-instance deployment needs the
+    // shared store this message points at).
+    throw conflict("OAuth state is expired, already used, or was issued by another instance");
   }
 
   const provider = OAUTH_PROVIDERS.get(pending.connectorSlug);

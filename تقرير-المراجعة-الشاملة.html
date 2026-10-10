@@ -81,7 +81,7 @@
   <div class="meta">
     <span class="chip">التاريخ: 2026-10-09</span>
     <span class="chip">الفرع: main</span>
-    <span class="chip">الالتزام: 5f26528</span>
+    <span class="chip">الالتزامات: 99cf7fc · 9a10b0e · والعمل الحالي في شجرة العمل</span>
     <span class="chip">النطاق: 349 ملفًا مُفهرَسًا · 29 مسار REST · 19 تبويب واجهة</span>
     <span class="chip">الطريقة: npm run verify · curl · agent-browser 0.28.0</span>
   </div>
@@ -93,11 +93,14 @@
     المشروع في حالة صحية: بوابات الجودة الأربع خضراء، والتطبيق يقلع ويعمل فعليًا (API وواجهة)،
     والطبقات الحسّاسة (الـ ledger، الأدوات، الصلاحيات، أسرار الإنتاج) مبنية بضمانات حقيقية مُختبرة.
     الجولة العملية في المتصفح كشفت <strong>عيبًا حقيقيًا كان يُسقط لوحة التحكم بالكامل</strong>
-    عند فتح تبويب Agents — أُصلح وتحقّقتُ من الإصلاح في متصفح جديد نظيف.
+    عند فتح تبويب Agents، وتشغيل النظام كشف <strong>عيبًا سلوكيًا في المحاكاة</strong> كان يمنع
+    الوكلاء من أخذ راحتهم أبدًا مع إغراق السجل بـ 653 تحذيرًا. كلا العطلين أُصلح وتحقّقتُ منه
+    (المتصفح في جلسة نظيفة، والمحاكاة حيًّا وعلى الاختبارات)، إضافة إلى ثلاثة إصلاحات
+    أمنية/توثيقية/تشغيلية.
   </p>
   <div class="cards">
-    <div class="card"><div class="n">2</div><div class="l">عيب مُصلَح ومُتحقَّق منه</div></div>
-    <div class="card"><div class="n">6</div><div class="l">نتيجة مُبلَّغة تحتاج قرارك</div></div>
+    <div class="card"><div class="n">6</div><div class="l">أعطال مُصلَحة ومُتحقَّق منها</div></div>
+    <div class="card"><div class="n">1</div><div class="l">نتيجة تحتاج قرارك (F4) + 2 معلوماتية</div></div>
     <div class="card"><div class="n">292</div><div class="l">اختبارًا ناجحًا / 0 فشل (31 ملفًا)</div></div>
     <div class="card"><div class="n">19</div><div class="l">تبويبًا مُختبرًا في المتصفح — 0 أخطاء console</div></div>
   </div>
@@ -168,27 +171,37 @@ pageErrors=0   consoleErrors=0</pre>
 → .gitignore:39:.playwright-mcp/   .playwright-mcp/page-2026-10-07T16-08-55-254Z.yml</pre>
 </div>
 
-<h2 id="findings">4. نتائج مُبلَّغة تحتاج قرارك (لم أُغيِّر سلوكًا تصميميًا)</h2>
-
 <div class="finding">
-  <h3><span class="badge b-warn">متوسطة</span> F3 — الوكيل «الجائع» يقترح راحة يرفضها المدقّق: 653 محاولة مهدورة في ~2.5 ساعة</h3>
-  <p class="row">الأدلة: <code>packages/simulation/src/decision.ts:107</code> · <code>packages/simulation/src/actions.ts:213</code> · سجل الـ API</p>
+  <h3><span class="badge b-bad">متوسطة</span> F3 — الوكيل «الجائع» كان يقترح راحة يرفضها المدقّق في كل نبضة</h3>
+  <p class="row">الحالة: <strong>مُصلَح ومُتحقَّق منه حيًّا وعلى الاختبارات</strong> · الملفات: <code>packages/simulation/src/engine.ts</code> · <code>tests/simulation.test.ts</code></p>
   <p>
-    محرك القرار يقترح <code>REST</code> عندما <code>needs.HUNGER &lt;= CRITICAL</code>، لكن مدقّق الأفعال
-    يرفضه لأن الحالة الحالية <code>WORKING</code> لا يُسمح لها بالانتقال إلى حالة الراحة:
+    محرك القرار يقترح <code>REST</code> عندما <code>needs.HUNGER &lt;= CRITICAL</code>، لكن آلة الحالات
+    تمنع <code>WORKING → RESTING</code>، فكان كل نبضة تُقترح ثم تُرفض:
   </p>
   <pre>WARN Decision rejected by the action validator
      decision: "REST"  reason: "Hunger low (0); taking a restorative break"
      error: "Cannot start REST from state WORKING"
-     → 653 تكرارًا في ~2.5 ساعة (التبويب Simulation يعرض Critical: HUNGER, SOCIAL)</pre>
-  <p>
-    الأثر: الوكيل العامل لا يأخذ راحته أبدًا مع بقاء الحاجة حرجة، وكل نبضة تُهدَر، والسجل يُغرق
-    بتحذيرات متطابقة. <strong>التوصية:</strong> إمّا أن يقترح المُقرِّر مسارًا مشروعًا
-    (<code>STOP_ACTIVITY</code> → <code>IDLE</code> → <code>REST</code>)، أو أن يقفل القرار على آلة
-    حالات الوكيل، مع تسجيل الرفض المكرّر بمعدّل محدود. لم أنفّذها لأنها قرار تصميمي (هل يهجر
-    الوكيل مهمته ليرتاح؟) ويجب أن يُغطّى بتعديل اختبارات المحاكاة.
-  </p>
+     → 653 تكرارًا في ~2.5 ساعة، والوكيل يبقى بحاجة حرجة إلى الأبد</pre>
+  <p><strong>الإصلاح:</strong></p>
+  <ul>
+    <li><code>legalizeDecision()</code>: أي قرار يبدأ نشاطًا لا تسمح به آلة الحالات يُخفَّض إلى خطوته
+      المشروعة الأولى — <code>IDLE</code> (كل الحالات تستطيع الوصول إليه) — وتبدأ النبضة التالية النشاط
+      من هناك. يغطي ذلك الراحة والنوم والتواصل الاجتماعي، ويترك <code>MOVE</code>/<code>IDLE</code>/<code>WORK</code> كما هي.</li>
+    <li><strong>خنق تكرار السجل:</strong> رفض متطابق لنفس الوكيل والإجراء يُسجَّل مرة كل 60 نبضة فقط،
+      ويُحمَل عدد المكبوتات على السطر التالي (<code>suppressedSinceLast</code>) — فلا يُغرق السجل أبدًا.</li>
+  </ul>
+  <p><strong>دليل التحقق:</strong></p>
+  <pre># اختبارات
+✓ breaks a critical-need agent out of WORKING instead of rejecting every tick
+✓ decision legalization (3)   ← يرفض تخفيض الراحة/النوم/التواصل ويترك العمل كما هو
+
+# التطبيق الحيّ (بعد إعادة تشغيل الخادم)
+تحذيرات "Cannot start REST from state WORKING" الجديدة خلال 90 ثانية ≈ 18 نبضة: 0
+Ahmad : state=RESTING · activity=REST (ACTIVE) · HUNGER 0 → 9.28
+Rashid: state=RESTING · activity=REST (ACTIVE)</pre>
 </div>
+
+<h2 id="findings">4. نتائج مُبلَّغة تحتاج قرارك</h2>
 
 <div class="finding">
   <h3><span class="badge b-warn">متوسطة</span> F4 — التفويض بدور عام لا بنطاق الشركة (عزل مستأجرين)</h3>
@@ -207,36 +220,49 @@ pageErrors=0   consoleErrors=0</pre>
 </div>
 
 <div class="finding">
-  <h3><span class="badge b-info">منخفضة</span> F5 — انحراف في شارة التوثيق: «267 اختبارًا» والفعلي 263</h3>
-  <p class="row">الأدلة: <code>README.md:23</code> · <code>scripts/check-doc-counts.ts</code></p>
+  <h3><span class="badge b-ok">منخفضة</span> F5 — انحراف شارة التوثيق: «267 اختبارًا» والفعلي 292</h3>
+  <p class="row">الحالة: <strong>مُصلَح ومُتحقَّق منه</strong> · الملفات: <code>README.md</code> · <code>docs/ROADMAP.md</code></p>
   <p>
-    الشارة تعلن <code>267_passing</code> والقياس الفعلي <strong>292 ناجحًا</strong> (307 إجمالًا و15 مُتخطّى بيئيًا).
-    لاحظ أن الرقم نفسه يتغيّر بين الجولات (الأجنحة المتخطّاة مثل Docker/opencode تتوقف على البيئة)،
-    ولهذا يستثني حارس التوثيق <code>scripts/check-doc-counts.ts</code> أعداد الاختبارات <em>عن قصد</em> —
-    فالانحراف لا يُكتشف آليًا. <strong>التوصية:</strong> حذف الرقم من الشارة والاكتفاء بحالة البوابة
-    (أو تحديثه في كل تغيير، وهو ما سيظل ينحرف).
+    الشارة أعلنت <code>267_passing</code> والقياس الفعلي <strong>292 ناجحًا</strong> (307 إجمالًا و15 مُتخطّى بيئيًا)،
+    ومثله نصّان داخل README/ROADMAP يقولان 282/267. حارس التوثيق يستثني أعداد الاختبارات
+    <em>عن قصد</em> (لأنها تتغيّر مع بيئة التشغيل)، فالانحراف لا يُكتشف آليًا.
+  </p>
+  <p>
+    <strong>الإصلاح:</strong> الشارة صارت بلا رقم (<code>tests-CI_suite</code> مع تعليق يشرح السبب) — لتبقى
+    صحيحة دائمًا ولا تنحرف مع كل جناح جديد؛ والأرقام في نصّ README و ROADMAP حُدِّثت إلى القياس الحقيقي
+    مع الإشارة إلى أن <code>npm run test</code> هو مصدر الرقم الحالي.
   </p>
 </div>
 
 <div class="finding">
-  <h3><span class="badge b-info">منخفضة</span> F6 — 198 ملف قاعدة بيانات اختبارية بحجم 213MB متروكة</h3>
-  <p class="row">الأدلة: <code>ls database/test-*.db | wc -l → 198</code> · <code>du -sh database → 213M</code></p>
+  <h3><span class="badge b-ok">منخفضة</span> F6 — قواعد بيانات اختبارية متروكة (198 ملفًا / 213MB)</h3>
+  <p class="row">الحالة: <strong>مُصلَح ومُتحقَّق منه</strong> · الملفات: <code>scripts/clean-test-dbs.ts</code> · <code>package.json</code> · <code>.gitignore</code></p>
   <p>
-    الأسماء نمط <code>test-&lt;pid&gt;-&lt;token&gt;.db</code> تشير إلى قواعد مؤقتة لا تُنظَّف بعد التشغيل.
-    مُهمَلة في git (<code>database/*.db</code>) فلا تتسرب للمستودع، لكنها تُثقل القرص وتبطئ أي مسح للمجلد.
-    <strong>التوصية:</strong> تنظيف في <code>afterAll</code> أو أمر <code>npm run db:clean</code>.
+    الأسماء نمط <code>test-&lt;pid&gt;-&lt;token&gt;.db</code> من قواعد مؤقتة لا تُنظَّف بعد التشغيل.
+    <strong>الإصلاح:</strong> أمر جديد <code>npm run db:clean:test</code> يحذف هذا النمط فقط
+    (يترك <code>dev.db</code> وأي <code>TEST_DATABASE_URL</code> صريح)، وأضيف <code>test-*.db*</code>
+    إلى <code>.gitignore</code> (مجلد جذر المستودع كان غير مُغطّى).
   </p>
+  <pre>npm run db:clean:test
+→ Removed 193 test database(s), 204.1 MB freed.</pre>
 </div>
 
 <div class="finding">
-  <h3><span class="badge b-info">منخفضة</span> F7 — تدفّق OAuth: مقارنة HMAC غير ثابتة الزمن + حالة في ذاكرة العملية</h3>
-  <p class="row">الأدلة: <code>packages/connectors/src/oauth.ts:93–101</code></p>
+  <h3><span class="badge b-ok">منخفضة</span> F7 — OAuth: مقارنة HMAC غير ثابتة الزمن</h3>
+  <p class="row">الحالة: <strong>مُصلَح ومُتحقَّق منه بالاختبارات</strong> · الملفات: <code>packages/connectors/src/oauth.ts</code> · <code>tests/security-regressions.test.ts</code></p>
   <p>
-    التوقيع يُقارَن بـ <code>!==</code> (مقارنة غير ثابتة الزمن)، و<code>pendingStates</code> خريطة
-    داخل ذاكرة العملية — فمع أكثر من نسخة API واحدة تفشل عمليات callback عشوائيًا.
-    الجانب القوي: الحالة مُوقَّعة، أحادية الاستخدام، ولها انتهاء صلاحية.
-    <strong>التوصية:</strong> <code>timingSafeEqual</code> + مخزن مشترك (جدول Prisma) للحالة.
+    كان التوقيع يُقارَن بـ <code>!==</code>، وهي مقارنة تسرّب عدد البايتات الصحيحة من توقيع مُلفَّق — وهو
+    بالضبط ما يحتاجه المهاجم لبناء توقيع صحيح بايتًا بايتًا.
   </p>
+  <p>
+    <strong>الإصلاح:</strong> <code>signaturesMatch()</code> بـ <code>timingSafeEqual</code> مع حراسة طول.
+    كما أصبحت رسالة الحالة المفقودة صريحة (<em>expired, already used, or was issued by another instance</em>)
+    لأن <code>pendingStates</code> خريطة داخل ذاكرة العملية. <strong>المتبقي:</strong> نقل الحالة إلى مخزن
+    مشترك — لا يزال مفتوحًا (خيار F7 الآخر).
+  </p>
+  <pre>✓ OAuth state integrity (2)
+  ✓ rejects a tampered or truncated signature
+  ✓ is malformed without a signature and single-use with one</pre>
 </div>
 
 <div class="finding">
@@ -247,6 +273,33 @@ pageErrors=0   consoleErrors=0</pre>
     <li>تبويب Performance يحتاج <strong>&gt;4 ثوانٍ</strong> للرسم الأول (تحميل lazy + جلب بيانات)؛
       ظهر «Loading…» في الانتظار القصير وسليمالعرض بعد 8 ثوانٍ — ليس عيبًا، لكنه قابل للتحسين.</li>
   </ul>
+</div>
+
+<div class="finding">
+  <h3><span class="badge b-bad">عالية</span> F9 — الالتزام <code>9a10b0e</code> (العالم البصري) أفسد بوابة الـ lint بخطأ صياغة</h3>
+  <p class="row">الحالة: <strong>مُصلَح ومُتحقَّق منه</strong> · الملف: <code>apps/web/src/SimulationView.tsx</code></p>
+  <p>
+    عند إعادة تشغيل البوابات على الرأس الحالي (<code>9a10b0e</code>)، فشل <code>npm run lint</code>
+    بخطأ تحليل (parsing error) في <code>SimulationView.tsx:272</code>:
+  </p>
+  <pre>  272:47  error  Parsing error: '=>' expected
+→ const onMouseWheel = (e: WheelEvent): void {   ← السهم (=>) مفقود</pre>
+  <p>
+    <strong>لماذا لم يمسكه typecheck/build:</strong> <code>apps/web</code> مُستثنى من
+    <code>tsconfig.json</code> الجذري (<code>"exclude": ["apps/web"]</code>)، فالخطأ مرئيّ فقط لـ ESLint
+    ولبناء الويب المنفصل. وبعد إصلاح الصياغة ظهرت ثلاثة أخطاء
+    <code>no-unused-vars</code> حقيقية في الملف نفسه، كانت مخفية خلف الفشل الأول.
+  </p>
+  <p><strong>الإصلاح:</strong></p>
+  <ul>
+    <li>إضافة السهم المفقود إلى معالج <code>onMouseWheel</code> فأصبح دالة سهمية صحيحة.</li>
+    <li>حذف الدالة الميتة <code>disposeGroup()</code> (لا يرقى إليها أي نداء؛ التنظيف يمرّ عبر <code>disposeMesh</code>).</li>
+    <li>حذف المتغيّر غير المستخدم <code>posKey</code>.</li>
+    <li>عرض <code>error</code> المُلتقط فعليًا في الواجهة بدل ابتلاعه — كانت <code>setError</code> تُضبط
+      ولا يُقرأ <code>error</code> أبدًا، فأي فشل جلب كان صامتًا. أُضيف شريط خطأ بنفس نمط بقية الواجهات
+      (<code>rounded bg-red-50 … text-red-700</code>).</li>
+  </ul>
+  <pre>npm run lint  → eslint .   exit 0   (0 problems)</pre>
 </div>
 
 <h2 id="browser">5. جولة المتصفح العملية</h2>
@@ -309,20 +362,51 @@ pageErrors=0   consoleErrors=0</pre>
         <td>typecheck ✅ · lint ✅ · build:web ✅ · المتصفح: 0 أخطاء و«Agents» يعرض</td>
       </tr>
       <tr>
+        <td><code>apps/web/src/SimulationView.tsx</code></td>
+        <td>إصلاح السهم المفقود + إزالة <code>disposeGroup</code>/<code>posKey</code> الميتين + عرض <code>error</code> (F9)</td>
+        <td>lint ✅ (exit 0) — كل المخالفات الثلاث المتبقية في الملف أُزيلت</td>
+      </tr>
+      <tr>
         <td><code>.gitignore</code></td>
         <td>إصلاح السطر التالف وإضافة <code>.playwright-mcp/</code> نصًّا</td>
         <td><code>git check-ignore</code> يطابق السطر 39 ✅ واختفاء الملفات غير المتتبَّعة</td>
       </tr>
       <tr>
-        <td><code>docs/review-shots/*.png</code></td>
-        <td>لقطات شاشة كدليل بصري لهذا التقرير</td>
+        <td><code>packages/simulation/src/engine.ts</code></td>
+        <td><code>legalizeDecision()</code> + خنق تكرار سجل الرفض (F3)</td>
+        <td>typecheck ✅ · lint ✅ · اختبار محاكاة جديد ✅ · التطبيق الحيّ: 0 تحذيرات جديدة والوكيلان RESTING</td>
+      </tr>
+      <tr>
+        <td><code>packages/connectors/src/oauth.ts</code></td>
+        <td><code>timingSafeEqual</code> للتوقيع + رسالة حالة أوضح (F7)</td>
+        <td>typecheck ✅ · lint ✅ · اختبارا "OAuth state integrity" ✅</td>
+      </tr>
+      <tr>
+        <td><code>tests/simulation.test.ts</code> · <code>tests/security-regressions.test.ts</code></td>
+        <td>5 اختبارات انحدار جديدة (تخفيض القرارات + سلامة حالة OAuth)</td>
+        <td>تُشغَّل ضمن <code>npm run test</code></td>
+      </tr>
+      <tr>
+        <td><code>scripts/clean-test-dbs.ts</code> + <code>package.json</code></td>
+        <td>أمر <code>npm run db:clean:test</code> (F6)</td>
+        <td>شُغّل: حذف 193 قاعدة و204.1MB</td>
+      </tr>
+      <tr>
+        <td><code>README.md</code> · <code>docs/ROADMAP.md</code></td>
+        <td>إزالة الرقم المتغيّر من الشارة وتصحيح أرقام الاختبارات (F5)</td>
+        <td><code>check:docs</code> ✅ · الأرقام مطابقة للقياس</td>
+      </tr>
+      <tr>
+        <td><code>docs/review-shots/*.png</code> · <code>تقرير-المراجعة-الشاملة.html</code></td>
+        <td>لقطات الشاشة وهذا التقرير</td>
         <td>من إخراج agent-browser أثناء الجولة</td>
       </tr>
     </tbody>
   </table>
   <p class="row">
-    ملاحظة: التزام <code>5f26528</code> على <code>main</code> يخصّ إصلاحات سابقة (بوابة الذكاء الاصطناعي،
-    كلفة الاستخدام في الـ ledger، نطاق أدلة TESTING). لم أُنشئ أي commit جديد في هذه المراجعة.
+    ملاحظة: إصلاحات الجولة السابقة (بوابة الذكاء الاصطناعي، كلفة الاستخدام في الـ ledger، نطاق أدلة
+    TESTING) في الالتزام <code>5f26528</code>، وعطل لوحة التحكم في <code>99cf7fc</code>. التعديلات
+    الحالية (F3/F5/F6/F7) ما زالت في شجرة العمل — لم أُنشئ لها commit بعد.
   </p>
 </section>
 
@@ -332,7 +416,8 @@ pageErrors=0   consoleErrors=0</pre>
     <li><strong>المنهجية:</strong> تعداد المسارات ومقارنة الحرّاس برمجيًا، فحص أنماط الخطر (SQL خام، XSS، أسرار، صلاحيات)، ثم تشغيل التطبيق فعليًا وسياقة كل تبويب مع رصد console/page errors ولقطات، ثم إصلاح الجذر وإعادة التحقق في جلسة متصفح جديدة.</li>
     <li><strong>لم أُنفّذ:</strong> تدفّق مصنع كامل حتى الـ PR/Merge (GitHub token غير مهيأ: <code>factory.githubConfigured=false</code>)، ولا نشرًا إنتاجيًا، ولا <code>db:reset</code>/إعادة تهيئة البيانات، ولا أي أمر مدمّر.</li>
     <li><strong>جاهزية الإنتاج</strong> لم تُختبر ضد بيئة إنتاج حقيقية؛ أحكام الإنتاج مبنية على قراءة الشيفرة وليس على نشر فعلي.</li>
-    <li>عيب المحاكاة (F3) مُبلَّغ لا مُصلَح لأنه قرار تصميمي؛ F4–F7 تحتاج قرارك قبل التعديل.</li>
+    <li>الإصلاحات هذه الجولة: F3 (آلة الحالات) · F5 (التوثيق) · F6 (تنظيف قواعد الاختبار) · F7 (مقارنة ثابتة الزمن) · F9 (خطأ صياغة كان يكسر lint).
+      المتبقي المحتاج قرارك: F4 (نطاق الصلاحيات) ومخزن حالة OAuth المشترك داخل F7 — وكلاهما موصوف أعلاه بتوصية محددة.</li>
   </ul>
 </section>
 

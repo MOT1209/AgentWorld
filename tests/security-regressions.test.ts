@@ -5,6 +5,9 @@ import { join } from "node:path";
 import { evaluateCommand, filterEnv } from "../packages/tools/src/command-policy.js";
 import { ProcessManager } from "../packages/tools/src/process-manager.js";
 import { resolveInRoot } from "../packages/workspace/src/index.js";
+import { OAUTH_PROVIDERS, beginAuthorization, completeAuthorization } from "../packages/connectors/src/index.js";
+import { prisma } from "../packages/database/src/client.js";
+import { CORRELATION, SYSTEM } from "./helpers.js";
 
 // Regression suite for the policy/sandbox bypasses found in the full review.
 // The command policy is defense-in-depth, NOT a sandbox: real isolation
@@ -146,4 +149,75 @@ describe("process timeout", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   }, 15_000);
+});
+
+// The state parameter is the only thing standing between a forged callback and
+// a sealed OAuth credential, so its signature check and single-use rule are
+// pinned here: a tampered signature must fail, a length-mismatched one must
+// fail, and a valid state must be spent exactly once.
+describe("OAuth state integrity", () => {
+  const SLUG = "security-regression-connector";
+  const ctx = { actor: SYSTEM, db: prisma, correlationId: CORRELATION };
+  // A token endpoint that refuses, so the flow stops right after the state
+  // checks regardless of the vault or credential tables.
+  const refusingFetch = (async () => new Response("nope", { status: 400 })) as unknown as typeof fetch;
+
+  const withoutProvider = (): void => {
+    OAUTH_PROVIDERS.delete(SLUG);
+  };
+
+  it("rejects a tampered or truncated signature", async () => {
+    OAUTH_PROVIDERS.set(SLUG, {
+      connectorSlug: SLUG,
+      authorizeUrl: "https://provider.example/authorize",
+      tokenUrl: "https://provider.example/token",
+      clientId: "client-id",
+      clientSecret: "client-secret",
+      scopes: ["read"],
+    });
+    try {
+      const begun = beginAuthorization(SLUG, ctx);
+      const [rawState, signature] = begun.state.split(".") as [string, string];
+      // A same-length forgery exercises the constant-time compare...
+      const tampered = `${rawState}.${signature.endsWith("A") ? "B" : "A"}${signature.slice(1)}`;
+      await expect(completeAuthorization({ code: "c", state: tampered }, ctx)).rejects.toThrow(/signature mismatch/);
+      // ...and a shorter one exercises the length guard.
+      await expect(
+        completeAuthorization({ code: "c", state: `${rawState}.${signature.slice(0, 8)}` }, ctx),
+      ).rejects.toThrow(/signature mismatch/);
+      // The failed attempts must not have spent the genuine state.
+      await expect(
+        completeAuthorization({ code: "c", state: begun.state }, { ...ctx, fetchImpl: refusingFetch }),
+      ).rejects.toThrow(/Token exchange failed/);
+    } finally {
+      withoutProvider();
+    }
+  });
+
+  it("is malformed without a signature and single-use with one", async () => {
+    OAUTH_PROVIDERS.set(SLUG, {
+      connectorSlug: SLUG,
+      authorizeUrl: "https://provider.example/authorize",
+      tokenUrl: "https://provider.example/token",
+      clientId: "client-id",
+      clientSecret: "client-secret",
+      scopes: ["read"],
+    });
+    try {
+      await expect(completeAuthorization({ code: "c", state: "no-signature-here" }, ctx)).rejects.toThrow(
+        /Malformed OAuth state/,
+      );
+
+      const begun = beginAuthorization(SLUG, ctx);
+      await expect(
+        completeAuthorization({ code: "c", state: begun.state }, { ...ctx, fetchImpl: refusingFetch }),
+      ).rejects.toThrow(/Token exchange failed/);
+      // Replaying the same state is refused even though its signature verifies.
+      await expect(completeAuthorization({ code: "c", state: begun.state }, ctx)).rejects.toThrow(
+        /already used|expired/,
+      );
+    } finally {
+      withoutProvider();
+    }
+  });
 });
