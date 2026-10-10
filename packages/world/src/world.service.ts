@@ -436,8 +436,20 @@ export interface WorldSnapshot {
     districtId: string | null;
     capacity: number | null;
     occupantCount: number;
+    address: string | null;
+    metadata: unknown;
   }>;
   agentCount: number;
+}
+
+/** TEXT column → parsed JSON, or the raw string/null when unparseable. */
+function parseJsonSafe(raw: string | null): unknown {
+  if (raw === null) return null;
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch {
+    return raw;
+  }
 }
 
 /** Everything the `world.get_state` tool and the dashboard need, in one call. */
@@ -514,6 +526,10 @@ export async function getWorldSnapshot(db: DbClient, worldId?: string): Promise<
       districtId: location.districtId,
       capacity: location.capacity,
       occupantCount: occupants.get(location.id) ?? 0,
+      address: location.address ?? null,
+      // `metadata` is TEXT in SQLite; surface parsed JSON when possible so
+      // the world view can honour operator pins without a second parse.
+      metadata: parseJsonSafe(location.metadata),
     })),
     agentCount,
   };
