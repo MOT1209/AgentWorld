@@ -76,3 +76,15 @@ describe("graphql connector token scope", () => {
     }
   });
 });
+
+describe("MCP rate limit", () => {
+  it("counts per client, not per presented key, and resets each minute", async () => {
+    const { rateLimitClient } = await import("../apps/api/src/routes/mcp.routes.js");
+    const ip = `203.0.113.${Math.floor(Math.random() * 200)}`;
+    const t0 = 1_800_000_000_000 - (1_800_000_000_000 % 60_000);
+    for (let i = 0; i < 3; i += 1) rateLimitClient(ip, 3, t0 + i);
+    expect(() => rateLimitClient(ip, 3, t0 + 10)).toThrow(/rate limit/);
+    expect(() => rateLimitClient("2001:db8::1", 3, t0 + 10)).not.toThrow();
+    expect(() => rateLimitClient(ip, 3, t0 + 60_000)).not.toThrow();
+  });
+});

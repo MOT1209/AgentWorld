@@ -13,20 +13,26 @@ import { rateLimited } from "../../../../packages/shared/src/index.js";
 
 export const mcpRouter: Router = Router();
 
-const seenPerMinute = new Map<string, number>();
+/**
+ * Fixed one-minute window per client IP. Keyed by IP, not by the presented
+ * key: an unauthenticated caller could otherwise rotate made-up `aw_` prefixes
+ * and get a fresh bucket on every request.
+ */
+const buckets = new Map<string, { minute: number; count: number }>();
+const GC_THRESHOLD = 1_000;
 
-function rateLimitClient(clientKey: string, limit = 120): void {
-  const now = Math.floor(Date.now() / 60_000);
-  const bucket = seenPerMinute.get(`${clientKey}:${now}`) ?? 0;
-  if (bucket === 0) {
-    // opportunistic GC of old buckets
-    for (const key of seenPerMinute.keys()) {
-      const minute = Number(key.split(":")[1] ?? 0);
-      if (Number.isFinite(minute) && now - minute > 2) seenPerMinute.delete(key);
+export function rateLimitClient(clientKey: string, limit = 120, nowMs = Date.now()): void {
+  const minute = Math.floor(nowMs / 60_000);
+  const bucket = buckets.get(clientKey);
+  if (bucket === undefined || bucket.minute !== minute) {
+    if (buckets.size >= GC_THRESHOLD) {
+      for (const [key, value] of buckets) if (value.minute !== minute) buckets.delete(key);
     }
+    buckets.set(clientKey, { minute, count: 1 });
+    return;
   }
-  if (bucket >= limit) throw rateLimited("MCP rate limit exceeded, retry in a minute");
-  seenPerMinute.set(`${clientKey}:${now}`, bucket + 1);
+  if (bucket.count >= limit) throw rateLimited("MCP rate limit exceeded, retry in a minute");
+  bucket.count += 1;
 }
 
 mcpRouter.get("/", (_req: Request, res: Response): void => {
@@ -45,9 +51,8 @@ mcpRouter.post(
   "/",
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
+      rateLimitClient(req.ip ?? "unknown");
       const apiKey = parseApiKey(req.headers.authorization);
-      const clientKey = apiKey?.slice(0, 8) ?? "anonymous";
-      rateLimitClient(clientKey);
       const response = await handleMcpRequest(
         { db: prisma, apiKey, clientName: req.headers["user-agent"] ?? null },
         req.body,
