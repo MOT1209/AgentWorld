@@ -10,7 +10,7 @@
  */
 import type { DbClient } from "../../database/src/index.js";
 import { revealCredential, findActiveCredential } from "../../vault/src/index.js";
-import { conflict, getConfig, newCorrelationId, validationError, type ActorRef } from "../../shared/src/index.js";
+import { assertPublicUrl, conflict, getConfig, newCorrelationId, validationError, type ActorRef } from "../../shared/src/index.js";
 import { eventBus, EVENT_TYPES } from "../../events/src/index.js";
 import type { ConnectorKind } from "../../shared/src/index.js";
 
@@ -326,6 +326,14 @@ function validateAbsoluteUrl(raw: string): string {
   return parsed.toString();
 }
 
+function safeOrigin(raw: string): string | null {
+  try {
+    return new URL(raw).origin;
+  } catch {
+    return null;
+  }
+}
+
 function buildUrl(baseUrl: string, path: string): string {
   const trimmedBase = baseUrl.replace(/\/+$/, "");
   const trimmedPath = path.startsWith("/") ? path : `/${path}`;
@@ -400,6 +408,16 @@ async function executeAction(
     const endpoint = str("endpoint") !== "" ? str("endpoint") : (auth.baseUrl ?? "");
     if (endpoint === "") throw validationError("graphql connector needs a configured base URL or an explicit endpoint");
     const url = validateAbsoluteUrl(endpoint);
+    // The vault token belongs to the configured endpoint. An agent-chosen
+    // endpoint on another origin would receive it as a Bearer header.
+    if (auth.token !== null && str("endpoint") !== "") {
+      const configuredOrigin = auth.baseUrl ? safeOrigin(auth.baseUrl) : null;
+      if (configuredOrigin === null || new URL(url).origin !== configuredOrigin) {
+        throw validationError(
+          "endpoint must be on the credential's configured base URL origin; the token is never sent elsewhere",
+        );
+      }
+    }
     const query = str("query");
     if (query === "" || query.length > 20_000) throw validationError("query is required (max 20k chars)");
     let variables: unknown = {};
@@ -416,7 +434,7 @@ async function executeAction(
     }
     headers["content-type"] = "application/json";
     headers.accept = "application/json";
-    return request(fetchImpl, "POST", url, headers, { query, variables });
+    return request(fetchImpl, "POST", url, headers, { query, variables }, { callerUrl: true });
   }
 
   if (descriptor.slug === "webhook-out") {
@@ -433,7 +451,7 @@ async function executeAction(
     }
     // Deliberately no Authorization header: this connector carries no
     // credential and must never forward one.
-    return request(fetchImpl, "POST", url, { "content-type": "application/json", "user-agent": "AgentWorld-Connector/1.0" }, body);
+    return request(fetchImpl, "POST", url, { "content-type": "application/json", "user-agent": "AgentWorld-Connector/1.0" }, body, { callerUrl: true });
   }
 
   if (descriptor.slug === "cli" || descriptor.slug === "database" || descriptor.slug === "mcp-bridge" || descriptor.slug === "websocket") {
@@ -473,7 +491,12 @@ async function request(
   url: string,
   headers: Record<string, string>,
   body?: unknown,
+  options: { callerUrl?: boolean } = {},
 ): Promise<{ ok: boolean; status: number | null; data: unknown }> {
+  // A URL the caller (an agent) chose gets the full private-range + DNS
+  // check in production, and redirects are not followed so a public host
+  // cannot bounce the request inward.
+  if (options.callerUrl === true && getConfig().isProduction) await assertPublicUrl(url);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), CALL_TIMEOUT_MS);
   try {
@@ -482,6 +505,7 @@ async function request(
       headers,
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
       signal: controller.signal,
+      ...(options.callerUrl === true ? { redirect: "manual" as const } : {}),
     });
     const text = await response.text().catch(() => "");
     let data: unknown = text;

@@ -76,6 +76,18 @@ Tests: `tests/security-m4.test.ts`, `tests/execution-tools-m1.test.ts`,
 (`APPROVAL_SPEND_THRESHOLD` major units). Large `wallet.transfer` calls become
 `PENDING_APPROVAL` with frozen arguments; approval replays them exactly once.
 
+## Outbound requests (SSRF)
+
+URLs a caller chooses (webhook subscriptions, the `graphql` endpoint and
+`webhook-out` url an agent passes) go through `assertPublicUrl`
+(`packages/shared/src/net.ts`) in production: the host is resolved and every
+address must be public unicast (no loopback, RFC 1918, link-local/metadata,
+CGNAT, ULA, or IPv4-mapped/NAT64 spellings of those). Webhooks are re-checked
+at each delivery, and these requests never follow redirects. A `graphql`
+credential's token is only sent to its configured base-URL origin.
+Residual: fetch resolves DNS again, so a rebinding host with a ~0s TTL can
+still race the check; egress filtering at the network layer closes that.
+
 ## Operational notes
 
 - `npm 11` blocks install scripts: approve `prisma`, `@prisma/client`,
