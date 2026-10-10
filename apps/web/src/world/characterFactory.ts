@@ -30,6 +30,9 @@ export interface CharacterParts {
   head: THREE.Group;
   armL: THREE.Group;
   armR: THREE.Group;
+  /** Hip pivots for the walk cycle (Step 3); idle leaves them neutral. */
+  legL: THREE.Group;
+  legR: THREE.Group;
   badge: THREE.Mesh;
   ring: THREE.Mesh;
 }
@@ -184,14 +187,19 @@ export function buildCharacter(
   group.userData = { kind: "character", agentId };
   group.scale.setScalar(CHARACTER_SCALE);
 
-  // -- legs + footwear (static) -------------------------------------------
-  for (const side of [-1, 1] as const) {
+  // -- legs + footwear (hip pivots; neutral at rest, driven by walk cycle) --
+  const legL = new THREE.Group();
+  legL.position.set(-0.11, 0.75, 0);
+  const legR = new THREE.Group();
+  legR.position.set(0.11, 0.75, 0);
+  for (const pivot of [legL, legR] as const) {
     const leg = new THREE.Mesh(geo["leg"] as THREE.BufferGeometry, pantsMat);
-    leg.position.set(side * 0.11, 0.375, 0);
-    group.add(leg);
+    leg.position.set(0, -0.375, 0);
+    pivot.add(leg);
     const shoe = new THREE.Mesh(geo["shoe"] as THREE.BufferGeometry, shoeMat);
-    shoe.position.set(side * 0.11, 0.06, 0.04);
-    group.add(shoe);
+    shoe.position.set(0, -0.69, 0.04);
+    pivot.add(shoe);
+    group.add(pivot);
   }
 
   // -- upper body (animated pivot at the hips) ----------------------------
@@ -271,7 +279,7 @@ export function buildCharacter(
   hit.userData = { kind: "character-hit", agentId };
   group.add(hit);
 
-  const parts: CharacterParts = { torso, head, armL, armR, badge, ring };
+  const parts: CharacterParts = { torso, head, armL, armR, legL, legR, badge, ring };
 
   return {
     group,

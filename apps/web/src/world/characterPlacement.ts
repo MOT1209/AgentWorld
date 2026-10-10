@@ -97,13 +97,16 @@ function placeAtAnchor(
   return { agentId, locationId, x, z, yaw, fallback: false };
 }
 
-function placeAtFallback(agentId: string): PlacedAgent {
+function placeAtFallback(
+  agentId: string,
+  center: { x: number; z: number } = FALLBACK_CENTER,
+): PlacedAgent {
   const h = hashStringToUint32(`${agentId}|unassigned`);
   const angle = ((h % 360) / 360) * Math.PI * 2;
   const radius = 0.6 + unit(h >>> 8) * FALLBACK_SPREAD;
-  const x = FALLBACK_CENTER.x + Math.cos(angle) * radius;
-  const z = FALLBACK_CENTER.z + Math.sin(angle) * radius;
-  const yaw = Math.atan2(FALLBACK_CENTER.x - x, FALLBACK_CENTER.z - z);
+  const x = center.x + Math.cos(angle) * radius;
+  const z = center.z + Math.sin(angle) * radius;
+  const yaw = Math.atan2(center.x - x, center.z - z);
   return { agentId, locationId: null, x, z, yaw, fallback: true };
 }
 
@@ -120,12 +123,13 @@ export function placeAgents<T extends PlaceableAgent>(
   agents: readonly T[],
   anchors: ReadonlyMap<string, BuildingAnchor>,
   walkableKinds: ReadonlyMap<string, boolean> = new Map(),
+  fallbackCenter: { x: number; z: number } = FALLBACK_CENTER,
 ): PlacedAgent[] {
   return agents.map((agent) => {
     const anchor =
       agent.locationId !== null ? anchors.get(agent.locationId) : undefined;
     if (agent.locationId === null || anchor === undefined) {
-      return placeAtFallback(agent.id);
+      return placeAtFallback(agent.id, fallbackCenter);
     }
     const walkable = walkableKinds.get(agent.locationId) ?? anchor.walkable ?? false;
     return placeAtAnchor(agent.id, agent.locationId, anchor, walkable);

@@ -101,8 +101,25 @@ export function updateIdleMotion(
 
 export class CharacterManager {
   private readonly entries = new Map<string, Entry>();
+  /**
+   * Step 3: agents with an active walking route are "pinned" — the placement
+   * ease below skips them so the movement system owns their position (and
+   * their pose, after the idle pass) without fighting over it.
+   */
+  private readonly pinned = new Set<string>();
 
   constructor(private readonly parent: THREE.Group) {}
+
+  /** Pin (or unpin) an agent id for movement-system ownership. Safe no-op for unknown ids. */
+  setPinned(agentId: string, pinned: boolean): void {
+    if (!this.entries.has(agentId)) return;
+    if (pinned) this.pinned.add(agentId);
+    else this.pinned.delete(agentId);
+  }
+
+  isPinned(agentId: string): boolean {
+    return this.pinned.has(agentId);
+  }
 
   get size(): number {
     return this.entries.size;
@@ -165,23 +182,38 @@ export class CharacterManager {
         const entry = this.entries.get(id);
         if (entry !== undefined) disposeCharacter(entry.character.group);
         this.entries.delete(id);
+        this.pinned.delete(id);
         removed.push(id);
       }
     }
     return { added, updated, removed };
   }
 
-  /** Advances movement easing + idle animation for all characters. */
+  /**
+   * Advances movement easing + idle animation for all characters.
+   * Pinned (walking) entries keep their idle pass — the movement system runs
+   * after this and overrides the pose of movers — but skip position easing.
+   */
   update(deltaSeconds: number, timeSeconds: number): void {
     const step = Math.min(1, Math.max(0, deltaSeconds * 4));
-    for (const entry of this.entries.values()) {
+    for (const [id, entry] of this.entries) {
       const pos = entry.character.group.position;
-      _lerpTarget.set(entry.targetX, 0, entry.targetZ);
-      pos.lerp(_lerpTarget, step);
+      if (!this.pinned.has(id)) {
+        _lerpTarget.set(entry.targetX, 0, entry.targetZ);
+        pos.lerp(_lerpTarget, step);
+      }
       pos.y = 0; // feet stay glued to the ground plane
       updateIdleMotion(entry.character.parts, timeSeconds, entry.character.appearance.phase);
       entry.character.parts.badge.rotation.y = timeSeconds * 0.8;
     }
+  }
+
+  /** Retargets the placement ease (e.g. hold a failed-route agent in place). */
+  setTarget(agentId: string, x: number, z: number): void {
+    const entry = this.entries.get(agentId);
+    if (entry === undefined) return;
+    entry.targetX = x;
+    entry.targetZ = z;
   }
 
   setHighlight(agentId: string, mode: "none" | "hover" | "selected"): void {
@@ -191,5 +223,6 @@ export class CharacterManager {
   clear(): void {
     for (const entry of this.entries.values()) disposeCharacter(entry.character.group);
     this.entries.clear();
+    this.pinned.clear();
   }
 }

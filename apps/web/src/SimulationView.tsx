@@ -1,24 +1,16 @@
 /**
- * Three.js view of the simulated world — explorable environment with
- * districts, procedural 3D agent characters, and buildings.
+ * Three.js view of the simulated world — a real city built from the layout
+ * engine (world/layout.ts) and rendered through WorldScene (world/scene.ts).
  *
- * Districts are laid out spatially:
- *   • City centre : central crossroads with public buildings
- *   • Residential : houses and apartment blocks
- *   • Business    : offices and shops
- *   • Village     : rural settlement with scattered houses
- *   • Public spaces: parks, plazas, green areas
+ * Locations become buildings on street lots inside their district's parcel;
+ * districts get roads, plazas and parks; arterials tie the map together.
+ * Agent characters (world/characterFactory.ts) stand in front of the buildings
+ * they occupy. Selection is raycast (character over building) and shown in
+ * the shared inspector panel.
  *
- * Every location/building is positioned according to its district. Agents
- * render as recognizable human characters (see world/characterFactory.ts)
- * with deterministic identities derived from their stable agent ids.
- * Selection uses raycasting with character-over-building priority and is
- * shown in the shared inspector panel.
- *
- * The view polls /simulation/state and refreshes on the SSE event stream,
- * so it can never disagree with the engine. Character removals only happen
- * after a successful fetch confirms the id is gone — a failed fetch keeps
- * the previous scene intact instead of deleting everything.
+ * Data flows one way: /simulation/state + /world/snapshot (+ SSE) → layout
+ * engine (sticky) → WorldScene reconcile. A failed fetch keeps the previous
+ * scene; removals only happen after a successful fetch confirms the id is gone.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
@@ -27,7 +19,6 @@ import { stateColorHex } from "./world/characterAppearance.js";
 import {
   FALLBACK_CENTER,
   FALLBACK_SPREAD,
-  clearanceForKind,
   isWalkableKind,
   placeAgents,
   type BuildingAnchor,
@@ -43,9 +34,26 @@ import {
   disposeSharedCaches,
   findCharacterAgentId,
 } from "./world/characterFactory.js";
+import {
+  buildNavGraph,
+  doorForBuilding,
+  findRoute,
+  graphSignature,
+  type NavGraph,
+  type NavPoint,
+} from "./world/navigation.js";
+import {
+  MovementSystem,
+  baseBehaviorFor,
+  type BehaviorState,
+} from "./world/agentMovement.js";
+import { WorldLayoutEngine } from "./world/layout.js";
+import { WorldScene } from "./world/scene.js";
 import type {
   AgentDirectoryDto,
   CompanyDirectoryDto,
+  DistrictDto,
+  LocationDto,
 } from "./world/types.js";
 
 interface AgentSummary {
@@ -70,52 +78,10 @@ interface SimulationState {
   agents: AgentSummary[];
 }
 
-interface LocationRow {
-  id: string;
-  name: string;
-  kind: string;
-  cityName: string;
-  districtId: string | null;
-  capacity: number | null;
-  occupantCount: number;
-}
-
-interface DistrictRow {
-  id: string;
-  cityId: string;
-  cityName: string;
-  name: string;
-  kind: string;
-  description: string | null;
-  locationCount: number;
-}
-
 type Selection =
   | { kind: "agent"; id: string }
   | { kind: "building"; id: string }
   | null;
-
-const DISTRICT_LAYOUT: Record<string, { x: number; z: number; radius: number }> = {
-  CITY_CENTRE: { x: 0, z: 0, radius: 0 },
-  RESIDENTIAL: { x: -20, z: 0, radius: 12 },
-  BUSINESS: { x: 20, z: 0, radius: 12 },
-  VILLAGE: { x: 0, z: -20, radius: 15 },
-  PUBLIC: { x: 0, z: 20, radius: 8 },
-};
-
-const DISTRICT_COLORS: Record<string, number> = {
-  CITY_CENTRE: 0xc7d2fe,
-  RESIDENTIAL: 0xffe0b2,
-  BUSINESS: 0xcaf0f8,
-  COMMERCIAL: 0xcaf0f8,
-  VILLAGE: 0xbbdefb,
-  PUBLIC: 0xf4cccc,
-  INDUSTRIAL: 0xd6d3d1,
-};
-
-// Fallback used when a district id is not in the layout table. A literal (not an
-// indexed lookup) so `noUncheckedIndexedAccess` cannot make it `undefined`.
-const DEFAULT_DISTRICT_LAYOUT = { x: 0, z: 20, radius: 8 };
 
 const RELOAD_EVENTS = [
   "WORLD_STATUS_CHANGED",
@@ -129,34 +95,10 @@ const RELOAD_EVENTS = [
   "LOCATION_CHANGED",
 ];
 
-/** Vertical centre offset per building geometry so nothing sinks into the ground. */
-function buildingGroundOffset(kind: string): number {
-  switch (kind) {
-    case "HOUSE":
-    case "APARTMENT":
-      return 1.75;
-    case "SHOP":
-      return 1.5;
-    case "OFFICE":
-      return 2.5;
-    case "PUBLIC_SPACE":
-    case "PARK":
-      return 0.6;
-    case "PLATZ":
-    case "PLAZA":
-      return 0.25;
-    case "CHURCH":
-    case "GOVERNMENT":
-      return 3;
-    default:
-      return 1;
-  }
-}
-
 /** Cap on simultaneously visible name labels (selected/hovered always win). */
 const MAX_LABELS = 120;
 /** Beyond this squared distance, labels are hidden when over the cap. */
-const NEAR_SQ = 30 * 30;
+const NEAR_SQ = 60 * 60;
 
 function cssHex(hex: number): string {
   return `#${hex.toString(16).padStart(6, "0")}`;
@@ -168,41 +110,29 @@ interface SceneContext {
   renderer: THREE.WebGLRenderer;
   raycaster: THREE.Raycaster;
   pointer: THREE.Vector2;
-  districtGroups: Map<string, THREE.Group>;
-  locationGroup: THREE.Group;
+  world: WorldScene;
+  engine: WorldLayoutEngine;
   agentGroup: THREE.Group;
-  locationMeshes: Map<string, THREE.Mesh>;
   agentManager: CharacterManager;
-  positions: Map<string, { x: number; z: number; district: string }>;
+  /** Step 3: road-following walks, behavior states, pause/speed. */
+  movement: MovementSystem;
+  navGraph: NavGraph;
+  navSignature: string;
+  doors: Array<{ point: NavPoint; name: string | null; locationId: string }>;
+  lastAuthKey: Map<string, string>;
+  simPaused: boolean;
+  simSpeed: number;
+  demoStroll: boolean;
   labelLayer: HTMLDivElement;
   labelPool: Map<string, HTMLDivElement>;
   labelText: Map<string, string>;
   selected: Selection;
   hoveredAgentId: string | null;
-  selectedBuildingMesh: THREE.Mesh | null;
+  hoveredBuildingKey: string | null;
   agents: AgentSummary[];
   time: number;
   lastHoverCheck: number;
-}
-
-function disposeMesh(group: THREE.Group, mesh: THREE.Mesh): void {
-  group.remove(mesh);
-  mesh.geometry.dispose();
-  const material = mesh.material;
-  if (Array.isArray(material)) material.forEach((m) => m.dispose());
-  else material.dispose();
-}
-
-function setBuildingEmissive(mesh: THREE.Mesh | null, hex: number): void {
-  if (mesh === null) return;
-  const material = mesh.material;
-  if (Array.isArray(material)) {
-    for (const m of material) {
-      if (m instanceof THREE.MeshStandardMaterial) m.emissive.setHex(hex);
-    }
-  } else if (material instanceof THREE.MeshStandardMaterial) {
-    material.emissive.setHex(hex);
-  }
+  worldId: string | null;
 }
 
 export function SimulationView({ token }: { token: string }): JSX.Element {
@@ -210,31 +140,35 @@ export function SimulationView({ token }: { token: string }): JSX.Element {
   const labelLayerRef = useRef<HTMLDivElement | null>(null);
   const sceneRef = useRef<SceneContext | null>(null);
   const [state, setState] = useState<SimulationState | null>(null);
-  const [locations, setLocations] = useState<LocationRow[]>([]);
-  const [districts, setDistricts] = useState<DistrictRow[]>([]);
+  const [locations, setLocations] = useState<LocationDto[]>([]);
+  const [districts, setDistricts] = useState<DistrictDto[]>([]);
   const [directory, setDirectory] = useState<Map<string, AgentDirectoryDto>>(new Map());
   const [companies, setCompanies] = useState<Map<string, string>>(new Map());
   const [error, setError] = useState<string | null>(null);
   const [selection, setSelection] = useState<Selection>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const selectionRef = useRef<Selection>(null);
+  // Mutable mirror of applySelection for three.js event handlers (declared
+  // before the mount effect so the closure can close over it safely).
+  const applySelectionRef = useRef<(next: Selection) => void>(() => undefined);
 
   const applySelection = useCallback((next: Selection): void => {
     const ctx = sceneRef.current;
     selectionRef.current = next;
     setSelection(next);
     if (ctx === null) return;
-    // Clear previous highlights.
     for (const id of ctx.agentManager.ids()) ctx.agentManager.setHighlight(id, "none");
-    setBuildingEmissive(ctx.selectedBuildingMesh, 0x000000);
-    ctx.selectedBuildingMesh = null;
     ctx.selected = next;
     if (next?.kind === "agent") {
       ctx.agentManager.setHighlight(next.id, "selected");
+      ctx.world.setSelected(null);
     } else if (next?.kind === "building") {
-      const mesh = ctx.locationMeshes.get(next.id) ?? null;
-      ctx.selectedBuildingMesh = mesh;
-      setBuildingEmissive(mesh, 0x334455);
+      // Real buildings use key === locationId (see BuildingPlan.key).
+      ctx.world.setSelected(next.id);
+      ctx.world.setHovered(null);
+      ctx.hoveredBuildingKey = null;
+    } else {
+      ctx.world.setSelected(null);
     }
   }, []);
 
@@ -242,7 +176,7 @@ export function SimulationView({ token }: { token: string }): JSX.Element {
     try {
       const sim = await api.get<SimulationState>("/simulation/state");
       setState(sim.data);
-      const snapshot = await api.get<{ locations: LocationRow[]; districts: DistrictRow[] }>("/world/snapshot");
+      const snapshot = await api.get<{ locations: LocationDto[]; districts: DistrictDto[] }>("/world/snapshot");
       setLocations(snapshot.data.locations);
       setDistricts(snapshot.data.districts ?? []);
       setError(null);
@@ -274,7 +208,7 @@ export function SimulationView({ token }: { token: string }): JSX.Element {
     }
   }, []);
 
-  // Create the renderer exactly once.
+  // Create the renderer + world scene exactly once.
   useEffect(() => {
     const mount = mountRef.current;
     const labelLayer = labelLayerRef.current;
@@ -282,27 +216,17 @@ export function SimulationView({ token }: { token: string }): JSX.Element {
     const width = mount.clientWidth || 640;
     const height = mount.clientHeight || 420;
 
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x0b1020);
+    const world = new WorldScene();
+    const scene = world.scene;
 
-    // District groups for spatial layout.
-    const districtGroups: Map<string, THREE.Group> = new Map();
-    ["CITY_CENTRE", "RESIDENTIAL", "BUSINESS", "VILLAGE", "PUBLIC"].forEach((did) => {
-      const g = new THREE.Group();
-      const layout = DISTRICT_LAYOUT[did] ?? DEFAULT_DISTRICT_LAYOUT;
-      g.position.set(layout.x, 0, layout.z);
-      scene.add(g);
-      districtGroups.set(did, g);
-    });
-
-    const camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 500);
-    camera.position.set(0, 30, 40);
+    const camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 2000);
+    camera.position.set(0, 90, 140);
     camera.lookAt(0, 0, 0);
 
     // Camera orbit controls (manual, no dependency).
-    let phi = Math.PI / 4;
-    let theta = Math.PI * 2;
-    let radius = 45;
+    let phi = 1.05;
+    let theta = Math.PI * 0.25;
+    let radius = 160;
     const animateCamera = (): void => {
       camera.position.x = radius * Math.sin(phi) * Math.cos(theta);
       camera.position.y = radius * Math.cos(phi);
@@ -316,23 +240,6 @@ export function SimulationView({ token }: { token: string }): JSX.Element {
     renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
     renderer.setSize(width, height);
     mount.appendChild(renderer.domElement);
-
-    scene.add(new THREE.AmbientLight(0xffffff, 0.6));
-    const topLight = new THREE.DirectionalLight(0xffffff, 0.8);
-    topLight.position.set(10, 20, 10);
-    scene.add(topLight);
-    const fillLight = new THREE.DirectionalLight(0xffffff, 0.4);
-    fillLight.position.set(-10, -10, -10);
-    scene.add(fillLight);
-
-    // Add some ambient occlusion feel with a hemisphere light.
-    const hemiLight = new THREE.HemisphereLight(0x87ceeb, 0x2c3e50, 0.3);
-    scene.add(hemiLight);
-
-    const locationGroup = new THREE.Group();
-    const agentGroup = new THREE.Group();
-    scene.add(locationGroup);
-    scene.add(agentGroup);
 
     // Explicit fallback plaza for unassigned agents — a visible, intentional
     // waiting area so the fallback never reads as a workplace.
@@ -348,15 +255,14 @@ export function SimulationView({ token }: { token: string }): JSX.Element {
     plaza.position.set(FALLBACK_CENTER.x, 0.01, FALLBACK_CENTER.z);
     scene.add(plaza);
 
-    // Step 2 ground plane: a single static disc so buildings and characters
-    // visibly stand on shared terrain instead of the void. Deliberately
-    // plain — the other session's layout engine owns richer ground dressing.
-    const groundGeo = new THREE.CircleGeometry(60, 64);
-    const groundMat = new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 1 });
-    const ground = new THREE.Mesh(groundGeo, groundMat);
-    ground.rotation.x = -Math.PI / 2;
-    ground.position.set(0, -0.02, 0);
-    scene.add(ground);
+    const agentGroup = new THREE.Group();
+    scene.add(agentGroup);
+
+    const agentManager = new CharacterManager(agentGroup);
+    const movement = new MovementSystem(
+      (id) => agentManager.get(id),
+      agentManager,
+    );
 
     const ctx: SceneContext = {
       scene,
@@ -364,21 +270,28 @@ export function SimulationView({ token }: { token: string }): JSX.Element {
       renderer,
       raycaster: new THREE.Raycaster(),
       pointer: new THREE.Vector2(),
-      districtGroups,
-      locationGroup,
+      world,
+      engine: new WorldLayoutEngine(),
       agentGroup,
-      locationMeshes: new Map(),
-      agentManager: new CharacterManager(agentGroup),
-      positions: new Map(),
+      agentManager,
+      movement,
+      navGraph: { nodes: [], neighbors: [] },
+      navSignature: "",
+      doors: [],
+      lastAuthKey: new Map(),
+      simPaused: false,
+      simSpeed: 1,
+      demoStroll: false,
       labelLayer,
       labelPool: new Map(),
       labelText: new Map(),
       selected: null,
       hoveredAgentId: null,
-      selectedBuildingMesh: null,
+      hoveredBuildingKey: null,
       agents: [],
       time: 0,
       lastHoverCheck: 0,
+      worldId: null,
     };
     sceneRef.current = ctx;
 
@@ -467,6 +380,8 @@ export function SimulationView({ token }: { token: string }): JSX.Element {
       ctx.time += dt;
       animateCamera();
       ctx.agentManager.update(dt, ctx.time);
+      // Walk/work poses override the idle pass for movers and workers.
+      ctx.movement.update(dt, ctx.time);
       updateLabels();
       renderer.render(scene, camera);
       frame = requestAnimationFrame(render);
@@ -497,18 +412,12 @@ export function SimulationView({ token }: { token: string }): JSX.Element {
         charId = findCharacterAgentId(hit.object);
         if (charId !== null) break;
       }
-      let buildingId: string | null = null;
+      let buildingLocationId: string | null = null;
       if (charId === null) {
-        const buildingHits = ctx.raycaster.intersectObjects(locationGroup.children, false);
-        const first = buildingHits[0];
-        if (first !== undefined) {
-          const data = first.object.userData as { kind?: unknown; locationId?: unknown };
-          if (data.kind === "building" && typeof data.locationId === "string") {
-            buildingId = data.locationId;
-          }
-        }
+        const hit = ctx.world.pickBuildings(ctx.raycaster);
+        if (hit !== null && hit.locationId !== null) buildingLocationId = hit.locationId;
       }
-      return pickSelection(charId, buildingId);
+      return pickSelection(charId, buildingLocationId);
     };
 
     // Mouse drag for orbit control; click (no drag) for selection.
@@ -519,6 +428,7 @@ export function SimulationView({ token }: { token: string }): JSX.Element {
     let downY = 0;
 
     const onMouseDown = (e: MouseEvent): void => {
+      if (e.button !== 0) return;
       isDragging = true;
       lastMouseX = e.clientX;
       lastMouseY = e.clientY;
@@ -529,9 +439,9 @@ export function SimulationView({ token }: { token: string }): JSX.Element {
       if (isDragging) {
         const deltaX = e.clientX - lastMouseX;
         const deltaY = e.clientY - lastMouseY;
-        theta -= deltaX * 0.01;
-        phi += deltaY * 0.01;
-        phi = Math.max(0.1, Math.min(Math.PI - 0.1, phi));
+        theta -= deltaX * 0.008;
+        phi += deltaY * 0.008;
+        phi = Math.max(0.15, Math.min(Math.PI / 2 - 0.05, phi));
         lastMouseX = e.clientX;
         lastMouseY = e.clientY;
         animateCamera();
@@ -540,8 +450,15 @@ export function SimulationView({ token }: { token: string }): JSX.Element {
       const now = performance.now();
       if (now - ctx.lastHoverCheck < 60) return;
       ctx.lastHoverCheck = now;
-      const pick = pickAt(e);
-      const nextHover = pick.kind === "agent" ? pick.agentId : null;
+      setPointerFromEvent(e);
+      ctx.raycaster.setFromCamera(ctx.pointer, camera);
+      const charHits = ctx.raycaster.intersectObjects(agentGroup.children, true);
+      let charId: string | null = null;
+      for (const hit of charHits) {
+        charId = findCharacterAgentId(hit.object);
+        if (charId !== null) break;
+      }
+      const nextHover = charId;
       if (nextHover !== ctx.hoveredAgentId) {
         const prev = ctx.hoveredAgentId;
         ctx.hoveredAgentId = nextHover;
@@ -556,7 +473,16 @@ export function SimulationView({ token }: { token: string }): JSX.Element {
           ctx.agentManager.setHighlight(nextHover, "hover");
         }
       }
-      renderer.domElement.style.cursor = nextHover !== null ? "pointer" : "default";
+      // Building hover (only when no character is under the cursor).
+      const buildingHit = charId === null ? ctx.world.pickBuildings(ctx.raycaster) : null;
+      const nextBuildingKey = buildingHit?.key ?? null;
+      if (nextBuildingKey !== ctx.hoveredBuildingKey) {
+        ctx.hoveredBuildingKey = nextBuildingKey;
+        // Don't stomp the selected building's highlight.
+        if (ctx.selected?.kind !== "building") ctx.world.setHovered(nextBuildingKey);
+      }
+      renderer.domElement.style.cursor =
+        nextHover !== null || nextBuildingKey !== null ? "pointer" : "default";
     };
     const onMouseUp = (e: MouseEvent): void => {
       const wasDragging = isDragging;
@@ -575,9 +501,10 @@ export function SimulationView({ token }: { token: string }): JSX.Element {
       }
     };
     const onMouseWheel = (e: WheelEvent): void => {
-      const scale = Math.exp(-e.deltaY * 0.001);
+      e.preventDefault();
+      const scale = Math.exp(e.deltaY * 0.001);
       radius *= scale;
-      radius = Math.max(20, Math.min(80, radius));
+      radius = Math.max(40, Math.min(500, radius));
       animateCamera();
     };
     const onKeyDown = (e: KeyboardEvent): void => {
@@ -585,15 +512,14 @@ export function SimulationView({ token }: { token: string }): JSX.Element {
         applySelectionRef.current(null);
       }
     };
+    const onContextMenu = (e: MouseEvent): void => e.preventDefault();
     // `applySelection` is stable (refs + setState only); mirror it for handlers.
     applySelectionRef.current = applySelection;
     mount.addEventListener("mousedown", onMouseDown);
     mount.addEventListener("mousemove", onMouseMove);
     mount.addEventListener("mouseup", onMouseUp);
-    // "mousewheel" / "DOMMouseScroll" are legacy non-standard events absent from
-    // HTMLElementEventMap, so the typed handler is cast to a generic listener.
-    mount.addEventListener("mousewheel", onMouseWheel as EventListener);
-    mount.addEventListener("DOMMouseScroll", onMouseWheel as EventListener);
+    mount.addEventListener("wheel", onMouseWheel, { passive: false });
+    mount.addEventListener("contextmenu", onContextMenu);
     window.addEventListener("keydown", onKeyDown);
 
     return () => {
@@ -603,15 +529,14 @@ export function SimulationView({ token }: { token: string }): JSX.Element {
       mount.removeEventListener("mousedown", onMouseDown);
       mount.removeEventListener("mousemove", onMouseMove);
       mount.removeEventListener("mouseup", onMouseUp);
-      mount.removeEventListener("mousewheel", onMouseWheel as EventListener);
-      mount.removeEventListener("DOMMouseScroll", onMouseWheel as EventListener);
-      for (const mesh of ctx.locationMeshes.values()) disposeMesh(locationGroup, mesh);
+      mount.removeEventListener("wheel", onMouseWheel);
+      mount.removeEventListener("contextmenu", onContextMenu);
       ctx.agentManager.clear();
+      ctx.movement.clear();
+      ctx.world.dispose();
       disposeSharedCaches();
       plazaGeo.dispose();
       plazaMat.dispose();
-      groundGeo.dispose();
-      groundMat.dispose();
       renderer.dispose();
       if (mount.contains(renderer.domElement)) mount.removeChild(renderer.domElement);
       labelLayer.innerHTML = "";
@@ -621,157 +546,146 @@ export function SimulationView({ token }: { token: string }): JSX.Element {
     // live data flows through refs (sceneRef) and stable callbacks.
   }, []);
 
-  // Mutable mirror of applySelection for three.js event handlers.
-  const applySelectionRef = useRef<(next: Selection) => void>(() => undefined);
   useEffect(() => {
     applySelectionRef.current = applySelection;
   }, [applySelection]);
 
-  // Reconcile scene objects with the latest simulation data.
+  // Reconcile the layout + characters with the latest simulation data.
   useEffect(() => {
     const ctx = sceneRef.current;
     if (ctx === null) return;
     // No successful fetch yet: keep the previous scene (loading or failed).
     if (state === null) return;
-
-    // Organize locations by district KIND. Stored district ids are opaque
-    // cuids, while DISTRICT_LAYOUT is keyed by kind ("RESIDENTIAL",
-    // "BUSINESS", ...), so resolve through the district rows. Grouping by
-    // raw id collapsed every district onto the PUBLIC fallback circle.
-    const kindByDistrictId = new Map<string, string>();
-    for (const district of districts) kindByDistrictId.set(district.id, district.kind);
-    const districtKeyOf = (location: LocationRow): string => {
-      if (location.districtId === null) return "PUBLIC";
-      return kindByDistrictId.get(location.districtId) ?? "PUBLIC";
-    };
-    const locationsByDistrict: Map<string, LocationRow[]> = new Map();
-    for (const location of locations) {
-      const did = districtKeyOf(location);
-      if (!locationsByDistrict.has(did)) locationsByDistrict.set(did, []);
-      locationsByDistrict.get(did)!.push(location);
+    // New world → forget sticky parcels/lots.
+    if (ctx.worldId !== state.world.id) {
+      ctx.engine.reset();
+      ctx.worldId = state.world.id;
     }
 
-    // Position each district group spatially.
-    ctx.districtGroups.forEach((group, districtId) => {
-      const layout = DISTRICT_LAYOUT[districtId];
-      if (!layout) return;
-      group.position.set(layout.x, 0, layout.z);
-    });
+    // Layout engine: sticky parcels + lots; context filler on unused lots.
+    const plan = ctx.engine.update({ districts, locations, includeContext: true });
+    ctx.world.applyPlan(plan);
 
-    // Create/update location meshes per district.
-    locationsByDistrict.forEach((districtLocations, districtId) => {
-      const layout = DISTRICT_LAYOUT[districtId] ?? DEFAULT_DISTRICT_LAYOUT;
-      const centerX = layout.x;
-      const centerZ = layout.z;
-      const radius = layout.radius || 8;
+    // Fallback plaza follows the PUBLIC parcel so unassigned agents never
+    // land on a building lot (the legacy circle constant is last resort).
+    const publicParcel = plan.districts.find((d) => d.classification === "PUBLIC")?.parcel
+      ?? plan.districts[0]?.parcel;
+    const fallbackCenter = publicParcel !== undefined
+      ? { x: publicParcel.x, z: publicParcel.z }
+      : FALLBACK_CENTER;
 
-      districtLocations.forEach((location, index) => {
-        const angle = (index / Math.max(1, districtLocations.length)) * Math.PI * 2;
-        const x = centerX + Math.cos(angle) * radius;
-        const z = centerZ + Math.sin(angle) * radius;
-        ctx.positions.set(location.id, { x, z, district: districtId });
-
-        let mesh = ctx.locationMeshes.get(location.id);
-        if (mesh === undefined) {
-          const kind = location.kind ?? "OTHER";
-          let geometry: THREE.BufferGeometry;
-          let color: number;
-
-          // Choose geometry based on kind for recognizable building types.
-          switch (kind) {
-            case "HOUSE":
-            case "APARTMENT":
-              geometry = new THREE.CylinderGeometry(1.2, 1.2, 3.5, 24);
-              color = 0xffe0b2; // warm residential
-              break;
-            case "SHOP":
-              geometry = new THREE.BoxGeometry(4, 3, 3);
-              color = 0xf59e0b; // market orange
-              break;
-            case "OFFICE":
-              geometry = new THREE.BoxGeometry(6, 5, 4);
-              color = 0x0ea5e9; // office blue
-              break;
-            case "PUBLIC_SPACE":
-            case "PARK":
-              geometry = new THREE.SphereGeometry(2, 24, 24, 8);
-              color = 0x22c55e; // park green
-              break;
-            case "PLATZ":
-            case "PLAZA":
-              geometry = new THREE.BoxGeometry(5, 0.5, 5);
-              color = 0x8b5cf6; // plaza purple
-              break;
-            case "CHURCH":
-            // Fall through to PUBLIC
-            case "GOVERNMENT":
-              geometry = new THREE.CylinderGeometry(1.5, 1.5, 6, 24);
-              color = 0x6366f1; // civic blue
-              break;
-            default:
-              geometry = new THREE.CylinderGeometry(1.05, 1.05, 2, 24);
-              color = DISTRICT_COLORS[districtId as keyof typeof DISTRICT_COLORS] ?? 0x94a3b8;
-          }
-
-          mesh = new THREE.Mesh(
-            geometry,
-            new THREE.MeshStandardMaterial({
-              color,
-              transparent: true,
-              opacity: 0.9,
-            }),
-          );
-          mesh.userData = { kind: "building", locationId: location.id };
-          ctx.locationGroup.add(mesh);
-          ctx.locationMeshes.set(location.id, mesh);
-          // Re-apply selection highlight if this building is selected.
-          if (ctx.selected?.kind === "building" && ctx.selected.id === location.id) {
-            ctx.selectedBuildingMesh = mesh;
-            setBuildingEmissive(mesh, 0x334455);
-          }
-        }
-        mesh.position.set(x, buildingGroundOffset(location.kind ?? "OTHER"), z);
-      });
-    });
-
-    // Remove stale location meshes.
-    for (const [id, mesh] of ctx.locationMeshes) {
-      if (!locations.some((location) => location.id === id)) {
-        if (ctx.selectedBuildingMesh === mesh) ctx.selectedBuildingMesh = null;
-        disposeMesh(ctx.locationGroup, mesh);
-        ctx.locationMeshes.delete(id);
-        ctx.positions.delete(id);
-      }
-    }
-
-    // Reconcile 3D characters with the authoritative agent list.
-    const agents = state.agents;
+    // Agent anchors come from the real building positions.
     const anchors = new Map<string, BuildingAnchor>();
-    for (const [locationId, pos] of ctx.positions) {
-      const row = locations.find((l) => l.id === locationId);
-      anchors.set(locationId, {
-        locationId,
-        x: pos.x,
-        z: pos.z,
-        clearance: clearanceForKind(row?.kind ?? "OTHER"),
-        walkable: isWalkableKind(row?.kind ?? "OTHER"),
+    const walkableKinds = new Map<string, boolean>();
+    for (const building of plan.buildings) {
+      if (building.locationId === null) continue;
+      anchors.set(building.locationId, {
+        locationId: building.locationId,
+        x: building.x,
+        z: building.z,
+        clearance: Math.max(building.footprint.w, building.footprint.d) / 2 + 1.2,
+        walkable: isWalkableKind(building.kind),
       });
+      walkableKinds.set(building.locationId, isWalkableKind(building.kind));
     }
     const placements = new Map<string, PlacedAgent>();
-    for (const placed of placeAgents(agents, anchors)) {
+    for (const placed of placeAgents(state.agents, anchors, walkableKinds, fallbackCenter)) {
       placements.set(placed.agentId, placed);
     }
     ctx.agentManager.sync(
-      agents.map((a) => ({ id: a.id, state: a.state })),
+      state.agents.map((a) => ({ id: a.id, state: a.state })),
       placements,
     );
-    ctx.agents = agents;
+    ctx.agents = state.agents;
+
+    // Navigation graph from the real roads + building doors (rebuilt only
+    // when the road network changes; routes are computed per destination).
+    const roads = [...plan.arterials, ...plan.districts.flatMap((d) => d.roads)];
+    const doors: Array<{ point: NavPoint; name: string | null; locationId: string }> = [];
+    const doorByLocation = new Map<string, NavPoint>();
+    for (const building of plan.buildings) {
+      if (building.locationId === null) continue;
+      const door = doorForBuilding(building.x, building.z, building.rotation, building.footprint.d);
+      doors.push({
+        point: door,
+        name: building.name,
+        locationId: building.locationId,
+      });
+      if (!doorByLocation.has(building.locationId)) doorByLocation.set(building.locationId, door);
+    }
+    const signature = graphSignature(roads, doors.length);
+    if (signature !== ctx.navSignature) {
+      ctx.navGraph = buildNavGraph(
+        roads,
+        doors.map((d) => d.point),
+      );
+      ctx.navSignature = signature;
+    }
+    ctx.doors = doors;
+
+    // Step 3 routing: an authoritative location change walks the roads
+    // instead of easing through buildings. Already-settled agents keep the
+    // cheap placement ease; failures hold position and warn (no retries).
+    const seen = new Set<string>();
+    for (const agent of state.agents) {
+      seen.add(agent.id);
+      ctx.movement.setBaseBehavior(agent.id, baseBehaviorFor(agent.state));
+      const placement = placements.get(agent.id);
+      const authKey = `${agent.locationId ?? "∅"}|${placement?.x.toFixed(2) ?? "∅"},${placement?.z.toFixed(2) ?? "∅"}`;
+      if (
+        placement === undefined ||
+        placement.fallback ||
+        agent.locationId === null
+      ) {
+        // Unassigned: Step-2 placement easing, never a walking route.
+        ctx.lastAuthKey.set(agent.id, authKey);
+        ctx.movement.cancelRoute(agent.id);
+        continue;
+      }
+      if (ctx.lastAuthKey.get(agent.id) === authKey) continue; // keep current route (incl. demo)
+      ctx.lastAuthKey.set(agent.id, authKey);
+      const figure = ctx.agentManager.get(agent.id);
+      const door = doorByLocation.get(agent.locationId);
+      if (figure === undefined || door === undefined) {
+        ctx.movement.cancelRoute(agent.id);
+        continue;
+      }
+      const from = { x: figure.group.position.x, z: figure.group.position.z };
+      const goal = { x: placement.x, z: placement.z };
+      if (Math.hypot(from.x - goal.x, from.z - goal.z) <= 1) {
+        // Already home (spawn or tiny drift): settle via placement ease.
+        ctx.movement.cancelRoute(agent.id);
+        ctx.agentManager.setTarget(agent.id, goal.x, goal.z);
+        continue;
+      }
+      // allowFarStart: mid-ease positions may sit off-network; the first
+      // leg then simply walks to the nearest road. Goals stay strict.
+      const route = findRoute(ctx.navGraph, from, door, { allowFarStart: true });
+      if (route.ok) {
+        ctx.movement.startRoute(agent.id, [...route.waypoints, goal], {
+          point: goal,
+          name: locations.find((l) => l.id === agent.locationId)?.name ?? agent.locationId,
+          demo: false,
+        });
+      } else {
+        console.warn(`[sim] no walking route for ${agent.name} (${agent.id}): ${route.reason}`);
+        ctx.movement.cancelRoute(agent.id);
+        ctx.agentManager.setTarget(agent.id, from.x, from.z);
+      }
+    }
+    // Confirmed deletions drop movers, keys, and base behaviors together.
+    for (const id of [...ctx.lastAuthKey.keys()]) {
+      if (!seen.has(id)) {
+        ctx.lastAuthKey.delete(id);
+        ctx.movement.remove(id);
+      }
+    }
 
     // If the selected agent was confirmed removed, clear the selection.
-    if (ctx.selected?.kind === "agent" && !agents.some((a) => a.id === ctx.selected?.id)) {
+    if (ctx.selected?.kind === "agent" && !state.agents.some((a) => a.id === ctx.selected?.id)) {
       applySelectionRef.current(null);
     }
-  }, [state, locations]);
+  }, [state, locations, districts]);
 
   // Initial load + a slow safety poll.
   useEffect(() => {
@@ -808,7 +722,7 @@ export function SimulationView({ token }: { token: string }): JSX.Element {
     selection?.kind === "agent"
       ? (state?.agents.find((a) => a.id === selection.id) ?? null)
       : null;
-  const selectedBuilding: LocationRow | null =
+  const selectedBuilding: LocationDto | null =
     selection?.kind === "building"
       ? (locations.find((l) => l.id === selection.id) ?? null)
       : null;
@@ -831,7 +745,105 @@ export function SimulationView({ token }: { token: string }): JSX.Element {
     applySelectionRef.current({ kind: "agent", id: agent.id });
   };
 
-return (
+  // Step 3 observability: local motion snapshot refreshed at 1 Hz (the 3D
+  // loop itself never setStates per frame). Feeds the inspector + footer.
+  const [motion, setMotion] = useState<
+    Record<string, { behavior: BehaviorState; dest: string | null; demo: boolean }>
+  >({});
+  const [simUi, setSimUi] = useState({ paused: false, speed: 1, demo: false, movers: 0 });
+
+  const selectedMotion =
+    selection?.kind === "agent" ? motion[selection.id] : undefined;
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      const ctx = sceneRef.current;
+      if (ctx === null || state === null) return;
+      const next: Record<string, { behavior: BehaviorState; dest: string | null; demo: boolean }> = {};
+      for (const agent of state.agents) {
+        const dest = ctx.movement.destinationOf(agent.id);
+        next[agent.id] = {
+          behavior: ctx.movement.behaviorOf(agent.id),
+          dest: dest?.name ?? null,
+          demo: dest?.demo ?? false,
+        };
+      }
+      setMotion((prev) => (JSON.stringify(prev) === JSON.stringify(next) ? prev : next));
+      const snapshot = {
+        paused: ctx.simPaused,
+        speed: ctx.simSpeed,
+        demo: ctx.demoStroll,
+        movers: ctx.movement.moverCount(),
+      };
+      setSimUi((prev) => (JSON.stringify(prev) === JSON.stringify(snapshot) ? prev : snapshot));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [state]);
+
+  const togglePause = useCallback((): void => {
+    const ctx = sceneRef.current;
+    if (ctx === null) return;
+    ctx.simPaused = !ctx.simPaused;
+    ctx.movement.setPaused(ctx.simPaused);
+    setSimUi((p) => ({ ...p, paused: ctx.simPaused }));
+  }, []);
+
+  const cycleSpeed = useCallback((): void => {
+    const ctx = sceneRef.current;
+    if (ctx === null) return;
+    ctx.simSpeed = ctx.simSpeed >= 4 ? 1 : ctx.simSpeed * 2;
+    ctx.movement.setTimeScale(ctx.simSpeed);
+    setSimUi((p) => ({ ...p, speed: ctx.simSpeed }));
+  }, []);
+
+  const toggleDemo = useCallback((): void => {
+    const ctx = sceneRef.current;
+    if (ctx === null) return;
+    ctx.demoStroll = !ctx.demoStroll;
+    setSimUi((p) => ({ ...p, demo: ctx.demoStroll }));
+  }, []);
+
+  // Explicit local demo, OFF in production: idle agents stroll between
+  // nearby doors. Demo goals are labelled and never touch backend state.
+  // NOTE: the agent list is read through a ref mirror so polling/SSE state
+  // churn (new object identity every few seconds) can never starve this 4s
+  // timer by tearing the effect down before it fires.
+  const agentsRef = useRef<AgentSummary[]>([]);
+  agentsRef.current = state?.agents ?? [];
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      const ctx = sceneRef.current;
+      if (ctx === null) return;
+      const agents = agentsRef.current;
+      if (!ctx.demoStroll || ctx.simPaused || ctx.doors.length === 0) return;
+      const candidates = agents.filter(
+        (a) => ctx.movement.behaviorOf(a.id) === "idle" && !ctx.movement.hasRoute(a.id),
+      );
+      for (const agent of candidates.slice(0, 2)) {
+        const figure = ctx.agentManager.get(agent.id);
+        if (figure === undefined) continue;
+        const from = { x: figure.group.position.x, z: figure.group.position.z };
+        const inRange = ctx.doors.filter((d) => {
+          const dist = Math.hypot(d.point.x - from.x, d.point.z - from.z);
+          return dist > 25 && dist < 130;
+        });
+        if (inRange.length === 0) continue;
+        const pick = inRange[Math.floor(Math.random() * inRange.length)];
+        if (pick === undefined) continue;
+        const route = findRoute(ctx.navGraph, from, pick.point, { maxSnapTo: 25 });
+        if (!route.ok || route.distance < 8) continue;
+        ctx.movement.startRoute(agent.id, [...route.waypoints, pick.point], {
+          point: pick.point,
+          name: pick.name !== null ? `Stroll near ${pick.name}` : "Local stroll",
+          demo: true,
+        });
+      }
+    }, 4000);
+    return () => window.clearInterval(timer);
+    // [] — stable by design (reads agentsRef); see NOTE above.
+  }, []);
+
+  return (
     <div className="grid gap-4 lg:grid-cols-6">
       {error !== null && (
         <p className="lg:col-span-6 mb-2 rounded bg-red-50 p-2 text-sm text-red-700">{error}</p>
@@ -844,6 +856,36 @@ return (
               ref={labelLayerRef}
               className="sim-label-layer pointer-events-none absolute inset-0 overflow-hidden"
             />
+          </div>
+          <div className="flex items-center gap-2 px-2 pt-2 text-xs">
+            <span
+              className={`inline-block h-2 w-2 rounded-full ${state?.world?.status === "RUNNING" ? "bg-green-500" : "bg-gray-400"}`}
+              title={`World status: ${state?.world?.status ?? "—"}`}
+            />
+            <span className="text-gray-500">World: {state?.world?.status ?? "—"}</span>
+            <button
+              onClick={togglePause}
+              className="rounded border border-gray-300 bg-gray-50 px-2 py-0.5 text-gray-700 hover:border-gray-500"
+            >
+              {simUi.paused ? "▶ Resume motion" : "⏸ Pause motion"}
+            </button>
+            <button
+              onClick={cycleSpeed}
+              className="rounded border border-gray-300 bg-gray-50 px-2 py-0.5 text-gray-700 hover:border-gray-500"
+            >
+              Speed {simUi.speed}x
+            </button>
+            <button
+              onClick={toggleDemo}
+              title="Local demo only: idle agents stroll nearby. Never a backend task."
+              className={`rounded border px-2 py-0.5 hover:border-gray-500 ${simUi.demo ? "border-amber-500 bg-amber-50 text-amber-800" : "border-gray-300 bg-gray-50 text-gray-700"}`}
+            >
+              Demo stroll: {simUi.demo ? "on" : "off"}
+            </button>
+            <span className="text-gray-500">{simUi.movers} walking</span>
+            {simUi.demo && (
+              <span className="rounded bg-amber-100 px-1.5 py-0.5 font-semibold text-amber-800">DEMO</span>
+            )}
           </div>
           <div className="mt-2 flex items-center gap-3 px-2 pb-2 text-xs text-gray-400">
             <span>W: {state?.world?.name ?? "—"}</span>
@@ -864,6 +906,7 @@ return (
           ) : (
             <div className="space-y-2">
               {districts
+                .slice()
                 .sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""))
                 .map((district) => {
                   const grouped = locations.filter((l) => l.districtId === district.id);
@@ -886,9 +929,9 @@ return (
                       </div>
                       <div className="mt-1 h-2 w-full rounded bg-gray-200 overflow-hidden">
                         <div
-          className={`h-full ${capacity === 0 || occupants < capacity ? "bg-teal-500" : "bg-red-500"}`}
-          style={{ width: capacity === 0 ? "0%" : `${Math.min(100, (occupants / capacity) * 100)}%` }}
-        />
+                          className={`h-full ${capacity === 0 || occupants < capacity ? "bg-teal-500" : "bg-red-500"}`}
+                          style={{ width: capacity === 0 ? "0%" : `${Math.min(100, (occupants / capacity) * 100)}%` }}
+                        />
                       </div>
                       <ul className="mt-1 text-xs text-gray-500 grid grid-cols-2 gap-1">
                         {grouped.map((location) => (
@@ -975,6 +1018,13 @@ return (
               ) : (
                 <p className="text-xs text-gray-500">Activity: —</p>
               )}
+              {selectedMotion !== undefined && (
+                <p className="text-xs text-gray-500">
+                  Motion: {selectedMotion.behavior}
+                  {selectedMotion.dest !== null ? ` → ${selectedMotion.dest}` : ""}
+                  {selectedMotion.demo ? " (local demo)" : ""}
+                </p>
+              )}
               <p className="text-xs text-gray-500">Company: {selectedCompanyName ?? "—"}</p>
               {selectedDir?.currentJob !== null && selectedDir?.currentJob !== undefined && (
                 <p className="text-xs text-gray-500">Job: {selectedDir.currentJob}</p>
@@ -994,6 +1044,9 @@ return (
               <p className="text-xs text-gray-500">
                 District: {selectedBuildingDistrict ?? "—"}
               </p>
+              {selectedBuilding.address !== null && selectedBuilding.address !== undefined && (
+                <p className="text-xs text-gray-500">Address: {selectedBuilding.address}</p>
+              )}
               <p className="text-xs text-gray-500">
                 Occupancy: {selectedBuilding.occupantCount}
                 {selectedBuilding.capacity !== null ? `/${selectedBuilding.capacity}` : ""}

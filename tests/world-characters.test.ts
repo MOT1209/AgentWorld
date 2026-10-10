@@ -212,8 +212,14 @@ describe("idle animation", () => {
 describe("character factory", () => {
   it("builds a recognizable human silhouette standing on the ground", () => {
     const built = buildCharacter("factory-1", appearanceForAgentId("factory-1"), "WORKING");
-    // legs + shoes + upper body + badge + ring + hit proxy
-    expect(built.group.children.length).toBe(8);
+    // leg pivots + upper body + badge + ring + hit proxy
+    expect(built.group.children.length).toBe(6);
+    // Hip pivots carry the leg mesh and the shoe each (Step 3 walk cycle).
+    for (const leg of [built.parts.legL, built.parts.legR]) {
+      expect(Math.abs(leg.position.y - 0.75)).toBeLessThan(1e-9);
+      expect(leg.children.length).toBe(2);
+      expect(leg.rotation.x).toBe(0);
+    }
     expect(built.group.userData).toMatchObject({ kind: "character", agentId: "factory-1" });
     // Upper body carries torso meshes, two arms, neck, and the head group.
     expect(built.parts.torso.children.length).toBeGreaterThanOrEqual(6);
