@@ -53,6 +53,7 @@ export interface MovableFigure {
     armR: THREE.Group;
     legL: THREE.Group;
     legR: THREE.Group;
+    bubble: THREE.Mesh;
   };
 }
 
@@ -80,6 +81,10 @@ export const DEFAULT_WALK_SPEED = 5;
 const MAX_TURN_RATE = 5.5;
 const WALK_SWING = 0.55;
 const ARM_SWING = 0.38;
+/** Movers keep at least this distance from any other figure. */
+export const SEPARATION_GAP = 1.4;
+/** Chat bubble appears when a social agent has company this close. */
+export const SOCIAL_RADIUS = 9;
 
 /** Shortest signed arc from `from` to `to` (radians, -π..π). */
 export function angleDelta(from: number, to: number): number {
@@ -101,6 +106,7 @@ export function resetFigurePose(figure: MovableFigure): void {
 export class MovementSystem {
   private readonly movers = new Map<string, Mover>();
   private readonly base = new Map<string, BaseBehavior>();
+  private readonly social = new Map<string, boolean>();
   private paused = false;
   private timeScale = 1;
 
@@ -133,6 +139,20 @@ export class MovementSystem {
 
   baseBehaviorOf(agentId: string): BaseBehavior {
     return this.base.get(agentId) ?? "idle";
+  }
+
+  /**
+   * Marks social intent (backend SOCIALIZING state or SOCIALIZE activity).
+   * Shows a chat bubble only while another figure is actually nearby —
+   * never a fake conversation.
+   */
+  setSocial(agentId: string, social: boolean): void {
+    if (social) this.social.set(agentId, true);
+    else this.social.delete(agentId);
+  }
+
+  isSocial(agentId: string): boolean {
+    return this.social.get(agentId) ?? false;
   }
 
   /** Effective behavior: an active route reads as moving (unless unavailable). */
@@ -191,12 +211,14 @@ export class MovementSystem {
   remove(agentId: string): void {
     this.cancelRoute(agentId);
     this.base.delete(agentId);
+    this.social.delete(agentId);
   }
 
   clear(): void {
     for (const id of [...this.movers.keys()]) this.cancelRoute(id);
     this.movers.clear();
     this.base.clear();
+    this.social.clear();
   }
 
   /**
@@ -230,6 +252,86 @@ export class MovementSystem {
       const figure = this.figureOf(id);
       if (figure === undefined) continue;
       this.applyWorkPose(figure.parts, timeSeconds);
+    }
+    this.applySeparation(step);
+    this.updateBubbles();
+  }
+
+  /**
+   * Keeps movers from piling onto each other (or onto bystanders): a soft
+   * radial push plus a deterministic sideways bias so head-on pairs slide
+   * past instead of jittering. Stationary figures are never moved. No full
+   * collision avoidance is claimed.
+   */
+  private applySeparation(step: number): void {
+    const moverIds = [...this.movers.keys()]
+      .filter((id) => (this.movers.get(id)?.remaining.length ?? 0) > 0)
+      .sort();
+    if (moverIds.length === 0) return;
+    const positions = new Map<string, { x: number; z: number }>();
+    for (const id of new Set([...this.base.keys(), ...this.movers.keys()])) {
+      const figure = this.figureOf(id);
+      if (figure === undefined) continue;
+      positions.set(id, { x: figure.group.position.x, z: figure.group.position.z });
+    }
+    for (const id of moverIds) {
+      const figure = this.figureOf(id);
+      const self = positions.get(id);
+      const mover = this.movers.get(id);
+      if (figure === undefined || self === undefined || mover === undefined) continue;
+      const cap = mover.speed * step + 0.05;
+      for (const otherId of [...positions.keys()].sort()) {
+        if (otherId === id) continue;
+        const other = positions.get(otherId);
+        if (other === undefined) continue;
+        const dx = self.x - other.x;
+        const dz = self.z - other.z;
+        const d = Math.hypot(dx, dz);
+        if (!(d < SEPARATION_GAP) || d < 1e-6) continue;
+        const push = Math.min(((SEPARATION_GAP - d) / SEPARATION_GAP) * 0.6, cap);
+        const nx = dx / d;
+        const nz = dz / d;
+        self.x += nx * push + -nz * push * 0.35;
+        self.z += nz * push + nx * push * 0.35;
+      }
+      const totalPush = Math.hypot(self.x - figure.group.position.x, self.z - figure.group.position.z);
+      if (totalPush > cap && totalPush > 0) {
+        const k = cap / totalPush;
+        self.x = figure.group.position.x + (self.x - figure.group.position.x) * k;
+        self.z = figure.group.position.z + (self.z - figure.group.position.z) * k;
+      }
+      figure.group.position.x = self.x;
+      figure.group.position.z = self.z;
+      positions.set(id, { x: self.x, z: self.z });
+    }
+  }
+
+  /** Chat bubbles for social agents that actually have company nearby. */
+  private updateBubbles(): void {
+    const ids = [...new Set([...this.base.keys(), ...this.movers.keys()])].sort();
+    const positions = new Map<string, { x: number; z: number }>();
+    for (const id of ids) {
+      const figure = this.figureOf(id);
+      if (figure === undefined) continue;
+      positions.set(id, { x: figure.group.position.x, z: figure.group.position.z });
+    }
+    for (const id of ids) {
+      const figure = this.figureOf(id);
+      if (figure === undefined) continue;
+      const self = positions.get(id);
+      let company = false;
+      if ((this.social.get(id) ?? false) && self !== undefined) {
+        for (const otherId of ids) {
+          if (otherId === id) continue;
+          const other = positions.get(otherId);
+          if (other === undefined) continue;
+          if (Math.hypot(self.x - other.x, self.z - other.z) <= SOCIAL_RADIUS) {
+            company = true;
+            break;
+          }
+        }
+      }
+      figure.parts.bubble.visible = company;
     }
   }
 

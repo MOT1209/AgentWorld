@@ -271,6 +271,30 @@ export function doorForBuilding(
   return { x: x + dirX * (depth / 2 + margin), z: z + dirZ * (depth / 2 + margin) };
 }
 
+/**
+ * Operator interaction-pin override from location metadata. The layout
+ * engine documents `metadata.x/z` as operator pins; when present and finite
+ * they replace the computed door as the walk-to point. Accepts parsed JSON
+ * or the raw TEXT column (older snapshots) — anything else yields null.
+ */
+export function readInteractionPin(metadata: unknown): NavPoint | null {
+  let obj: unknown = metadata;
+  if (typeof obj === "string") {
+    try {
+      obj = JSON.parse(obj) as unknown;
+    } catch {
+      return null;
+    }
+  }
+  if (typeof obj !== "object" || obj === null) return null;
+  const record = obj as Record<string, unknown>;
+  const x = record.x;
+  const z = record.z;
+  if (typeof x !== "number" || typeof z !== "number") return null;
+  if (!Number.isFinite(x) || !Number.isFinite(z)) return null;
+  return { x, z };
+}
+
 /** Clamps a point into the valid world square; NaN stays NaN (fails later). */
 export function clampToWorld(p: NavPoint, halfSize = WORLD_HALF_SIZE): NavPoint {
   return {

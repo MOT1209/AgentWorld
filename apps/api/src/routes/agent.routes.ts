@@ -32,6 +32,7 @@ import {
   executeAction,
   AgentActionSchema,
   parseVitals,
+  listAgentRoutines,
 } from "../../../../packages/simulation/src/index.js";
 
 export const agentRouter: Router = Router();
@@ -388,6 +389,25 @@ agentRouter.get(
         ...(q.status !== undefined ? { status: q.status } : {}),
       });
       res.json({ data: goals, correlationId: getCorrelationId(req) });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// Read-only daily-routine schedule (Phase 5 data, surfaced for the 3D
+// world's inspector + future movement previews). No writes, no schema change.
+agentRouter.get(
+  "/:id/routines",
+  requirePermission(PERMISSIONS.AGENT_READ),
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const q = req.query as Record<string, string | undefined>;
+      const routines = await listAgentRoutines(prisma, {
+        agentId: req.params.id as string,
+        ...(q.includeInactive === "true" ? { includeInactive: true as const } : {}),
+      });
+      res.json({ data: routines, correlationId: getCorrelationId(req) });
     } catch (error) {
       next(error);
     }

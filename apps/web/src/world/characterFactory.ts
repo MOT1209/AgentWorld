@@ -35,6 +35,8 @@ export interface CharacterParts {
   legR: THREE.Group;
   badge: THREE.Mesh;
   ring: THREE.Mesh;
+  /** Social bubble (Step 4): shown when chatting with a nearby agent. */
+  bubble: THREE.Mesh;
 }
 
 export interface BuiltCharacter {
@@ -106,6 +108,15 @@ function hitMaterial(): THREE.MeshBasicMaterial {
   return created;
 }
 
+function bubbleMaterial(): THREE.MeshBasicMaterial {
+  const key = "bubble:chat";
+  const existing = materialCache.get(key);
+  if (existing !== undefined) return existing as THREE.MeshBasicMaterial;
+  const created = new THREE.MeshBasicMaterial({ color: 0xf8fafc });
+  materialCache.set(key, created);
+  return created;
+}
+
 function geometries(): Record<string, THREE.BufferGeometry> {
   return {
     leg: cachedGeometry("leg", () => new THREE.CylinderGeometry(0.085, 0.095, 0.75, 10)),
@@ -123,6 +134,7 @@ function geometries(): Record<string, THREE.BufferGeometry> {
     eye: cachedGeometry("eye", () => new THREE.SphereGeometry(0.022, 6, 6)),
     badge: cachedGeometry("badge", () => new THREE.OctahedronGeometry(0.09)),
     ring: cachedGeometry("ring", () => new THREE.RingGeometry(0.42, 0.55, 28)),
+    bubble: cachedGeometry("bubble", () => new THREE.SphereGeometry(0.09, 10, 8)),
     hit: cachedGeometry("hit", () => new THREE.CylinderGeometry(0.55, 0.55, 2.1, 8)),
   };
 }
@@ -279,7 +291,13 @@ export function buildCharacter(
   hit.userData = { kind: "character-hit", agentId };
   group.add(hit);
 
-  const parts: CharacterParts = { torso, head, armL, armR, legL, legR, badge, ring };
+  // -- social bubble (hidden unless chatting nearby; Step 4) -----------------
+  const bubble = new THREE.Mesh(geo["bubble"] as THREE.BufferGeometry, bubbleMaterial());
+  bubble.position.set(0.3, 1.62, 0.05);
+  bubble.visible = false;
+  group.add(bubble);
+
+  const parts: CharacterParts = { torso, head, armL, armR, legL, legR, badge, ring, bubble };
 
   return {
     group,
