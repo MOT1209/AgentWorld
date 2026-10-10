@@ -1,5 +1,40 @@
 @import "tailwindcss";
 
+/* 3D character name labels (pooled DOM overlay, positioned per frame). */
+.sim-label-layer {
+  z-index: 5;
+}
+.sim-label {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 140px;
+  padding: 1px 6px;
+  border-radius: 9999px;
+  background: rgba(11, 16, 32, 0.72);
+  color: #e5e7eb;
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  will-change: transform;
+}
+.sim-label-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 9999px;
+}
+.sim-label-em {
+  background: rgba(251, 191, 36, 0.9);
+  color: #111827;
+  font-weight: 600;
+}
+
 /* The dashboard uses stock utility classes only — no custom theme or plugins.
    Point the v4 scanner at the same content globs the old config declared. */
 @source "../index.html";
