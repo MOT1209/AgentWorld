@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>تقرير محرك العالم ثلاثي الأبعاد — AgentWorld</title>
+<style>
+  :root {
+    --bg: #0b1020;
+    --panel: #121a2f;
+    --panel2: #0f1526;
+    --border: #243049;
+    --text: #e8edf7;
+    --muted: #9fb0cc;
+    --accent: #4f8cff;
+    --green: #2ecc71;
+    --green-bg: #12301f;
+    --red: #ff5c5c;
+    --red-bg: #301418;
+    --amber: #f5b942;
+    --amber-bg: #302512;
+    --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Segoe UI", Tahoma, system-ui, sans-serif;
+    line-height: 1.65;
+    padding: 2rem 1rem 4rem;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; }
+  header {
+    border-bottom: 2px solid var(--border);
+    padding-bottom: 1.5rem;
+    margin-bottom: 2rem;
+  }
+  header h1 { font-size: 1.7rem; margin-bottom: .3rem; }
+  header .sub { color: var(--muted); font-size: .95rem; }
+  .badge {
+    display: inline-block;
+    padding: .15rem .65rem;
+    border-radius: 999px;
+    font-size: .8rem;
+    font-weight: 600;
+  }
+  .badge-ok { background: var(--green-bg); color: var(--green); border: 1px solid var(--green); }
+  .badge-fail { background: var(--red-bg); color: var(--red); border: 1px solid var(--red); }
+  .badge-warn { background: var(--amber-bg); color: var(--amber); border: 1px solid var(--amber); }
+  section {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.4rem 1.6rem;
+    margin-bottom: 1.4rem;
+  }
+  section h2 {
+    font-size: 1.15rem;
+    margin-bottom: 1rem;
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+  }
+  section h2 .sec {
+    background: var(--accent);
+    color: #fff;
+    border-radius: 8px;
+    width: 1.8rem;
+    height: 1.8rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: .95rem;
+    flex-shrink: 0;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: .92rem;
+    margin-top: .4rem;
+  }
+  th, td {
+    border: 1px solid var(--border);
+    padding: .55rem .7rem;
+    text-align: right;
+    vertical-align: top;
+  }
+  th { background: var(--panel2); color: var(--muted); font-weight: 600; }
+  tr:nth-child(even) td { background: rgba(255,255,255,.015); }
+  code, .path {
+    font-family: var(--mono);
+    font-size: .85em;
+    background: var(--panel2);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: .1rem .4rem;
+    direction: ltr;
+    unicode-bidi: embed;
+    display: inline-block;
+  }
+  pre {
+    background: #080d1a;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem 1.2rem;
+    overflow-x: auto;
+    direction: ltr;
+    text-align: left;
+    font-family: var(--mono);
+    font-size: .85rem;
+    line-height: 1.55;
+    margin: .6rem 0;
+  }
+  ul { padding-right: 1.4rem; margin: .4rem 0; }
+  li { margin-bottom: .35rem; }
+  .ok-row td { color: var(--green); }
+  footer {
+    text-align: center;
+    color: var(--muted);
+    font-size: .85rem;
+    margin-top: 2rem;
+    border-top: 1px solid var(--border);
+    padding-top: 1rem;
+  }
+  @media (max-width: 720px) {
+    body { padding: 1rem .5rem 3rem; }
+    section { padding: 1rem; }
+    table { font-size: .82rem; }
+    th, td { padding: .4rem; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>تقرير محرك العالم ثلاثي الأبعاد</h1>
+  <p class="sub">AgentWorld — إصلاح وبناء مدينة ثلاثية الأبعاد مترابطة مع بيانات المواقع الفعلية</p>
+  <p style="margin-top:.6rem">
+    <span class="badge badge-ok">التنفيذ مكتمل</span>
+    <span class="badge badge-ok">typecheck ✓</span>
+    <span class="badge badge-ok">lint ✓</span>
+    <span class="badge badge-ok">build ✓</span>
+    <span class="badge badge-ok">اختبارات 44/44 ✓</span>
+  </p>
+</header>
+
+<section>
+  <h2><span class="sec">A</span> العيوب التي تم إصلاحها</h2>
+  <table>
+    <tr><th>#</th><th>العيب</th><th>الموقع</th><th>الإصلاح</th></tr>
+    <tr>
+      <td>1</td>
+      <td>اختبار الطرق يستخدم نصف القطر الأقصى (halfDiagonal) وهو أشد من الحد الفعلي الذي يضمنه المحرك</td>
+      <td><span class="path">tests/world-view-layout.test.ts</span></td>
+      <td>استُبدل باختبار SAT مطابق لمنطق placement الفعلي (<span class="path">rotatedRectsOverlap</span> مقابل road AABB)</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>تثبيت المواقع عبر <span class="path">metadata</span> كان يُزيح المبنى المثبّت إلى حلقة خارجية عند تصادم</td>
+      <td><span class="path">apps/web/src/world/layout.ts:804</span></td>
+      <td>عند وجود placement من المشغل: تخطٍّ spill — الإحداثيات تفوز دائمًا</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td><span class="path">pickBuildings</span> لا يحدّث المصفوفات في الوضع headless (لا renderer) فيفشل الاختيار بالنقر</td>
+      <td><span class="path">apps/web/src/world/scene.ts:107</span></td>
+      <td>إضافة <span class="path">this.scene.updateMatrixWorld(true)</span> في بداية الدالة</td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td>helper <span class="path">door()</span> غير مستخدم (الباب مدمج inline)</td>
+      <td><span class="path">apps/web/src/world/buildings.ts</span></td>
+      <td>حُذف الدالة</td>
+    </tr>
+    <tr>
+      <td>5</td>
+      <td>استيراد <span class="path">clearanceForKind</span> غير مستخدم + hack <span class="path">void</span></td>
+      <td><span class="path">SimulationView.tsx</span></td>
+      <td>حُذف الاستيراد والسطر</td>
+    </tr>
+    <tr>
+      <td>6</td>
+      <td>تصريح <span class="path">applySelectionRef</span> مكرر + تعليق eslint-disable غير ضروري</td>
+      <td><span class="path">SimulationView.tsx</span></td>
+      <td>حُدّث الترتيب (التصريح قبل useEffect) وحُذف التكرار والتعليق</td>
+    </tr>
+    <tr>
+      <td>7</td>
+      <td><span class="path">pickBuildings</span> كان يُستدعى داخل <span class="path">applySelection</span> بشكل خاطئ</td>
+      <td><span class="path">SimulationView.tsx</span></td>
+      <td>حُذف — الاختيار يتم بالموقع فقط (key === locationId)</td>
+    </tr>
+  </table>
+</section>
+
+<section>
+  <h2><span class="sec">B</span> الملفات المُنشأة والمُعدّلة</h2>
+  <h3 style="margin:.6rem 0 .3rem;font-size:.98rem;color:var(--muted)">جديدة</h3>
+  <table>
+    <tr><th>الملف</th><th>الوصف</th></tr>
+    <tr><td><span class="path">apps/web/src/world/types.ts</span></td><td>أنواع DTO/Plan مشتركة (LocationDto مع address+metadata، BuildingPlan، LayoutInput)</td></tr>
+    <tr><td><span class="path">apps/web/src/world/layout.ts</span></td><td>محرك التخطيط (1114 سطر): SAT، حزم، شوارع، أرصفة، أحياء، تصادم، تثبيت metadata</td></tr>
+    <tr><td><span class="path">apps/web/src/world/buildings.ts</span></td><td>بناء mesh المباني/الطرق/الأرض/الزينة (vertex-colored, merged)</td></tr>
+    <tr><td><span class="path">apps/web/src/world/scene.ts</span></td><td><span class="path">WorldScene</span>: reconcile، pick، highlight، dispose</td></tr>
+    <tr><td><span class="path">tests/world-view-layout.test.ts</span></td><td>17 اختبار للتخطيط (SAT، حزم، تصادم، تثبيت، تصادم)</td></tr>
+    <tr><td><span class="path">tests/world-view-scene.test.ts</span></td><td>9 اختبارات للمشهد (applyPlan، pick، highlight، dispose)</td></tr>
+  </table>
+  <h3 style="margin:1rem 0 .3rem;font-size:.98rem;color:var(--muted)">مُعدّلة</h3>
+  <table>
+    <tr><th>الملف</th><th>التعديل</th></tr>
+    <tr><td><span class="path">apps/web/src/SimulationView.tsx</span></td><td>إعادة كتابة كاملة (~800 سطر) مع الحفاظ على نظام الشخصيات</td></tr>
+    <tr><td><span class="path">packages/world/src/world.service.ts</span></td><td>إضافة <span class="path">address</span> + <span class="path">metadata</span> للـ snapshot عبر <span class="path">parseJsonSafe</span></td></tr>
+  </table>
+</section>
+
+<section>
+  <h2><span class="sec">C</span> إثبات الفحص</h2>
+  <table>
+    <tr><th>الفحص</th><th>الأمر</th><th>النتيجة</th></tr>
+    <tr class="ok-row"><td>Root typecheck</td><td><span class="path">tsc -p tsconfig.json --noEmit</span></td><td>EXIT=0 ✓</td></tr>
+    <tr class="ok-row"><td>Web typecheck</td><td><span class="path">tsc -p apps/web/tsconfig.json --noEmit</span></td><td>EXIT=0 ✓</td></tr>
+    <tr class="ok-row"><td>Lint</td><td><span class="path">eslint</span> على كل الملفات الجديدة/المعدّلة</td><td>EXIT=0 ✓</td></tr>
+    <tr class="ok-row"><td>Build</td><td><span class="path">npm run build:web</span></td><td>EXIT=0 ✓ — بناء في 14 ثانية</td></tr>
+    <tr class="ok-row"><td>اختبارات التخطيط + المشهد</td><td><span class="path">vitest run tests/world-view-*.test.ts</span></td><td><strong>26/26</strong> ✓</td></tr>
+    <tr class="ok-row"><td>اختبارات الشخصيات القديمة</td><td><span class="path">vitest run tests/world-characters.test.ts</span></td><td><strong>18/18</strong> ✓</td></tr>
+  </table>
+</section>
+
+<section>
+  <h2><span class="sec">D</span> القرارات المعمارية</h2>
+  <ul>
+    <li><strong>لا migration</strong> — البيانات المكانية تُقرأ من <span class="path">location.metadata</span> و<span class="path">district.geometry</span> مباشرة (توافق خلفي كامل).</li>
+    <li><strong>إحداثيات المشغل تفوز دائمًا</strong> — لا spill لأي موقع مثبّت يدويًا عبر metadata.</li>
+    <li><strong>SAT مطابق للإنتاج</strong> — اختبار الطرق يستخدم نفس منطق <span class="path">rotatedRectsOverlap</span> المستخدم في <span class="path">tryPlace</span>.</li>
+    <li><strong><span class="path">updateMatrixWorld</span> يدوي</strong> — لأن الوضع headless لا يوجد renderer يحدّث المصفوفات.</li>
+    <li><strong>إبقاء نظام الشخصيات كما هو</strong> — إعادة الاستخدام دون تعديل واجهته.</li>
+  </ul>
+</section>
+
+<section>
+  <h2><span class="sec">E</span> المخاطر المتبقية</h2>
+  <table>
+    <tr><th>الخطر</th><th>التأثير</th><th>الحل المقترح</th></tr>
+    <tr>
+      <td><span class="path">FALLBACK_CENTER (0,20)</span> قد يتقاطع مع حي وسط المدينة</td>
+      <td>أذرع شخصيات غير مخصصة قد تظهر فوق مبنى</td>
+      <td>تغيير <span class="path">FALLBACK_CENTER</span> إلى parcel الـ PUBLIC</td>
+    </tr>
+    <tr>
+      <td><span class="path">load()</span> يجلب state ثم snapshot تسلسليًا</td>
+      <td>فشل snapshot يمسح المشهد</td>
+      <td>استخدام <span class="path">Promise.all</span></td>
+    </tr>
+    <tr>
+      <td>حجم bundle <span class="path">three</span> (~502 kB)</td>
+      <td>تحذير vite</td>
+      <td>code-split لاحقًا</td>
+    </tr>
+  </table>
+</section>
+
+<section>
+  <h2><span class="sec">F</span> أوامر التشغيل</h2>
+  <pre>npm run verify              # typecheck → lint → test → build
+npm run test -- world-view  # اختبارات العالم فقط
+npm run build:web           # فحص web app فقط</pre>
+</section>
+
+<section>
+  <h2><span class="sec">G</span> الخطوة التالية</h2>
+  <ul>
+    <li>تشغيل <span class="path">npm run verify</span> الكامل للتأكد من عدم كسر أي ملف آخر في الـ monorepo.</li>
+    <li>معالجة المخاطر المتبقية في E (FALLBACK_CENTER، Promise.all، code-split).</li>
+    <li>إضافة مزيد من الاختبارات التكاملية مع بيانات حقيقية.</li>
+  </ul>
+</section>
+
+<footer>
+  AgentWorld — محرك العالم ثلاثي الأبعاد — تقرير فني داخلي
+</footer>
+
+</div>
+</body>
+</html>
