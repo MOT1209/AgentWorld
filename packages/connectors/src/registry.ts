@@ -10,7 +10,7 @@
  */
 import type { DbClient } from "../../database/src/index.js";
 import { revealCredential, findActiveCredential } from "../../vault/src/index.js";
-import { assertPublicUrl, conflict, getConfig, newCorrelationId, validationError, type ActorRef } from "../../shared/src/index.js";
+import { assertPublicUrl, conflict, getConfig, newCorrelationId, readTextCapped, validationError, type ActorRef } from "../../shared/src/index.js";
 import { eventBus, EVENT_TYPES } from "../../events/src/index.js";
 import type { ConnectorKind } from "../../shared/src/index.js";
 
@@ -80,6 +80,8 @@ export interface ConnectorCallResult {
 
 /** Outbound timeout -- a connector call never hangs the agent loop. */
 const CALL_TIMEOUT_MS = 15_000;
+/** Connector replies go back to the model; cap what one call can pull in. */
+const MAX_RESPONSE_BYTES = 1_048_576;
 
 export const MARKETPLACE: ConnectorDescriptor[] = [
   {
@@ -507,7 +509,7 @@ async function request(
       signal: controller.signal,
       ...(options.callerUrl === true ? { redirect: "manual" as const } : {}),
     });
-    const text = await response.text().catch(() => "");
+    const { text } = await readTextCapped(response, MAX_RESPONSE_BYTES).catch(() => ({ text: "" }));
     let data: unknown = text;
     try {
       data = JSON.parse(text) as unknown;

@@ -5,7 +5,7 @@
 Historical snapshot at Phase 1 close; current totals in brackets.
 
 - Monorepo + strict toolchain (typecheck, lint, test, build)
-- SQLite schema (27 models) + ledger immutability triggers [now 48 models]
+- SQLite schema (27 models) + ledger immutability triggers [now 50 models]
 - Integer-minor-unit money, single-writer ledger, `verifyLedger`
 - Event bus + audit log, typed catalogue (~45 events) [now ~119 types]
 - Swappable AI providers + deterministic mock + `ModelRouter`
@@ -14,7 +14,8 @@ Historical snapshot at Phase 1 close; current totals in brackets.
 - Agent runtime (think-act-observe) + 4 role profiles + 19 tools
   [now 82 tools]
 - REST API (auth, RBAC, approvals replay, agent wakeup), seed, 25 tests
-  [now 313 tests: 298 passing + 15 environment-gated skips when Docker/CLI runtimes are absent],
+  [now 440 tests in 43 files as of 2026-10-11: 427 passing + 13 environment-gated skips when
+  Docker/OpenCode runtimes are absent; see docs/audits/AGENTWORLD_TEST_REPORT.md],
   operator dashboard, docs
 
 ## Phase 2 (done): orchestration

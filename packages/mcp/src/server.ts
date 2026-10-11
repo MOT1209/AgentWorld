@@ -21,7 +21,8 @@ import type { DbClient } from "../../database/src/index.js";
 import { authenticateApiKey, assertScopesAllow, type ApiKeyAuthentication } from "../../security/src/api-keys.js";
 import { PERMISSIONS } from "../../security/src/permissions.js";
 import { eventBus, EVENT_TYPES } from "../../events/src/index.js";
-import { newCorrelationId, SYSTEM_ACTOR } from "../../shared/src/index.js";
+import { newCorrelationId, SYSTEM_ACTOR, TEST_SUITES, TestSuiteSchema } from "../../shared/src/index.js";
+import { createTask } from "../../tasks/src/task.service.js";
 
 export const MCP_PROTOCOL_VERSION = "2025-06-18";
 export const MCP_SERVER_NAME = "agentworld";
@@ -115,20 +116,26 @@ export const MCP_TOOLS: McpToolDefinition[] = [
       },
       ["companyId", "title"],
     ),
-    async run(db, _auth, args) {
+    async run(db, auth, args) {
       const companyId = id(args.companyId);
-      const title = typeof args.title === "string" ? args.title.slice(0, 200) : "";
+      const title = typeof args.title === "string" ? args.title.trim().slice(0, 200) : "";
       if (companyId === null || title === "") throw new Error("companyId and title are required");
       const company = await db.company.findUnique({ where: { id: companyId } });
       if (company === null) throw new Error("Company not found");
-      const task = await db.task.create({
-        data: {
+      // Through the task engine, not a bare insert: TASK_CREATED is emitted
+      // and the activity trail names the key's owner.
+      const task = await createTask(
+        db,
+        {
           title,
           description: typeof args.description === "string" ? args.description.slice(0, 4000) : null,
-          priority: typeof args.priority === "string" ? args.priority : "MEDIUM",
+          // createTask validates the priority against the shared enum.
+          ...(args.priority !== undefined ? { priority: String(args.priority) } : {}),
           companyId,
+          creatorUserId: auth.apiKey.userId,
         },
-      });
+        { actor: { actorType: "USER", actorId: auth.apiKey.userId, actorName: `mcp:${auth.apiKey.name}` }, companyId },
+      );
       return { taskId: task.id, status: task.status };
     },
   },
@@ -195,13 +202,13 @@ export const MCP_TOOLS: McpToolDefinition[] = [
     ),
     async run(db, _auth, args) {
       const workspaceId = id(args.workspaceId);
-      const suite = typeof args.suite === "string" ? args.suite.toUpperCase() : "";
-      if (workspaceId === null || suite === "") throw new Error("workspaceId and suite are required");
+      const suite = TestSuiteSchema.safeParse(typeof args.suite === "string" ? args.suite.toUpperCase() : args.suite);
+      if (workspaceId === null || !suite.success) throw new Error(`workspaceId and suite (${TEST_SUITES.join(", ")}) are required`);
       const { runTestSuite } = await import("../../factory/src/testing.js");
       const result = await runTestSuite(db, {
         workspaceId,
-        suite: suite as never,
-        name: typeof args.name === "string" ? args.name : suite,
+        suite: suite.data,
+        name: typeof args.name === "string" ? args.name.slice(0, 200) : suite.data,
       });
       return { testRunId: result.id, status: result.status };
     },

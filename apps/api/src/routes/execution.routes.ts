@@ -65,6 +65,12 @@ executionRouter.post(
       if (body.kind !== "BACKEND" && isPrompt) {
         throw validationError(`${body.kind} executions require an argv array command`);
       }
+      if (body.sessionId !== undefined) {
+        // A job linked to a session shows up in that session's history, so the
+        // session must be visible too (scopeRefs has no session link).
+        const session = await prisma.agentSession.findUnique({ where: { id: body.sessionId }, select: { agentId: true, taskId: true, workspaceId: true } });
+        if (session === null || (await scoped(req, [session], (s) => s)).length === 0) throw notFound("AgentSession", body.sessionId);
+      }
       if (body.workspaceId !== undefined) {
         const workspace = await requireWorkspace(prisma, body.workspaceId);
         const allowed = await canWriteWorkspace(prisma, workspace, {
@@ -113,6 +119,15 @@ executionRouter.post(
     try {
       const principal = getPrincipal(req);
       const body = req.body as z.infer<typeof VerifyReportSchema>;
+      // The report copies each job's command and error, so every job must be
+      // visible to the caller; an invisible one is a 404 like a missing one.
+      const jobs = await prisma.executionJob.findMany({
+        where: { id: { in: body.jobIds } },
+        select: { id: true, agentId: true, taskId: true, workspaceId: true },
+      });
+      const visible = new Set((await scoped(req, jobs, (j) => j)).map((j) => j.id));
+      const hidden = body.jobIds.find((id) => !visible.has(id));
+      if (hidden !== undefined) throw notFound("ExecutionJob", hidden);
       const report = await buildVerificationReport(
         prisma,
         body.jobIds,

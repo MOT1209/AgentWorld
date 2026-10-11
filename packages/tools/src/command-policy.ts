@@ -151,7 +151,12 @@ const BUILT_IN_SAFE = new Set([
 /** Runtimes that accept code as an argument rather than a file. */
 const INLINE_CODE_RUNTIMES = new Set(["node", "python", "python3", "bun", "deno"]);
 /** Flags that turn the next argv element into executable code. */
-const INLINE_CODE_FLAGS = new Set(["-e", "-p", "-c", "-r", "--eval", "--print", "--require", "--import", "eval"]);
+const INLINE_CODE_FLAGS = new Set([
+  "-e", "-p", "-c", "-r", "--eval", "--print", "--require", "--import", "eval",
+  "--loader", "--experimental-loader",
+]);
+/** `--flag=value` spellings of the same flags. */
+const INLINE_CODE_FLAG_PREFIXES = ["--eval=", "--print=", "--require=", "--import=", "--loader=", "--experimental-loader="];
 const SCRIPT_FILE = /\.(m?js|cjs|ts|mts|py)$/i;
 
 /**
@@ -162,20 +167,36 @@ const SCRIPT_FILE = /\.(m?js|cjs|ts|mts|py)$/i;
 function hasInlineCode(argv: readonly string[]): boolean {
   for (const raw of argv.slice(1)) {
     const part = raw.toLowerCase();
-    if (SCRIPT_FILE.test(part)) return false;
+    // Flags first: `--loader=./x.mjs` names a file but still runs it before
+    // the script, so a script-shaped value must not end the scan.
     if (INLINE_CODE_FLAGS.has(part)) return true;
-    if (part.startsWith("--eval=") || part.startsWith("--print=") || part.startsWith("--require=")) return true;
+    if (INLINE_CODE_FLAG_PREFIXES.some((prefix) => part.startsWith(prefix))) return true;
     if (/^-[a-z]*[ecp]$/.test(part)) return true;
+    if (SCRIPT_FILE.test(part)) return false;
   }
   return false;
 }
 
-/** True when an argument is a path that can leave the workspace root. */
+function isOutsidePath(value: string): boolean {
+  if (value === ".." || value.startsWith("../") || value.startsWith("..\\")) return true;
+  if (value.includes("/../") || value.includes("\\..\\") || value.endsWith("/..") || value.endsWith("\\..")) return true;
+  if (/^[a-zA-Z]:[\\/]/.test(value)) return true; // drive letter
+  if (/^[\\/]/.test(value)) return true;           // POSIX absolute or UNC
+  return false;
+}
+
+/**
+ * True when an argument is a path that can leave the workspace root. Option
+ * values count too: `--git-dir=/other/.git`, `--target-directory=/tmp` and a
+ * joined short option like `-C/elsewhere` name a path as surely as a
+ * positional argument does.
+ */
 function pointsOutsideWorkspace(argv: readonly string[]): boolean {
   for (const part of argv.slice(1)) {
-    if (part === ".." || part.includes("../") || part.includes("..\\")) return true;
-    if (/^[a-zA-Z]:[\\/]/.test(part)) return true; // drive letter
-    if (/^[\\/]/.test(part)) return true;           // POSIX absolute or UNC
+    if (isOutsidePath(part) || part.includes("../") || part.includes("..\\")) return true;
+    const eq = part.indexOf("=");
+    if (part.startsWith("-") && eq !== -1 && isOutsidePath(part.slice(eq + 1))) return true;
+    if (/^-[a-zA-Z]./.test(part) && !part.startsWith("--") && isOutsidePath(part.slice(2))) return true;
   }
   return false;
 }

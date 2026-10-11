@@ -10,7 +10,9 @@
   `agent.create/delete/modify`, `company.structure.modify`, `audit.read`, and
   `wallet.withdraw` are human-only.
 - Double spend: optimistic locking (`version`) + unique `idempotencyKey` +
-  single-flight approval claims.
+  single-flight approval claims. A key replays only the identical movement
+  (type, direction, amount, currency, and for transfers the destination);
+  reusing it for anything else is a 409, never a silent "replayed" success.
 - History rewriting: `Transaction` is append-only via SQLite triggers; wallets
   retire with `isFrozen`, never hard delete.
 - Secret leakage: DTOs never serialise `passwordHash` or provider keys. Logs
@@ -18,7 +20,9 @@
   in `sessionStorage`, never in build output.
 - Token forgery: HS256 pinned with algorithm allow-list, issuer + audience
   verified. Missing/weak `JWT_SECRET` is fatal in production.
-- Brute force: login (10/15min) and agent-run (20/min) rate limits.
+- Brute force: login (10/15min) and agent-run (20/min) rate limits. An
+  unknown or inactive account still costs one bcrypt comparison, so login
+  timing does not reveal which emails exist.
 - Log injection: inputs are sanitised (CRLF collapsed, length-bounded) and
   role-impersonation patterns are flagged.
 
@@ -44,10 +48,13 @@ Rows with no company (shared world, unaffiliated agents) stay visible.
 
 Enforcement (`apps/api/src/middleware/company-scope.ts`):
 
-- Every authenticated router runs `scopeRefs`: any company, agent
-  (`agentId`, `*AgentId`), task, plan or workspace id in the body or query
-  string must be visible, so work cannot be filed into, assigned from, or
-  filtered by another company.
+- Every authenticated router runs `scopeRefs`: any company, agent, task, plan
+  or workspace id in the body or query string must be visible, so work cannot
+  be filed into, assigned from, or filtered by another company. Prefixed and
+  plural keys count (`currentCompanyId`, `parentTaskId`, `assigneeAgentId`,
+  `participantAgentIds`); arrays are checked element by element. Ids of other
+  kinds are checked in their route: execution `sessionId` and verify-report
+  `jobIds` must belong to visible rows.
 - `:id`-style params resolve their row's links (company directly, or via its
   agent's current company, task, plan, or workspace agent); a row is visible
   only when every link is.
@@ -81,8 +88,13 @@ withheld pending a human.
   and the working directory right before spawning, so a row written around the
   gate still cannot run.
 - **No shell.** Commands are argv arrays spawned with `shell: false`; shell
-  metacharacters are inert data. Unknown commands, inline-code interpreters and
-  arguments pointing outside the workspace require approval.
+  metacharacters are inert data. Unknown commands, inline-code interpreters
+  (including `--import=`/`--loader=` forms) and arguments pointing outside the
+  workspace require approval — option values (`--git-dir=/x`, `-C/x`) count.
+- **Local mode runs agent code on the host.** `npm test`, `node file.js` and
+  `git commit` (hooks) execute files the agent can write, so the command policy
+  is not a sandbox. Use `EXEC_SANDBOX=docker` (the production default) for any
+  agent you do not fully trust.
 - **Environment allow-list.** Child processes get a fixed allow-list; any key
   that looks like a secret is dropped even if declared.
 - **Bounded.** Timeout, output cap, concurrency cap, bounded retries (TRANSIENT
@@ -106,6 +118,12 @@ Tests: `tests/security-m4.test.ts`, `tests/execution-tools-m1.test.ts`,
 `evaluateApproval` combines action risk, declared risk, and spend threshold
 (`APPROVAL_SPEND_THRESHOLD` major units). Large `wallet.transfer` calls become
 `PENDING_APPROVAL` with frozen arguments; approval replays them exactly once.
+A decision is a compare-and-set on `PENDING`: of two concurrent decisions
+exactly one wins and the other gets 409, so a rejection cannot be overwritten
+by a late approval. Replay runs with the approving human's permissions.
+
+Known gap: there is no four-eyes rule. A human who triggers a held tool call
+(e.g. via `/tools`) can approve it themselves if they hold `approval.decide`.
 
 ## Outbound requests (SSRF)
 
@@ -118,6 +136,12 @@ at each delivery, and these requests never follow redirects. A `graphql`
 credential's token is only sent to its configured base-URL origin.
 Residual: fetch resolves DNS again, so a rebinding host with a ~0s TTL can
 still race the check; egress filtering at the network layer closes that.
+Outside production the check is skipped, so development agents can reach
+localhost.
+
+Response bodies are read through `readTextCapped`: connector calls keep at
+most 1 MiB, webhook deliveries 4 KiB, provider completions 8 MiB (larger is
+an error), so a hostile endpoint cannot make the server buffer without bound.
 
 ## Sessions in URLs and OAuth state
 

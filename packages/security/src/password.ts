@@ -33,6 +33,20 @@ export function verifyPassword(plain: string, hash: string): boolean {
   }
 }
 
+let dummyHash: string | null = null;
+
+/**
+ * Burns one bcrypt comparison at the configured cost and returns false. Login
+ * calls it when the account is unknown or inactive, so that path costs the
+ * same as a wrong password and response time does not reveal which emails
+ * have accounts.
+ */
+export function verifyPasswordAgainstDummy(plain: string): boolean {
+  dummyHash ??= hashPassword("timing-equaliser-0");
+  verifyPassword(plain, dummyHash);
+  return false;
+}
+
 function looksLikeBcrypt(hash: string): boolean {
   return typeof hash === "string" && hash.startsWith(BCRYPT_PREFIX) && hash.length >= 59;
 }

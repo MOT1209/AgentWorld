@@ -29,7 +29,7 @@ import { getCorrelationId } from "../middleware/correlation.js";
 import { validate } from "../middleware/validate.js";
 import { eventBus, EVENT_TYPES, type EventType } from "../../../../packages/events/src/index.js";
 import { recordActivity } from "../../../../packages/events/src/audit.js";
-import { requestApproval } from "../../../../packages/approvals/src/index.js";
+import { consumeApprovedAction, requestApproval } from "../../../../packages/approvals/src/index.js";
 import { roleProfiles } from "../../../../packages/agents/src/role-profiles.js";
 import {
   SkillDiscoveryQuerySchema,
@@ -317,12 +317,17 @@ const InstallSchema = z.object({
   approvalRequestId: z.string().min(1).optional(),
 });
 
-async function assertApproved(approvalRequestId: string | undefined, action: string): Promise<void> {
-  if (approvalRequestId === undefined) throw new Error("APPROVAL_REQUIRED");
-  const approval = await prisma.approvalRequest.findUnique({ where: { id: approvalRequestId } });
-  if (approval === null || approval.action !== action || approval.status !== "APPROVED") {
-    throw new Error("A valid APPROVED approval request is required before continuing.");
-  }
+/**
+ * The approval must be for this action AND this exact payload, and it is
+ * single-use: approving one skill (or one agent assignment) cannot unlock
+ * another, and one approval cannot be replayed.
+ */
+async function assertApproved(
+  approvalRequestId: string | undefined,
+  action: string,
+  binding: Record<string, unknown>,
+): Promise<void> {
+  await consumeApprovedAction(prisma, approvalRequestId, action, binding);
 }
 
 skillRouter.post(
@@ -374,7 +379,11 @@ skillRouter.post(
       }
       if (plan.approvalRequired) {
         try {
-          await assertApproved(body.approvalRequestId, "skill.install");
+          await assertApproved(body.approvalRequestId, "skill.install", {
+            source: body.source,
+            externalId: body.externalId,
+            manifest: plan.manifest,
+          });
         } catch {
           const approval = await requestApproval(
             prisma,
@@ -499,13 +508,18 @@ skillRouter.post(
       const planned = planUpdate(installed, body.manifest, record.source, record.externalId, body.files ?? {});
       if (planned.approvalRequired) {
         try {
-          await assertApproved(body.approvalRequestId, "skill.update");
+          await assertApproved(body.approvalRequestId, "skill.update", {
+            skillKey: key,
+            from: installed.version,
+            to: planned.manifest.version,
+            manifest: planned.manifest,
+          });
         } catch {
           const approval = await requestApproval(
             prisma,
             {
               action: "skill.update",
-              actionPayload: { skillKey: key, from: installed.version, to: planned.manifest.version },
+              actionPayload: { skillKey: key, from: installed.version, to: planned.manifest.version, manifest: planned.manifest },
               reason: `Skill update '${key}' ${installed.version} -> ${planned.manifest.version} requires review: ${planned.approvalReason ?? "changes detected"}.`,
               risk: planned.securityReport.riskLevel === "LOW" ? "MEDIUM" : planned.securityReport.riskLevel,
               requester: ctx.actor,
@@ -709,7 +723,7 @@ skillRouter.post(
       }
       if (record.risk === "HIGH" || record.risk === "CRITICAL") {
         try {
-          await assertApproved(body.approvalRequestId, "skill.assign");
+          await assertApproved(body.approvalRequestId, "skill.assign", { skillKey: key, agentId: body.agentId });
         } catch {
           const ctx = actorCtx(req);
           const approval = await requestApproval(

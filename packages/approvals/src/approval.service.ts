@@ -69,15 +69,20 @@ export async function requestApproval(
   const policy = loadApprovalPolicy();
   const ttlHours = input.ttlHours ?? policy.ttlHours;
 
+  // Only an AGENT requester's actor id is an agent id. A human requester's id
+  // is a user id: putting it in requesterAgentId violates the Agent foreign
+  // key, and putting it in the payload's agentId would make replay treat the
+  // human as an agent.
+  const requesterAgentFallback = input.requester.actorType === "AGENT" ? (input.requester.actorId ?? null) : null;
   const request = await db.approvalRequest.create({
     data: {
       requesterType: input.requester.actorType,
-      requesterAgentId: input.requesterAgentId ?? input.requester.actorId ?? null,
+      requesterAgentId: input.requesterAgentId ?? requesterAgentFallback,
       requesterUserId: input.requester.actorType === "USER" ? (input.requester.actorId ?? null) : null,
       action: input.action,
       actionPayload: toJson({
         toolName: input.toolName ?? input.action,
-        agentId: input.agentId ?? input.requester.actorId ?? null,
+        agentId: input.agentId ?? requesterAgentFallback,
         arguments: input.actionPayload,
       }),
       reason: input.reason,
@@ -149,8 +154,11 @@ export async function decideApproval(
     throw conflict("Approval request has expired", { requestId: request.id });
   }
 
-  const updated = await db.approvalRequest.update({
-    where: { id: request.id },
+  // Compare-and-set on PENDING: two concurrent decisions both pass the read
+  // above, and a plain update would let the later one overwrite the earlier
+  // (a REJECTED request silently becoming APPROVED and replayable).
+  const claimed = await db.approvalRequest.updateMany({
+    where: { id: request.id, status: "PENDING" },
     data: {
       status: input.decision,
       decidedByUserId: input.decidedByUserId,
@@ -158,6 +166,14 @@ export async function decideApproval(
       decisionNote: input.note ?? null,
     },
   });
+  if (claimed.count === 0) {
+    const current = await db.approvalRequest.findUnique({ where: { id: request.id }, select: { status: true } });
+    throw conflict(`Approval request is already ${current?.status ?? "decided"}`, {
+      requestId: request.id,
+      status: current?.status ?? null,
+    });
+  }
+  const updated = await db.approvalRequest.findUniqueOrThrow({ where: { id: request.id } });
 
   await eventBus.publishAndDispatch(db, {
     type:
@@ -245,6 +261,36 @@ export async function markExecutionSucceeded(db: DbClient, requestId: string): P
     where: { id: requestId },
     data: { executedAt: new Date(), executionError: null },
   });
+}
+
+/**
+ * For flows that resume on their own route (skill install/update/assign)
+ * instead of through tool replay: the caller presents the approval id again.
+ * The approval must be APPROVED for this action, its frozen payload must match
+ * `binding` field by field (so approving skill A cannot unlock skill B), and
+ * it is consumed: a second use throws, exactly like a replayed tool call.
+ */
+export async function consumeApprovedAction(
+  db: DbClient,
+  requestId: string | undefined,
+  action: string,
+  binding: Record<string, unknown>,
+): Promise<ApprovalRequest> {
+  if (requestId === undefined) throw forbidden("An approved approval request is required", { action });
+  const request = await db.approvalRequest.findUnique({ where: { id: requestId } });
+  if (request === null || request.action !== action || request.status !== "APPROVED") {
+    throw forbidden("A valid APPROVED approval request for this action is required", { action, requestId });
+  }
+  const frozen = readApprovalPayload(request).arguments;
+  for (const [key, expected] of Object.entries(binding)) {
+    if (JSON.stringify(frozen[key]) !== JSON.stringify(expected)) {
+      throw forbidden(`Approval request ${requestId} was granted for a different '${key}'`, { action, requestId });
+    }
+  }
+  const claimed = await claimForExecution(db, requestId);
+  if (claimed === null) throw conflict("Approval request was already used", { requestId });
+  await markExecutionSucceeded(db, requestId);
+  return claimed;
 }
 
 export interface StoredApprovalPayload {

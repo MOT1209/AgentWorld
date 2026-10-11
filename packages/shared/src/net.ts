@@ -131,3 +131,35 @@ export async function assertPublicUrl(rawUrl: string, lookup: HostLookup = defau
   if (addresses.length === 0 || addresses.some(isNonPublicAddress)) refuse();
   return parsed.toString();
 }
+
+/**
+ * Reads a fetch response body as text, stopping after `maxBytes`. A remote
+ * end (an agent-chosen connector URL, a webhook receiver, a provider gateway)
+ * must not be able to make the server buffer an unbounded body: the stream is
+ * cancelled at the cap and the result says it was truncated.
+ */
+export async function readTextCapped(
+  response: Response,
+  maxBytes: number,
+): Promise<{ text: string; truncated: boolean }> {
+  if (response.body === null) return { text: "", truncated: false };
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let text = "";
+  let received = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) return { text: text + decoder.decode(), truncated: false };
+      const room = maxBytes - received;
+      if (value.byteLength > room) {
+        text += decoder.decode(value.subarray(0, room));
+        return { text, truncated: true };
+      }
+      received += value.byteLength;
+      text += decoder.decode(value, { stream: true });
+    }
+  } finally {
+    reader.cancel().catch(() => undefined);
+  }
+}

@@ -98,13 +98,19 @@ export async function scopedLogs<T extends Parameters<typeof logOwnerRef>[0]>(sc
   return filterByScope(scope, byActorAndRest, (row) => ({ agentId: logOwnerRef(row).extraAgentId ?? null }));
 }
 
-/** Maps a body/query key to the link it names, or null when it names none. */
+/**
+ * Maps a body/query key to the link it names, or null when it names none.
+ * Prefixed (`currentCompanyId`, `parentTaskId`, `assigneeAgentId`) and plural
+ * (`participantAgentIds`) spellings name the same link: a key the scope check
+ * does not recognise is a key that can smuggle another company's id.
+ */
 function linkForKey(key: string): keyof OwnerRef | null {
-  if (key === "companyId") return "companyId";
-  if (key === "taskId") return "taskId";
-  if (key === "planId") return "planId";
-  if (key === "workspaceId") return "workspaceId";
-  if (key === "agentId" || /AgentId$/.test(key)) return "agentId";
+  const singular = key.endsWith("Ids") ? key.slice(0, -1) : key;
+  if (singular === "companyId" || singular.endsWith("CompanyId")) return "companyId";
+  if (singular === "taskId" || singular.endsWith("TaskId")) return "taskId";
+  if (singular === "planId" || singular.endsWith("PlanId")) return "planId";
+  if (singular === "workspaceId" || singular.endsWith("WorkspaceId")) return "workspaceId";
+  if (singular === "agentId" || singular.endsWith("AgentId")) return "agentId";
   return null;
 }
 
@@ -112,6 +118,8 @@ function linkForKey(key: string): keyof OwnerRef | null {
  * Router middleware: every company/agent/task/plan/workspace id that arrives
  * in the body or query string must be visible, so a caller can neither file
  * work into another company nor filter a list by another company's ids.
+ * Arrays of ids (`participantAgentIds`, repeated query keys) are checked
+ * element by element.
  */
 export function scopeRefs(req: Request, _res: Response, next: NextFunction): void {
   const refs: Array<{ owner: OwnerRef; key: string; id: string }> = [];
@@ -119,7 +127,10 @@ export function scopeRefs(req: Request, _res: Response, next: NextFunction): voi
     if (source === null || typeof source !== "object" || Array.isArray(source)) continue;
     for (const [key, value] of Object.entries(source as Record<string, unknown>)) {
       const link = linkForKey(key);
-      if (link !== null && typeof value === "string" && value.length > 0) refs.push({ owner: { [link]: value }, key, id: value });
+      if (link === null) continue;
+      for (const id of Array.isArray(value) ? value : [value]) {
+        if (typeof id === "string" && id.length > 0) refs.push({ owner: { [link]: id }, key, id });
+      }
     }
   }
   if (refs.length === 0) {
@@ -131,7 +142,7 @@ export function scopeRefs(req: Request, _res: Response, next: NextFunction): voi
     if (scope.all) return;
     for (const ref of refs) {
       const visible = await filterByScope(scope, [ref.owner], (o) => o);
-      if (visible.length === 0) throw notFound(ref.key.replace(/Id$/, ""), ref.id);
+      if (visible.length === 0) throw notFound(ref.key.replace(/Ids?$/, ""), ref.id);
     }
   })().then(() => next(), next);
 }
