@@ -62,6 +62,10 @@ class MeshBuilder:
     def __init__(self) -> None:
         self.bm = bmesh.new()
         self.materials: list[bpy.types.Material] = []
+        # Faces tagged 1 get an outline hull in build_vertex_colored().
+        self._ol = self.bm.faces.layers.int.new("outline")
+        self.outline_next = True
+        self.smooth = True  # buildings use flat shading
 
     def _slot(self, mat: bpy.types.Material) -> int:
         if mat not in self.materials:
@@ -73,12 +77,17 @@ class MeshBuilder:
         slot = self._slot(mat)
         for face in temp.faces:
             face.material_index = slot
-            face.smooth = True
+            face.smooth = self.smooth
         mesh = bpy.data.meshes.new("_tmp")
         temp.to_mesh(mesh)
         temp.free()
+        before = len(self.bm.faces)
         self.bm.from_mesh(mesh)
         bpy.data.meshes.remove(mesh)
+        self.bm.faces.ensure_lookup_table()
+        flag = 1 if self.outline_next else 0
+        for face in self.bm.faces[before:]:
+            face[self._ol] = flag
 
     def sphere(self, mat, center, radii, segments=16, rings=10, rotation=(0.0, 0.0, 0.0), keep=None) -> None:
         """UV sphere; `keep(x, y, z)` on the unit sphere drops every vertex it rejects."""
@@ -132,6 +141,15 @@ class MeshBuilder:
                 temp.faces.new((a_row[j], a_row[(j + 1) % ring], b_row[(j + 1) % ring], b_row[j]))
         self._add(temp, mat, _trs(center, rotation, (1.0, 1.0, 1.0)))
 
+    def poly(self, mat, verts, faces) -> None:
+        """Arbitrary closed shape from vertex coordinates and face index tuples."""
+        temp = bmesh.new()
+        made = [temp.verts.new(v) for v in verts]
+        for f in faces:
+            temp.faces.new([made[i] for i in f])
+        bmesh.ops.recalc_face_normals(temp, faces=temp.faces[:])
+        self._add(temp, mat, Matrix.Identity(4))
+
     def build(self, name: str, parent: bpy.types.Object | None, outline: bpy.types.Material | None = None,
               outline_width: float = 0.012, outline_skip: Iterable[bpy.types.Material] = ()) -> bpy.types.Object:
         mesh = bpy.data.meshes.new(name)
@@ -147,6 +165,105 @@ class MeshBuilder:
         if outline is not None:
             _outline_hull(obj, outline, outline_width, set(outline_skip))
         return obj
+
+
+    def build_vertex_colored(self, name: str, outline_rgb: Sequence[float] | None, outline_width: float,
+                             parent: bpy.types.Object | None = None) -> bpy.types.Object:
+        """One mesh, one material, colours baked per face corner into `Color` (linear).
+
+        Outlined faces get an inverted hull merged into the SAME mesh with reversed
+        winding, so an ordinary front-face material draws it as an outline. That keeps
+        a whole building (outline included) to a single draw call.
+        """
+        bm = self.bm
+        colors = [tuple(m.diffuse_color[:3]) for m in self.materials]
+        outline_slot = -1
+        if outline_rgb is not None:
+            colors.append(tuple(outline_rgb))
+            outline_slot = len(colors) - 1
+            tagged = [f for f in bm.faces if f[self._ol] == 1]
+            if tagged:
+                dup = bmesh.ops.duplicate(bm, geom=tagged)
+                new_faces = [g for g in dup["geom"] if isinstance(g, bmesh.types.BMFace)]
+                new_verts = [g for g in dup["geom"] if isinstance(g, bmesh.types.BMVert)]
+                for f in new_faces:
+                    f.normal_update()
+                for v in new_verts:
+                    v.normal_update()
+                offsets = [(v, v.normal.copy()) for v in new_verts]
+                for v, n in offsets:
+                    v.co += n * outline_width
+                bmesh.ops.reverse_faces(bm, faces=new_faces)
+                for f in new_faces:
+                    f.material_index = outline_slot
+                    f[self._ol] = 0
+        mesh = bpy.data.meshes.new(name)
+        bm.normal_update()
+        bm.to_mesh(mesh)
+        bm.free()
+        attr = mesh.color_attributes.new("Color", "FLOAT_COLOR", "CORNER")
+        for poly in mesh.polygons:
+            rgb = colors[poly.material_index] if poly.material_index < len(colors) else (1.0, 0.0, 1.0)
+            for li in poly.loop_indices:
+                attr.data[li].color = (*rgb, 1.0)
+        mesh.color_attributes.active_color = attr
+        for poly in mesh.polygons:
+            poly.material_index = 0
+        mesh.materials.append(vertex_color_material())
+        obj = bpy.data.objects.new(name, mesh)
+        bpy.context.scene.collection.objects.link(obj)
+        if parent is not None:
+            obj.parent = parent
+        return obj
+
+
+def vertex_color_material() -> bpy.types.Material:
+    """Base colour from the `Color` attribute; back faces transparent.
+
+    The transparency only affects Blender previews (Cycles has no back-face culling).
+    It makes the reversed-winding hull read as an outline, as it does on the web.
+    """
+    mat = bpy.data.materials.get("vertex_color")
+    if mat is not None:
+        return mat
+    mat = bpy.data.materials.new("vertex_color")
+    mat.use_nodes = True
+    nodes, links = mat.node_tree.nodes, mat.node_tree.links
+    bsdf = nodes["Principled BSDF"]
+    bsdf.inputs["Roughness"].default_value = 0.8
+    attr = nodes.new("ShaderNodeVertexColor")
+    attr.layer_name = "Color"
+    links.new(attr.outputs["Color"], bsdf.inputs["Base Color"])
+    geo = nodes.new("ShaderNodeNewGeometry")
+    path = nodes.new("ShaderNodeLightPath")
+    transparent = nodes.new("ShaderNodeBsdfTransparent")
+    mix = nodes.new("ShaderNodeMixShader")
+
+    def math(op, a, b=None):
+        node = nodes.new("ShaderNodeMath")
+        node.operation = op
+        links.new(a, node.inputs[0])
+        if isinstance(b, float):
+            node.inputs[1].default_value = b
+        elif b is not None:
+            links.new(b, node.inputs[1])
+        return node.outputs[0]
+
+    # Hull faces carry the near-black outline colour. They are see-through for every ray
+    # except camera rays that hit their outer (back) side; otherwise shadow and bounce
+    # rays leaving the walls would stop at the hull and the model would render black.
+    sep = nodes.new("ShaderNodeSeparateColor")
+    links.new(attr.outputs["Color"], sep.inputs["Color"])
+    is_hull = math("LESS_THAN", sep.outputs["Red"], 0.03)
+    not_camera = math("SUBTRACT", math("ADD", path.outputs["Is Camera Ray"], -1.0), None)
+    not_camera = math("ABSOLUTE", not_camera)
+    see_through = math("MAXIMUM", geo.outputs["Backfacing"], not_camera)
+    links.new(math("MULTIPLY", is_hull, see_through), mix.inputs["Fac"])
+    links.new(bsdf.outputs["BSDF"], mix.inputs[1])
+    links.new(transparent.outputs["BSDF"], mix.inputs[2])
+    out = nodes["Material Output"]
+    links.new(mix.outputs["Shader"], out.inputs["Surface"])
+    return mat
 
 
 def _trs(center, rotation, scale) -> Matrix:
@@ -183,20 +300,21 @@ def _outline_hull(source: bpy.types.Object, outline_mat, width: float, skip: set
     obj.location = source.location
 
 
-def export_glb(path: str) -> None:
+def export_glb(path: str, vertex_colors: bool = False, normals: bool = True) -> None:
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     bpy.ops.export_scene.gltf(
         filepath=path,
         export_format="GLB",
         export_yup=True,
         export_apply=True,
-        export_normals=True,
+        export_normals=normals,
         export_texcoords=False,
         export_materials="EXPORT",
         export_animations=False,
         export_cameras=False,
         export_lights=False,
         export_extras=True,
+        export_vertex_color="ACTIVE" if vertex_colors else "MATERIAL",
     )
 
 
@@ -207,7 +325,7 @@ def render_preview(path: str, target: Sequence[float] = (0, 0, 0.9), distance: f
     scene.render.engine = "CYCLES"
     scene.cycles.samples = 24
     scene.cycles.device = "CPU"
-    scene.render.resolution_x = 520
+    scene.render.resolution_x = int(arg("preview-width", "520") or 520)
     scene.render.resolution_y = 640
     scene.render.film_transparent = False
     world = bpy.data.worlds.new("preview") if scene.world is None else scene.world

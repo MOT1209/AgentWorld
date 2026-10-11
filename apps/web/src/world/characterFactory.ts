@@ -18,6 +18,7 @@
  */
 
 import * as THREE from "three";
+import { toonGradientMap } from "./toon.js";
 import {
   stateColorHex,
   type CharacterAppearance,
@@ -176,20 +177,6 @@ const FIXED_ROLE_COLORS: Readonly<Record<string, number>> = {
 };
 const OUTLINE_COLOR = 0x2b2233;
 
-let toonGradient: THREE.DataTexture | null = null;
-
-/** Three-band ramp for the cel-shaded look (shadow, mid, lit). */
-function toonGradientMap(): THREE.DataTexture {
-  if (toonGradient !== null) return toonGradient;
-  const tones = new Uint8Array([110, 110, 110, 255, 185, 185, 185, 255, 255, 255, 255, 255]);
-  toonGradient = new THREE.DataTexture(tones, 3, 1, THREE.RGBAFormat);
-  toonGradient.minFilter = THREE.NearestFilter;
-  toonGradient.magFilter = THREE.NearestFilter;
-  toonGradient.generateMipmaps = false;
-  toonGradient.needsUpdate = true;
-  return toonGradient;
-}
-
 function toonMaterial(color: number): THREE.MeshToonMaterial {
   const key = `toon:${color.toString(16)}`;
   const existing = materialCache.get(key);
@@ -239,6 +226,7 @@ function bodyFromTemplate(
     if (!(node instanceof THREE.Mesh)) return;
     const role = materialName(node.material);
     node.material = role === "outline" ? outlineMaterial() : toonMaterial(roleColors[role] ?? 0xcbd5e1);
+    node.castShadow = role !== "outline";
   });
   const style = appearance.hairStyle % HAIR_VARIANTS;
   for (let i = 0; i < HAIR_VARIANTS; i += 1) {

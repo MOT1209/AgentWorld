@@ -2,10 +2,12 @@
  * Procedural three.js construction for the world layout plan. Pure three —
  * no DOM, no renderer — so the Node test suite can build meshes headless.
  *
- * Every real building becomes ONE merged BufferGeometry (body + roof + door)
- * with a per-vertex color attribute and a single MeshStandardMaterial, so
- * selection emissive is per-building and draw calls stay low. Context
- * buildings use the same path with muted palettes.
+ * Every real building is ONE mesh with a per-vertex color attribute and a
+ * single material, so selection emissive is per-building and draw calls stay
+ * low. When the Blender city models have loaded (worldModels.ts), that mesh
+ * uses the archetype's shared modelled geometry (outline baked in) with a
+ * cel-shaded material tinted per building; otherwise the procedural boxes
+ * below. Context buildings use the same paths, muted.
  */
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
@@ -17,6 +19,8 @@ import type {
   RoadSegment,
   WorldLayoutPlan,
 } from "./types.js";
+import { toonGradientMap } from "./toon.js";
+import { buildingModel, decorModel } from "./worldModels.js";
 
 /* ------------------------------------------------------------------ colors */
 
@@ -54,17 +58,21 @@ const ROOF_COLORS: Partial<Record<BuildingArchetype, readonly [number, number, n
 
 const CONTEXT_SATURATION = 0.55;
 
+// Cartoon palette (linear RGB): soft asphalt, warm paving, saturated lawns and water.
 const SURFACE_COLORS: Record<string, readonly [number, number, number]> = {
-  ASPHALT: [0.22, 0.23, 0.25],
-  GRAVEL: [0.45, 0.42, 0.38],
-  PAVING: [0.55, 0.52, 0.48],
-  PATH: [0.62, 0.56, 0.46],
-  PLAZA: [0.5, 0.48, 0.46],
-  lawn: [0.32, 0.48, 0.28],
-  FIELD: [0.42, 0.5, 0.3],
-  POND: [0.25, 0.42, 0.55],
-  LOT: [0.48, 0.44, 0.4],
+  ASPHALT: [0.18, 0.2, 0.25],
+  GRAVEL: [0.6, 0.52, 0.4],
+  PAVING: [0.72, 0.66, 0.58],
+  PATH: [0.8, 0.66, 0.46],
+  PLAZA: [0.78, 0.72, 0.62],
+  lawn: [0.32, 0.62, 0.26],
+  FIELD: [0.62, 0.66, 0.26],
+  POND: [0.22, 0.55, 0.82],
+  LOT: [0.62, 0.56, 0.48],
 };
+
+/** Ground colour around the city (grass). */
+export const GROUND_COLOR = 0x7fc66b;
 
 const DECOR_COLORS: Record<DecorPlan["kind"], readonly [number, number, number]> = {
   TREE: [0.24, 0.45, 0.22],
@@ -156,8 +164,48 @@ function mergeParts(parts: Part[]): THREE.BufferGeometry | null {
   return merged;
 }
 
-/** One merged mesh per building: body + roof + door, vertex-colored. */
+function buildingUserData(plan: BuildingPlan): Record<string, unknown> {
+  return {
+    kind: "building",
+    key: plan.key,
+    locationId: plan.locationId,
+    selectable: plan.selectable,
+    context: plan.context,
+  };
+}
+
+/**
+ * Modelled building: the archetype's shared geometry (never disposed per
+ * building, see `userData.sharedGeometry`) with its own cel-shaded material.
+ * `material.color` multiplies the baked colours: per-building tone, muted for
+ * context filler.
+ */
+function modelledBuilding(plan: BuildingPlan, geometry: THREE.BufferGeometry): THREE.Mesh {
+  const tint = vary(new THREE.Color(1, 1, 1), plan.tone);
+  if (plan.context) tint.multiplyScalar(CONTEXT_SATURATION + 0.3);
+  const material = new THREE.MeshToonMaterial({
+    vertexColors: true,
+    gradientMap: toonGradientMap(),
+    color: tint,
+  });
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.position.set(plan.x, 0, plan.z);
+  mesh.rotation.y = plan.rotation;
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  mesh.userData = { ...buildingUserData(plan), sharedGeometry: true };
+  return mesh;
+}
+
+/** One mesh per building: modelled when available, else procedural. */
 export function buildBuildingMesh(plan: BuildingPlan): THREE.Mesh {
+  const model = buildingModel(plan.archetype);
+  if (model !== undefined) return modelledBuilding(plan, model);
+  return proceduralBuilding(plan);
+}
+
+/** Procedural fallback: body + roof + door merged, vertex-colored. */
+function proceduralBuilding(plan: BuildingPlan): THREE.Mesh {
   const { w, d, h } = plan.footprint;
   const base = vary(rgb(ARCHETYPE_COLORS[plan.archetype]), plan.tone);
   const roofPalette = ROOF_COLORS[plan.archetype] ?? [0.4, 0.42, 0.45];
@@ -201,13 +249,7 @@ export function buildBuildingMesh(plan: BuildingPlan): THREE.Mesh {
   mesh.rotation.y = plan.rotation;
   mesh.castShadow = true;
   mesh.receiveShadow = true;
-  mesh.userData = {
-    kind: "building",
-    key: plan.key,
-    locationId: plan.locationId,
-    selectable: plan.selectable,
-    context: plan.context,
-  };
+  mesh.userData = buildingUserData(plan);
   return mesh;
 }
 
@@ -225,6 +267,18 @@ export function buildRoadMesh(segments: readonly RoadSegment[]): THREE.Mesh | nu
     geometry.rotateY(angle);
     geometry.translate((seg.x1 + seg.x2) / 2, 0.02, (seg.z1 + seg.z2) / 2);
     parts.push(colorize(geometry, rgb(SURFACE_COLORS[seg.surface] ?? SURFACE_COLORS.ASPHALT ?? [0.3, 0.3, 0.3])));
+    if (seg.surface === "ASPHALT" && seg.width >= 5) {
+      // Dashed centre line: short planes every 4 units along the segment.
+      const dashes = Math.floor(length / 4);
+      for (let i = 0; i < dashes; i += 1) {
+        const t = (i + 0.5) / dashes;
+        const dash = new THREE.PlaneGeometry(0.22, 1.6);
+        dash.rotateX(-Math.PI / 2);
+        dash.rotateY(angle);
+        dash.translate(seg.x1 + (seg.x2 - seg.x1) * t, 0.03, seg.z1 + (seg.z2 - seg.z1) * t);
+        parts.push(colorize(dash, new THREE.Color(0.95, 0.9, 0.7)));
+      }
+    }
     if (seg.sidewalk && seg.surface === "ASPHALT") {
       for (const side of [1, -1]) {
         const walk = new THREE.PlaneGeometry(1.4, length + seg.width * 0.5);
@@ -263,11 +317,31 @@ export function buildPatchMesh(patches: readonly GroundPatch[]): THREE.Mesh | nu
   return mesh;
 }
 
+/** A decor model placed for one item; colours tinted by the item's tone. */
+function modelledDecor(source: THREE.BufferGeometry, item: DecorPlan): Part {
+  const geometry = source.clone();
+  geometry.scale(item.scale, item.scale, item.scale);
+  geometry.rotateY(item.rotation);
+  geometry.translate(item.x, 0, item.z);
+  const factor = 0.92 + (item.tone % 7) * 0.025;
+  const color = geometry.getAttribute("color") as THREE.BufferAttribute;
+  for (let i = 0; i < color.count; i += 1) {
+    color.setXYZ(i, color.getX(i) * factor, color.getY(i) * factor, color.getZ(i) * factor);
+  }
+  return { geometry, color: new THREE.Color(factor, factor, factor) };
+}
+
 /** Decor items grouped into a few merged meshes by kind family. */
 export function buildDecorMeshes(items: readonly DecorPlan[]): THREE.Mesh[] {
   const trees: Part[] = [];
   const props: Part[] = [];
   for (const item of items) {
+    const variants = decorModel(item.kind);
+    if (variants.length > 0) {
+      const source = variants[item.tone % variants.length] as THREE.BufferGeometry;
+      (item.kind === "TREE" || item.kind === "BUSH" ? trees : props).push(modelledDecor(source, item));
+      continue;
+    }
     const color = vary(rgb(DECOR_COLORS[item.kind]), item.tone);
     if (item.kind === "TREE") {
       const trunk = new THREE.CylinderGeometry(0.22 * item.scale, 0.3 * item.scale, 1.8 * item.scale, 5);
@@ -303,7 +377,7 @@ export function buildDecorMeshes(items: readonly DecorPlan[]): THREE.Mesh[] {
     }
   }
   const meshes: THREE.Mesh[] = [];
-  const material = new THREE.MeshStandardMaterial({ vertexColors: true });
+  const material = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: toonGradientMap() });
   for (const parts of [trees, props]) {
     const geometry = mergeParts(parts);
     if (geometry === null) continue;
@@ -323,7 +397,7 @@ export function buildGround(size: number): THREE.Mesh {
   geometry.rotateX(-Math.PI / 2);
   const mesh = new THREE.Mesh(
     geometry,
-    new THREE.MeshStandardMaterial({ color: 0x2a3326, roughness: 1 }),
+    new THREE.MeshStandardMaterial({ color: GROUND_COLOR, roughness: 1 }),
   );
   mesh.position.y = -0.03;
   mesh.receiveShadow = true;
