@@ -336,8 +336,10 @@ export async function complete(
 export async function usageSummary(
   db: DbClient,
   query: { companyId?: string; agentId?: string } = {},
+  /** Optional visibility filter (company scope) applied before aggregating. */
+  rowFilter?: <T extends { companyId: string | null; agentId: string | null }>(rows: T[]) => Promise<T[]>,
 ): Promise<Record<string, unknown>> {
-  const rows = await db.aiUsage.findMany({
+  const fetched = await db.aiUsage.findMany({
     where: {
       ...(query.companyId !== undefined ? { companyId: query.companyId } : {}),
       ...(query.agentId !== undefined ? { agentId: query.agentId } : {}),
@@ -345,6 +347,7 @@ export async function usageSummary(
     orderBy: { createdAt: "desc" },
     take: 1_000,
   });
+  const rows = rowFilter ? await rowFilter(fetched) : fetched;
   let inputTokens = 0;
   let outputTokens = 0;
   let estimatedCostMinor = 0;

@@ -12,10 +12,11 @@ import {
   removeDependency,
 } from "../../../../packages/tasks/src/index.js";
 import { getPrincipal, authenticate } from "../middleware/authenticate.js";
+import { scopeRefs } from "../middleware/company-scope.js";
 import { requirePermission } from "../middleware/require-permission.js";
 import { PERMISSIONS } from "../../../../packages/security/src/permissions.js";
 import { principalToActor } from "../../../../packages/security/src/rbac.js";
-import { assertCompanyAccess, companyScope, scopeAllows } from "../../../../packages/security/src/company-access.js";
+import { companyScope, scopeAllows } from "../../../../packages/security/src/company-access.js";
 import { notFound } from "../../../../packages/shared/src/index.js";
 import { getCorrelationId } from "../middleware/correlation.js";
 import { validate } from "../middleware/validate.js";
@@ -23,6 +24,7 @@ import { toTaskDto, paginated } from "../dto/index.js";
 
 export const taskRouter: Router = Router();
 taskRouter.use(authenticate);
+taskRouter.use(scopeRefs);
 
 // A task tied to an invisible company is a 404 on every /:id route.
 taskRouter.param("id", (req: Request, _res: Response, next: NextFunction, id: string): void => {
@@ -54,7 +56,6 @@ taskRouter.post(
     try {
       const principal = getPrincipal(req);
       const body = req.body as z.infer<typeof CreateTaskSchema>;
-      if (typeof body.companyId === "string") await assertCompanyAccess(prisma, principal, body.companyId);
       const task = await createTask(
         prisma,
         {

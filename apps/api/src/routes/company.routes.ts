@@ -15,6 +15,7 @@ import {
   listCompanyAgents,
 } from "../../../../packages/company/src/index.js";
 import { getPrincipal, authenticate } from "../middleware/authenticate.js";
+import { scopeRefs } from "../middleware/company-scope.js";
 import { requirePermission } from "../middleware/require-permission.js";
 import { PERMISSIONS } from "../../../../packages/security/src/permissions.js";
 import { principalToActor } from "../../../../packages/security/src/rbac.js";
@@ -30,6 +31,7 @@ import { validate } from "../middleware/validate.js";
 
 export const companyRouter: Router = Router();
 companyRouter.use(authenticate);
+companyRouter.use(scopeRefs);
 
 // Every /:id route below is company-scoped: an invisible company is a 404.
 companyRouter.param("id", (req: Request, _res: Response, next: NextFunction, id: string): void => {

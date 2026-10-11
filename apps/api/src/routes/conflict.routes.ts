@@ -7,6 +7,7 @@ import {
   resolveConflict,
 } from "../../../../packages/orchestration/src/index.js";
 import { getPrincipal, authenticate } from "../middleware/authenticate.js";
+import { scopeParam, scopeRefs, scoped } from "../middleware/company-scope.js";
 import { requirePermission } from "../middleware/require-permission.js";
 import { PERMISSIONS } from "../../../../packages/security/src/permissions.js";
 import { principalToActor } from "../../../../packages/security/src/rbac.js";
@@ -16,6 +17,12 @@ import { z } from "zod";
 
 export const conflictRouter: Router = Router();
 conflictRouter.use(authenticate);
+conflictRouter.use(scopeRefs);
+
+scopeParam(conflictRouter, "id", "Conflict", async (id) => {
+  const row = await prisma.decisionConflict.findUnique({ where: { id }, select: { taskId: true, planId: true } });
+  return row && { taskId: row.taskId, planId: row.planId };
+});
 
 const participantSchema = z.object({
   agentId: z.string().min(1),
@@ -78,7 +85,7 @@ conflictRouter.get(
         ...(q.planId !== undefined ? { planId: q.planId } : {}),
         take: q.take !== undefined ? Math.min(200, Number(q.take) || 50) : 50,
       });
-      res.json({ data: { items: conflicts }, correlationId: getCorrelationId(req) });
+      res.json({ data: { items: await scoped(req, conflicts, (c) => ({ taskId: c.taskId, planId: c.planId })) }, correlationId: getCorrelationId(req) });
     } catch (error) {
       next(error);
     }

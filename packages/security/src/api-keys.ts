@@ -134,6 +134,13 @@ export async function authenticateApiKey(
   }
   if (scopes.length === 0) return null;
 
+  // A key acts with its owner's platform-wide visibility, which only a
+  // platform OWNER has (keys are minted under the owner-only apikey.manage).
+  // A deactivated or demoted owner's keys stop working instead of keeping
+  // cross-company reach the owner no longer holds.
+  const owner = await db.user.findUnique({ where: { id: row.userId }, select: { isActive: true, role: true } });
+  if (owner === null || owner.isActive !== true || owner.role !== "OWNER") return null;
+
   // Fire-and-forget usage stamp; never blocks or fails authentication.
   void db.apiKey.update({ where: { id: row.id }, data: { lastUsedAt: new Date() } }).catch(() => undefined);
 

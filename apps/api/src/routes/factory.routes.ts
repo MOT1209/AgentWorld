@@ -6,6 +6,7 @@ import { Router, type NextFunction, type Request, type Response } from "express"
 import { z } from "zod";
 import { prisma } from "../../../../packages/database/src/index.js";
 import { authenticate, getPrincipal } from "../middleware/authenticate.js";
+import { scopeParam, scopeRefs, scoped } from "../middleware/company-scope.js";
 import { requirePermission } from "../middleware/require-permission.js";
 import { validate } from "../middleware/validate.js";
 import { PERMISSIONS } from "../../../../packages/security/src/permissions.js";
@@ -32,6 +33,12 @@ import { toJson, validationError } from "../../../../packages/shared/src/index.j
 
 export const factoryRouter: Router = Router();
 factoryRouter.use(authenticate);
+factoryRouter.use(scopeRefs);
+
+scopeParam(factoryRouter, "id", "Factory run", async (id) => {
+  const row = await prisma.factoryRun.findUnique({ where: { id }, select: { companyId: true, taskId: true, workspaceId: true } });
+  return row && { companyId: row.companyId, taskId: row.taskId, workspaceId: row.workspaceId };
+});
 
 const inspect = (raw: string): Record<string, unknown> => {
   try {
@@ -90,8 +97,9 @@ factoryRouter.get(
           ...(limit !== undefined && Number.isFinite(limit) ? { limit } : {}),
         },
       );
+      const visible = await scoped(req, runs, (r) => ({ companyId: r.companyId, taskId: r.taskId, workspaceId: r.workspaceId }));
       res.json({
-        data: runs.map((run) => ({
+        data: visible.map((run) => ({
           id: run.id,
           repoUrl: run.repoUrl,
           stage: run.currentStage,

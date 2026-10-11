@@ -17,6 +17,7 @@ import {
 } from "../../../../packages/economy/src/treasury.service.js";
 import { Money } from "../../../../packages/shared/src/index.js";
 import { getPrincipal, authenticate } from "../middleware/authenticate.js";
+import { scopeRefs } from "../middleware/company-scope.js";
 import { requirePermission } from "../middleware/require-permission.js";
 import { PERMISSIONS } from "../../../../packages/security/src/permissions.js";
 import { principalToActor } from "../../../../packages/security/src/rbac.js";
@@ -33,6 +34,7 @@ import { newCorrelationId } from "../../../../packages/shared/src/index.js";
 
 export const economyRouter: Router = Router();
 economyRouter.use(authenticate);
+economyRouter.use(scopeRefs);
 
 // Treasury routes are company-scoped: an invisible company is a 404.
 economyRouter.param("companyId", (req: Request, _res: Response, next: NextFunction, id: string): void => {

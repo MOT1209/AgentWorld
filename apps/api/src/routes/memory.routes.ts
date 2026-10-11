@@ -9,6 +9,7 @@ import {
   getMemoryStats,
 } from "../../../../packages/memory/src/index.js";
 import { getPrincipal, authenticate } from "../middleware/authenticate.js";
+import { scopeParam, scopeRefs } from "../middleware/company-scope.js";
 import { requirePermission } from "../middleware/require-permission.js";
 import { PERMISSIONS } from "../../../../packages/security/src/permissions.js";
 import { principalToActor } from "../../../../packages/security/src/rbac.js";
@@ -17,6 +18,12 @@ import { validate } from "../middleware/validate.js";
 
 export const memoryRouter: Router = Router();
 memoryRouter.use(authenticate);
+memoryRouter.use(scopeRefs);
+
+scopeParam(memoryRouter, "id", "Memory", async (id) => {
+  const row = await prisma.agentMemory.findUnique({ where: { id }, select: { agentId: true, taskId: true } });
+  return row && { agentId: row.agentId, taskId: row.taskId };
+});
 
 const StoreMemorySchema = z.object({
   agentId: z.string().min(1),

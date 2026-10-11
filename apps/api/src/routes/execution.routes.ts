@@ -14,12 +14,19 @@ import { conflict, forbidden, notFound, validationError } from "../../../../pack
 import { PERMISSIONS } from "../../../../packages/security/src/permissions.js";
 import { principalToActor } from "../../../../packages/security/src/rbac.js";
 import { getPrincipal, authenticate } from "../middleware/authenticate.js";
+import { scopeParam, scopeRefs, scoped } from "../middleware/company-scope.js";
 import { requirePermission } from "../middleware/require-permission.js";
 import { getCorrelationId } from "../middleware/correlation.js";
 import { validate } from "../middleware/validate.js";
 
 export const executionRouter: Router = Router();
 executionRouter.use(authenticate);
+executionRouter.use(scopeRefs);
+
+scopeParam(executionRouter, "id", "Execution", async (id) => {
+  const row = await prisma.executionJob.findUnique({ where: { id }, select: { agentId: true, taskId: true, workspaceId: true } });
+  return row && { agentId: row.agentId, taskId: row.taskId, workspaceId: row.workspaceId };
+});
 
 const OUTPUT_READ_CAP = 65_536;
 
@@ -142,7 +149,8 @@ executionRouter.get(
         take: q.take !== undefined ? Math.min(200, Number(q.take) || 50) : 50,
         skip: q.skip !== undefined ? Number(q.skip) || 0 : 0,
       });
-      res.json({ data: { items }, correlationId: getCorrelationId(req) });
+      const visible = await scoped(req, items, (j) => ({ agentId: j.agentId, taskId: j.taskId, workspaceId: j.workspaceId }));
+      res.json({ data: { items: visible }, correlationId: getCorrelationId(req) });
     } catch (error) {
       next(error);
     }

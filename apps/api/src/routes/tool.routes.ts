@@ -2,6 +2,7 @@ import { Router, type NextFunction, type Request, type Response } from "express"
 import { prisma } from "../../../../packages/database/src/index.js";
 import { getProviderRegistry } from "../../../../packages/ai/src/index.js";
 import { authenticate } from "../middleware/authenticate.js";
+import { scopeRefs, scoped } from "../middleware/company-scope.js";
 import { requirePermission } from "../middleware/require-permission.js";
 import { PERMISSIONS } from "../../../../packages/security/src/permissions.js";
 import { getCorrelationId } from "../middleware/correlation.js";
@@ -9,6 +10,7 @@ import { toolRegistry } from "../services/composition-root.js";
 
 export const toolRouter: Router = Router();
 toolRouter.use(authenticate);
+toolRouter.use(scopeRefs);
 
 toolRouter.get(
   "/catalogue",
@@ -38,7 +40,7 @@ toolRouter.get(
         take: q.take !== undefined ? Math.min(200, Number(q.take) || 50) : 50,
         skip: q.skip !== undefined ? Number(q.skip) || 0 : 0,
       });
-      res.json({ data: invocations, correlationId: getCorrelationId(req) });
+      res.json({ data: await scoped(req, invocations, (i) => ({ agentId: i.agentId })), correlationId: getCorrelationId(req) });
     } catch (error) {
       next(error);
     }

@@ -18,6 +18,7 @@ import {
 } from "../../../../packages/world/src/index.js";
 import { getCorrelationId } from "../middleware/correlation.js";
 import { authenticate } from "../middleware/authenticate.js";
+import { scopeRefs } from "../middleware/company-scope.js";
 import { requirePermission } from "../middleware/require-permission.js";
 import { PERMISSIONS } from "../../../../packages/security/src/permissions.js";
 import { principalToActor } from "../../../../packages/security/src/rbac.js";
@@ -26,6 +27,7 @@ import { validate } from "../middleware/validate.js";
 
 export const worldRouter: Router = Router();
 worldRouter.use(authenticate);
+worldRouter.use(scopeRefs);
 
 worldRouter.get(
   "/snapshot",

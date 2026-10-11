@@ -21,6 +21,7 @@ import { z } from "zod";
 import { createHash, randomUUID } from "node:crypto";
 import { prisma } from "../../../../packages/database/src/index.js";
 import { authenticate, getPrincipal } from "../middleware/authenticate.js";
+import { scopeRefs } from "../middleware/company-scope.js";
 import { requirePermission } from "../middleware/require-permission.js";
 import { PERMISSIONS } from "../../../../packages/security/src/permissions.js";
 import { principalToActor } from "../../../../packages/security/src/rbac.js";
@@ -64,6 +65,7 @@ import {
 
 export const skillRouter: Router = Router();
 skillRouter.use(authenticate);
+skillRouter.use(scopeRefs);
 
 function actorCtx(req: Request): {
   actor: ReturnType<typeof principalToActor>;

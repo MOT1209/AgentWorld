@@ -2,6 +2,7 @@ import { Router, type NextFunction, type Request, type Response } from "express"
 import { prisma } from "../../../../packages/database/src/index.js";
 import { getReview, listReviews, submitReview } from "../../../../packages/orchestration/src/index.js";
 import { getPrincipal, authenticate } from "../middleware/authenticate.js";
+import { owners, scopeParam, scopeRefs } from "../middleware/company-scope.js";
 import { requirePermission } from "../middleware/require-permission.js";
 import { PERMISSIONS } from "../../../../packages/security/src/permissions.js";
 import { principalToActor } from "../../../../packages/security/src/rbac.js";
@@ -11,6 +12,13 @@ import { z } from "zod";
 
 export const reviewRouter: Router = Router();
 reviewRouter.use(authenticate);
+reviewRouter.use(scopeRefs);
+
+scopeParam(reviewRouter, "taskId", "Task", owners.task);
+scopeParam(reviewRouter, "id", "Review", async (id) => {
+  const row = await prisma.taskReview.findUnique({ where: { id }, select: { taskId: true } });
+  return row && { taskId: row.taskId };
+});
 
 const SubmitReviewSchema = z.object({
   taskId: z.string().min(1),

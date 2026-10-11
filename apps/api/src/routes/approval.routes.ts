@@ -13,12 +13,19 @@ import { requirePermission } from "../middleware/require-permission.js";
 import { PERMISSIONS } from "../../../../packages/security/src/permissions.js";
 import { principalToActor } from "../../../../packages/security/src/rbac.js";
 import { getCorrelationId } from "../middleware/correlation.js";
+import { requestScope, scopeParam, scopeRefs, scoped } from "../middleware/company-scope.js";
 import { validate } from "../middleware/validate.js";
 import { toApprovalDto } from "../dto/index.js";
 import { replayApprovedRequest } from "../services/approval-replay.js";
 
 export const approvalRouter: Router = Router();
 approvalRouter.use(authenticate);
+approvalRouter.use(scopeRefs);
+
+scopeParam(approvalRouter, "id", "Approval", async (id) => {
+  const row = await prisma.approvalRequest.findUnique({ where: { id }, select: { companyId: true, taskId: true, requesterAgentId: true } });
+  return row && { companyId: row.companyId, taskId: row.taskId, agentId: row.requesterAgentId };
+});
 
 approvalRouter.get(
   "/",
@@ -35,10 +42,13 @@ approvalRouter.get(
         take: q.take !== undefined ? Math.min(200, Number(q.take) || 50) : 50,
         skip: q.skip !== undefined ? Number(q.skip) || 0 : 0,
       });
-      const pending = await countPendingApprovals(prisma);
+      const scope = await requestScope(req);
+      const visible = await scoped(req, approvals, (a) => ({ companyId: a.companyId, taskId: a.taskId, agentId: a.requesterAgentId }));
+      // The global pending count would leak other companies' activity.
+      const pending = scope.all ? await countPendingApprovals(prisma) : visible.filter((a) => a.status === "PENDING").length;
       res.json({
         data: {
-          items: approvals.map((a) => toApprovalDto(a as unknown as Record<string, unknown>)),
+          items: visible.map((a) => toApprovalDto(a as unknown as Record<string, unknown>)),
           pending,
         },
         correlationId: getCorrelationId(req),

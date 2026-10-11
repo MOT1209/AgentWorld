@@ -7,6 +7,7 @@ import { Router, type NextFunction, type Request, type Response } from "express"
 import { z } from "zod";
 import { prisma } from "../../../../packages/database/src/index.js";
 import { authenticate } from "../middleware/authenticate.js";
+import { scopeParam, scopeRefs, scoped } from "../middleware/company-scope.js";
 import { requirePermission } from "../middleware/require-permission.js";
 import { validate } from "../middleware/validate.js";
 import { PERMISSIONS } from "../../../../packages/security/src/permissions.js";
@@ -16,6 +17,12 @@ import { validationError } from "../../../../packages/shared/src/index.js";
 
 export const testingRouter: Router = Router();
 testingRouter.use(authenticate);
+testingRouter.use(scopeRefs);
+
+scopeParam(testingRouter, "id", "Test run", async (id) => {
+  const row = await prisma.testRun.findUnique({ where: { id }, select: { agentId: true, taskId: true, workspaceId: true } });
+  return row && { agentId: row.agentId, taskId: row.taskId, workspaceId: row.workspaceId };
+});
 
 const SELF_CONTAINED_SUITES = ["BROWSER", "MOBILE", "SECURITY", "PERFORMANCE"] as const;
 
@@ -89,8 +96,9 @@ testingRouter.get(
         ...(q.cursor !== undefined ? { cursor: q.cursor } : {}),
         ...(limit !== undefined && Number.isFinite(limit) ? { limit } : {}),
       });
+      const visible = await scoped(req, runs, (r) => ({ agentId: r.agentId, taskId: r.taskId, workspaceId: r.workspaceId }));
       res.json({
-        data: runs.map((run) => ({
+        data: visible.map((run) => ({
           id: run.id,
           suite: run.suite,
           adapter: run.adapter,

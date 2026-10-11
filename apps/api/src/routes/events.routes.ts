@@ -18,6 +18,8 @@ import { PERMISSIONS } from "../../../../packages/security/src/permissions.js";
 import { eventBus, type PersistedEvent } from "../../../../packages/events/src/index.js";
 import { unauthenticated, forbidden } from "../../../../packages/shared/src/index.js";
 import { getCorrelationId } from "../middleware/correlation.js";
+import { scopedLogs } from "../middleware/company-scope.js";
+import { companyScope, type CompanyScope } from "../../../../packages/security/src/company-access.js";
 
 export const eventsRouter: Router = Router();
 
@@ -44,6 +46,7 @@ eventsRouter.get(
   "/stream",
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     let principal;
+    let scope: CompanyScope;
     try {
       const claims = verifyAccessToken(resolveToken(req));
       const user = await prisma.user.findUnique({ where: { id: claims.sub } });
@@ -57,6 +60,8 @@ eventsRouter.get(
       if (!principal.permissions.has(PERMISSIONS.EVENT_READ)) {
         throw forbidden("Event stream requires 'event.read'");
       }
+      // Resolved once per connection: a grant change applies on reconnect.
+      scope = await companyScope(prisma, principal);
     } catch (error) {
       next(error);
       return;
@@ -80,9 +85,23 @@ eventsRouter.get(
     };
     write(`event: connected\ndata: ${JSON.stringify({ correlationId })}\n\n`);
 
+    let closed = false;
+    // Scope checks are async; chaining keeps events in their published order.
+    let queue: Promise<void> = Promise.resolve();
     const unsubscribe = eventBus.subscribe("*", (event) => {
       if (!matches(event, filters)) return;
-      write(`id: ${event.id}\nevent: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
+      const send = (): void => {
+        if (!closed) write(`id: ${event.id}\nevent: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
+      };
+      if (scope.all) {
+        send();
+        return;
+      }
+      queue = queue
+        .then(async () => {
+          if ((await scopedLogs(scope, [event])).length > 0) send();
+        })
+        .catch(() => undefined);
     });
 
     const heartbeat = setInterval(() => {
@@ -91,6 +110,7 @@ eventsRouter.get(
     if (typeof heartbeat.unref === "function") heartbeat.unref();
 
     const cleanup = (): void => {
+      closed = true;
       clearInterval(heartbeat);
       unsubscribe();
       res.end();

@@ -42,13 +42,27 @@ granted via `CompanyAccess` (`POST/DELETE /companies/:id/access`, managed by
 the company owner or a platform owner). An invisible company answers 404.
 Rows with no company (shared world, unaffiliated agents) stay visible.
 
-Enforced today on: `/companies/*`, `/economy/treasury/:companyId`,
-`/economy/wallets*` and `/economy/statement` (filtered), `/tasks/*`.
-`/economy/totals` and `/economy/verify` are platform-owner only.
-**Not yet scoped (phase 2):** plans, conversations, approvals, the SSE event
-stream, logs, webhooks, factory runs, AI usage, `/performance` and
-`/academy` company routes, agent routes, and the MCP read tools. Until those
-land, treat non-owner accounts as trusted for those areas.
+Enforcement (`apps/api/src/middleware/company-scope.ts`):
+
+- Every authenticated router runs `scopeRefs`: any company, agent
+  (`agentId`, `*AgentId`), task, plan or workspace id in the body or query
+  string must be visible, so work cannot be filed into, assigned from, or
+  filtered by another company.
+- `:id`-style params resolve their row's links (company directly, or via its
+  agent's current company, task, plan, or workspace agent); a row is visible
+  only when every link is.
+- Lists are filtered the same way (they can return fewer rows than `take`).
+- Event log, activity log and the SSE stream filter by actor and target;
+  non-owners never see other users' IP or user agent. The stream resolves
+  scope once per connection, so a grant change applies on reconnect.
+- `/economy/totals`, `/economy/verify`, and the global pending-approval
+  count are platform-owner figures.
+- API keys (MCP) act with platform-wide visibility, so they only work while
+  their owner is an active platform `OWNER`.
+
+Platform-level by design (no company): world/city/locations and the
+simulation clock, skills, tool catalogue, providers/models, credentials and
+API-key metadata. Visibility follows an agent's *current* company.
 
 Agent tools declare `requiredPermission` + `risk`; anything `HIGH`/`CRITICAL`
 or on the always-approve list (`agent.create`, `wallet.withdraw`, …) is

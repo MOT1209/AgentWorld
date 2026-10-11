@@ -9,6 +9,7 @@ import { Router, type NextFunction, type Request, type Response } from "express"
 import { z } from "zod";
 import { prisma } from "../../../../packages/database/src/index.js";
 import { getPrincipal, authenticate } from "../middleware/authenticate.js";
+import { scopeParam, scopeRefs, scoped } from "../middleware/company-scope.js";
 import { requirePermission } from "../middleware/require-permission.js";
 import { validate } from "../middleware/validate.js";
 import { PERMISSIONS } from "../../../../packages/security/src/permissions.js";
@@ -45,6 +46,14 @@ import { validationError } from "../../../../packages/shared/src/index.js";
 
 export const integrationsRouter: Router = Router();
 integrationsRouter.use(authenticate);
+integrationsRouter.use(scopeRefs);
+
+scopeParam(integrationsRouter, "id", "Resource", async (id) => {
+  // Only webhook subscriptions carry a company here; credentials and API keys
+  // are platform-level (owner-managed) and have no company link.
+  const row = await prisma.webhookSubscription.findUnique({ where: { id }, select: { companyId: true } });
+  return row && { companyId: row.companyId };
+});
 
 // -- AI providers -------------------------------------------------------------
 
@@ -98,9 +107,11 @@ integrationsRouter.get(
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const q = req.query as Record<string, string | undefined>;
-      const summary = await usageSummary(prisma, {
-        ...(q.agentId !== undefined ? { agentId: q.agentId } : {}),
-      });
+      const summary = await usageSummary(
+        prisma,
+        { ...(q.agentId !== undefined ? { agentId: q.agentId } : {}) },
+        (rows) => scoped(req, rows, (row) => ({ companyId: row.companyId, agentId: row.agentId })),
+      );
       res.json({ data: summary, correlationId: getCorrelationId(req) });
     } catch (error) {
       next(error);
@@ -276,7 +287,7 @@ integrationsRouter.get(
   requirePermission(PERMISSIONS.WEBHOOK_READ),
   async (_req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const rows = await listSubscriptions(prisma);
+      const rows = await scoped(_req, await listSubscriptions(prisma), (row) => ({ companyId: row.companyId }));
       res.json({
         data: rows.map((row) => ({
           id: row.id,

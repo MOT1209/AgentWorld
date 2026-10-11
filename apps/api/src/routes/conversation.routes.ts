@@ -15,12 +15,19 @@ import { requirePermission } from "../middleware/require-permission.js";
 import { PERMISSIONS } from "../../../../packages/security/src/permissions.js";
 import { principalToActor } from "../../../../packages/security/src/rbac.js";
 import { getCorrelationId } from "../middleware/correlation.js";
+import { scopeParam, scopeRefs, scoped } from "../middleware/company-scope.js";
 import { validate } from "../middleware/validate.js";
 import { toMessageDto } from "../dto/index.js";
 import { orchestrateAgentRun } from "../services/agent-orchestrator.js";
 
 export const conversationRouter: Router = Router();
 conversationRouter.use(authenticate);
+conversationRouter.use(scopeRefs);
+
+scopeParam(conversationRouter, "id", "Conversation", async (id) => {
+  const row = await prisma.conversation.findUnique({ where: { id }, select: { companyId: true } });
+  return row && { companyId: row.companyId };
+});
 
 const CreateConversationSchema = z.object({
   kind: z.enum(["HUMAN_AGENT", "AGENT_AGENT", "SYSTEM"]),
@@ -68,7 +75,7 @@ conversationRouter.get(
         take: q.take !== undefined ? Math.min(200, Number(q.take) || 50) : 50,
         skip: q.skip !== undefined ? Number(q.skip) || 0 : 0,
       });
-      res.json({ data: conversations, correlationId: getCorrelationId(req) });
+      res.json({ data: await scoped(req, conversations, (c) => ({ companyId: c.companyId })), correlationId: getCorrelationId(req) });
     } catch (error) {
       next(error);
     }
