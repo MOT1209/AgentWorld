@@ -1,5 +1,92 @@
 @import "tailwindcss";
 
+/*
+ * AgentWorld design tokens.
+ *
+ * The views are written with stock utility classes (gray-*, white, black,
+ * blue-*). Re-defining those palette entries here restyles every view at once:
+ *   gray  → cool neutrals with a slight green bias (the city's grass and paper)
+ *   black → "ink", the deep slate used for primary buttons and the sidebar
+ *   blue  → "civic teal", the accent for links, focus and information
+ * Bundled fonts (imported in main.tsx so Vite rewrites their URLs) keep the
+ * dashboard working offline.
+ */
+@theme {
+  --font-sans: "Plus Jakarta Sans Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Sora Variable", "Plus Jakarta Sans Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+
+  --color-black: #142030;
+  --color-ink: #142030;
+  --color-ink-soft: #1d2d40;
+
+  --color-gray-50: #f5f7f3;
+  --color-gray-100: #edf0ea;
+  --color-gray-200: #e0e5dd;
+  --color-gray-300: #cbd3c9;
+  --color-gray-400: #97a198;
+  --color-gray-500: #6b756d;
+  --color-gray-600: #4f5952;
+  --color-gray-700: #39423c;
+  --color-gray-800: #242c27;
+  --color-gray-900: #161d19;
+  --color-gray-950: #0d1310;
+
+  --color-blue-50: #ecf8f5;
+  --color-blue-100: #d2efe8;
+  --color-blue-200: #a8dfd2;
+  --color-blue-300: #74c8b6;
+  --color-blue-400: #3fab96;
+  --color-blue-500: #1f8f7b;
+  --color-blue-600: #127c6e;
+  --color-blue-700: #0f6359;
+  --color-blue-800: #0f4f48;
+  --color-blue-900: #0e413c;
+
+  --color-accent: #127c6e;
+  --color-sun: #f2b544;
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  body {
+    background: var(--color-gray-50);
+    color: var(--color-gray-900);
+    font-family: var(--font-sans);
+    font-size: 14px;
+  }
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-blue-500);
+    outline-offset: 2px;
+  }
+  button {
+    cursor: pointer;
+  }
+  button:disabled {
+    cursor: default;
+    opacity: 0.55;
+  }
+  table {
+    font-variant-numeric: tabular-nums;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * {
+      transition: none !important;
+      animation: none !important;
+    }
+  }
+}
+
 /* 3D character name labels (pooled DOM overlay, positioned per frame). */
 .sim-label-layer {
   z-index: 5;
@@ -12,15 +99,17 @@
   align-items: center;
   gap: 4px;
   max-width: 140px;
-  padding: 1px 6px;
+  padding: 2px 8px;
   border-radius: 9999px;
-  background: rgba(11, 16, 32, 0.72);
-  color: #e5e7eb;
+  background: rgba(20, 32, 48, 0.78);
+  color: #f5f7f3;
   font-size: 11px;
+  font-weight: 600;
   line-height: 1.5;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  box-shadow: 0 1px 2px rgba(13, 19, 16, 0.25);
   will-change: transform;
 }
 .sim-label-dot {
@@ -30,12 +119,20 @@
   border-radius: 9999px;
 }
 .sim-label-em {
-  background: rgba(251, 191, 36, 0.9);
-  color: #111827;
-  font-weight: 600;
+  background: rgba(242, 181, 68, 0.95);
+  color: #142030;
+  font-weight: 700;
 }
 
-/* The dashboard uses stock utility classes only — no custom theme or plugins.
-   Point the v4 scanner at the same content globs the old config declared. */
+/* Frosted controls floating over the 3D viewport. */
+.hud {
+  background: rgba(255, 255, 255, 0.86);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(20, 32, 48, 0.08);
+  box-shadow: 0 6px 20px -8px rgba(13, 19, 16, 0.35);
+}
+
+/* Point the v4 scanner at the same content globs the old config declared. */
 @source "../index.html";
 @source "./**/*.{ts,tsx}";

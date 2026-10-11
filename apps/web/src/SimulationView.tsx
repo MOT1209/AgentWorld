@@ -880,63 +880,65 @@ export function SimulationView({ token }: { token: string }): JSX.Element {
   }, []);
 
   return (
-    <div className="grid gap-4 lg:grid-cols-6">
+    <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
       {error !== null && (
-        <p className="lg:col-span-6 mb-2 rounded bg-red-50 p-2 text-sm text-red-700">{error}</p>
+        <p className="xl:col-span-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
       )}
-      {/* Three.js world viewport (spanning 4 columns on lg) */}
-      <div className="lg:col-span-4">
-        <div className="rounded border border-gray-200 bg-white shadow-sm overflow-hidden">
-          <div className="relative h-[600px] w-full bg-[#0b1020]" ref={mountRef}>
+      {/* Three.js world viewport: the hero, with frosted HUD overlays. */}
+      <div className="min-w-0">
+        <div className="relative overflow-hidden rounded-2xl border border-gray-200 bg-[#bfe3f7] shadow-[0_10px_30px_-18px_rgba(13,19,16,0.5)]">
+          <div className="relative h-[min(72vh,760px)] min-h-[460px] w-full" ref={mountRef}>
             <div
               ref={labelLayerRef}
               className="sim-label-layer pointer-events-none absolute inset-0 overflow-hidden"
             />
           </div>
-          <div className="flex items-center gap-2 px-2 pt-2 text-xs">
+          <div className="hud pointer-events-none absolute left-3 top-3 z-10 flex items-center gap-3 rounded-xl px-3 py-2 text-xs text-gray-600">
+            <span className="font-display text-sm font-semibold text-gray-900">{state?.world?.name ?? "—"}</span>
+            <span className="text-gray-300">|</span>
+            <span>{state?.phase ?? "—"}</span>
+            <span className="text-gray-300">|</span>
+            <span>{state?.counts.agents ?? "—"} agents</span>
+          </div>
+          <div className="hud absolute bottom-3 left-3 right-3 z-10 flex flex-wrap items-center gap-2 rounded-xl px-3 py-2 text-xs sm:right-auto">
             <span
               className={`inline-block h-2 w-2 rounded-full ${state?.world?.status === "RUNNING" ? "bg-green-500" : "bg-gray-400"}`}
               title={`World status: ${state?.world?.status ?? "—"}`}
             />
-            <span className="text-gray-500">World: {state?.world?.status ?? "—"}</span>
+            <span className="font-medium text-gray-700">{state?.world?.status ?? "—"}</span>
             <button
               onClick={togglePause}
-              className="rounded border border-gray-300 bg-gray-50 px-2 py-0.5 text-gray-700 hover:border-gray-500"
+              className="rounded-lg border border-gray-200 bg-white px-2.5 py-1 font-medium text-gray-700 hover:border-gray-400"
             >
               {simUi.paused ? "▶ Resume motion" : "⏸ Pause motion"}
             </button>
             <button
               onClick={cycleSpeed}
-              className="rounded border border-gray-300 bg-gray-50 px-2 py-0.5 text-gray-700 hover:border-gray-500"
+              className="rounded-lg border border-gray-200 bg-white px-2.5 py-1 font-medium text-gray-700 hover:border-gray-400"
             >
               Speed {simUi.speed}x
             </button>
             <button
               onClick={toggleDemo}
               title="Local demo only: idle agents stroll nearby. Never a backend task."
-              className={`rounded border px-2 py-0.5 hover:border-gray-500 ${simUi.demo ? "border-amber-500 bg-amber-50 text-amber-800" : "border-gray-300 bg-gray-50 text-gray-700"}`}
+              className={`rounded-lg border px-2.5 py-1 font-medium hover:border-gray-400 ${simUi.demo ? "border-amber-400 bg-amber-50 text-amber-800" : "border-gray-200 bg-white text-gray-700"}`}
             >
               Demo stroll: {simUi.demo ? "on" : "off"}
             </button>
             <span className="text-gray-500">{simUi.movers} walking</span>
             {simUi.demo && (
-              <span className="rounded bg-amber-100 px-1.5 py-0.5 font-semibold text-amber-800">DEMO</span>
+              <span className="rounded-md bg-amber-100 px-1.5 py-0.5 font-semibold text-amber-800">DEMO</span>
             )}
           </div>
-          <div className="mt-2 flex items-center gap-3 px-2 pb-2 text-xs text-gray-400">
-            <span>W: {state?.world?.name ?? "—"}</span>
-            <span>S: {state?.phase ?? "—"}</span>
-            <span>Agents: {state?.counts.agents ?? "—"}</span>
-            <span className="ml-auto">Click a character or building to inspect · Esc to deselect</span>
-          </div>
         </div>
+        <p className="mt-2 text-xs text-gray-400">Drag to orbit, scroll to zoom. Click a character or building to inspect · Esc to deselect.</p>
       </div>
 
       {/* Right-side info panels (2 columns) */}
-      <div className="lg:col-span-2 space-y-4">
+      <div className="space-y-4">
         {/* District & Occupancy Panel */}
-        <div>
-          <h2 className="mb-3 text-lg font-semibold text-gray-800">Districts</h2>
+        <div className="rounded-2xl border border-gray-200 bg-white p-4">
+          <h2 className="mb-3 text-base font-semibold text-gray-900">Districts</h2>
           {districts.length === 0 ? (
             <p className="text-sm text-gray-500">No districts defined. Add districts via the World tab.</p>
           ) : (
@@ -952,7 +954,7 @@ export function SimulationView({ token }: { token: string }): JSX.Element {
                   return (
                     <div
                       key={district.id}
-                      className={`p-3 rounded border ${isAtCapacity ? "border-red-500" : "border-gray-300"} bg-gray-50`}
+                      className={`rounded-xl border p-3 ${isAtCapacity ? "border-red-300 bg-red-50/40" : "border-gray-200 bg-gray-50"}`}
                     >
                       <div className="flex items-baseline justify-between text-sm">
                         <span className="font-medium text-gray-700">
@@ -963,13 +965,13 @@ export function SimulationView({ token }: { token: string }): JSX.Element {
                           {occupants}/{capacity || "∞"} places
                         </span>
                       </div>
-                      <div className="mt-1 h-2 w-full rounded bg-gray-200 overflow-hidden">
+                      <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-gray-200">
                         <div
-                          className={`h-full ${capacity === 0 || occupants < capacity ? "bg-teal-500" : "bg-red-500"}`}
+                          className={`h-full ${capacity === 0 || occupants < capacity ? "bg-blue-500" : "bg-red-500"}`}
                           style={{ width: capacity === 0 ? "0%" : `${Math.min(100, (occupants / capacity) * 100)}%` }}
                         />
                       </div>
-                      <ul className="mt-1 text-xs text-gray-500 grid grid-cols-2 gap-1">
+                      <ul className="mt-2 space-y-0.5 text-xs text-gray-500">
                         {grouped.map((location) => (
                           <li key={location.id} className="flex justify-between">
                             <span>
@@ -991,8 +993,8 @@ export function SimulationView({ token }: { token: string }): JSX.Element {
         </div>
 
         {/* Agent Panel */}
-        <div>
-          <h2 className="mb-3 text-lg font-semibold text-gray-800">Agents</h2>
+        <div className="rounded-2xl border border-gray-200 bg-white p-4">
+          <h2 className="mb-3 text-base font-semibold text-gray-900">Agents</h2>
           {(state?.agents.length ?? 0) === 0 ? (
             <p className="text-sm text-gray-500">No agents in world.</p>
           ) : (
@@ -1006,7 +1008,7 @@ export function SimulationView({ token }: { token: string }): JSX.Element {
                 return (
                   <li
                     key={agent.id}
-                    className={`p-3 rounded border cursor-pointer transition-colors ${isSelected ? "border-amber-500 bg-amber-50" : isHovered ? "border-blue-400" : "border-gray-200 hover:border-blue-500"}`}
+                    className={`cursor-pointer rounded-xl border p-3 transition-colors ${isSelected ? "border-amber-400 bg-amber-50" : isHovered ? "border-blue-300 bg-blue-50/40" : "border-gray-200 hover:border-blue-300"}`}
                     onClick={() => selectFromList(agent)}
                     onMouseOver={() => setHoveredId(agent.id)}
                     onMouseOut={() => setHoveredId((prev) => (prev === agent.id ? null : prev))}
@@ -1034,9 +1036,9 @@ export function SimulationView({ token }: { token: string }): JSX.Element {
         {/* Selected Agent / Building Info Panel */}
         <div
           id="inspector-panel"
-          className="p-4 rounded border border-gray-300 bg-gray-50 max-h-80 overflow-y-auto"
+          className="rounded-2xl border border-gray-200 bg-white p-4 max-h-80 overflow-y-auto"
         >
-          <h3 className="mb-2 text-sm font-medium text-gray-700">Inspector</h3>
+          <h3 className="mb-2 text-base font-semibold text-gray-900">Inspector</h3>
           {selectedAgent !== null ? (
             <>
               <p className="text-sm font-semibold text-gray-800">{selectedAgent.name}</p>
