@@ -9,6 +9,7 @@ import {
   resolveEscalation,
 } from "../../../../packages/orchestration/src/index.js";
 import { getPrincipal, authenticate } from "../middleware/authenticate.js";
+import { scopeParam, scopeRefs, scoped } from "../middleware/company-scope.js";
 import { requirePermission } from "../middleware/require-permission.js";
 import { PERMISSIONS } from "../../../../packages/security/src/permissions.js";
 import { principalToActor } from "../../../../packages/security/src/rbac.js";
@@ -18,6 +19,12 @@ import { z } from "zod";
 
 export const escalationRouter: Router = Router();
 escalationRouter.use(authenticate);
+escalationRouter.use(scopeRefs);
+
+scopeParam(escalationRouter, "id", "Escalation", async (id) => {
+  const row = await prisma.escalation.findUnique({ where: { id }, select: { taskId: true, planId: true, fromAgentId: true } });
+  return row && { taskId: row.taskId, planId: row.planId, agentId: row.fromAgentId };
+});
 
 const RaiseEscalationSchema = z.object({
   fromAgentId: z.string().min(1),
@@ -87,7 +94,7 @@ escalationRouter.get(
         take: q.take !== undefined ? Math.min(200, Number(q.take) || 50) : 50,
         skip: q.skip !== undefined ? Number(q.skip) || 0 : 0,
       });
-      res.json({ data: { items: escalations }, correlationId: getCorrelationId(req) });
+      res.json({ data: { items: await scoped(req, escalations, (e) => ({ taskId: e.taskId, planId: e.planId, agentId: e.fromAgentId })) }, correlationId: getCorrelationId(req) });
     } catch (error) {
       next(error);
     }
@@ -101,7 +108,7 @@ escalationRouter.get(
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const escalations = await listHumanEscalations(prisma);
-      res.json({ data: { items: escalations }, correlationId: getCorrelationId(req) });
+      res.json({ data: { items: await scoped(req, escalations, (e) => ({ taskId: e.taskId, planId: e.planId, agentId: e.fromAgentId })) }, correlationId: getCorrelationId(req) });
     } catch (error) {
       next(error);
     }

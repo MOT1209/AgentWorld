@@ -14,6 +14,7 @@ import {
   getSimulatedClock,
 } from "../../../../packages/simulation/src/index.js";
 import { authenticate, getPrincipal } from "../middleware/authenticate.js";
+import { scopeRefs } from "../middleware/company-scope.js";
 import { requirePermission } from "../middleware/require-permission.js";
 import { validate } from "../middleware/validate.js";
 import { getCorrelationId } from "../middleware/correlation.js";
@@ -22,6 +23,7 @@ import { principalToActor } from "../../../../packages/security/src/rbac.js";
 
 export const simulationRouter: Router = Router();
 simulationRouter.use(authenticate);
+simulationRouter.use(scopeRefs);
 
 const WorldIdSchema = z.object({ worldId: z.string().min(1).optional() });
 

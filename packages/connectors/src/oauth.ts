@@ -35,12 +35,6 @@ const stateSecret = (): Buffer =>
     .update("oauth-state-v1")
     .digest();
 
-export interface PendingState {
-  connectorSlug: string;
-  expiresAt: number;
-}
-
-const pendingStates = new Map<string, PendingState>();
 
 /**
  * Constant-time comparison of the state signature. A `!==` compare leaks how
@@ -54,10 +48,10 @@ function signaturesMatch(provided: string, expected: string): boolean {
   return timingSafeEqual(a, b);
 }
 
-export function beginAuthorization(
+export async function beginAuthorization(
   connectorSlug: string,
   ctx: { actor: ActorRef; db: DbClient; correlationId?: string },
-): { authorizationUrl: string; state: string } {
+): Promise<{ authorizationUrl: string; state: string }> {
   const provider = OAUTH_PROVIDERS.get(connectorSlug);
   if (provider === undefined) {
     throw validationError(`No OAuth provider configured for connector '${connectorSlug}'`);
@@ -65,7 +59,11 @@ export function beginAuthorization(
   const state = randomBytes(24).toString("base64url");
   const signature = createHmac("sha256", stateSecret()).update(state).digest("base64url");
   const signed = `${state}.${signature}`;
-  pendingStates.set(state, { connectorSlug, expiresAt: Date.now() + STATE_TTL_MS });
+  // Opportunistic cleanup keeps the table to roughly one TTL of rows.
+  await ctx.db.oAuthState.deleteMany({ where: { expiresAt: { lt: new Date() } } });
+  await ctx.db.oAuthState.create({
+    data: { state, connectorSlug, expiresAt: new Date(Date.now() + STATE_TTL_MS) },
+  });
 
   const url = new URL(provider.authorizeUrl);
   url.searchParams.set("response_type", "code");
@@ -106,14 +104,12 @@ export async function completeAuthorization(
   if (rawState === undefined || signature === undefined) throw validationError("Malformed OAuth state");
   const expected = createHmac("sha256", stateSecret()).update(rawState).digest("base64url");
   if (!signaturesMatch(signature, expected)) throw validationError("OAuth state signature mismatch");
-  const pending = pendingStates.get(rawState);
-  pendingStates.delete(rawState);
-  if (pending === undefined || pending.expiresAt < Date.now()) {
-    // A signature that verifies but has no pending entry means the state was
-    // already used, expired, or was issued by another API instance (the
-    // pending map is process-local, so a multi-instance deployment needs the
-    // shared store this message points at).
-    throw conflict("OAuth state is expired, already used, or was issued by another instance");
+  const pending = await ctx.db.oAuthState.findUnique({ where: { state: rawState } });
+  // Single use even under a race: only the request whose delete removed the
+  // row may continue.
+  const claimed = pending === null ? 0 : (await ctx.db.oAuthState.deleteMany({ where: { state: rawState } })).count;
+  if (pending === null || claimed !== 1 || pending.expiresAt.getTime() < Date.now()) {
+    throw conflict("OAuth state is expired or already used");
   }
 
   const provider = OAUTH_PROVIDERS.get(pending.connectorSlug);
@@ -191,8 +187,8 @@ export async function completeAuthorization(
 }
 
 /** Test hook: clears pending states between tests. */
-export function resetOAuthStates(): void {
-  pendingStates.clear();
+export async function resetOAuthStates(db: DbClient): Promise<void> {
+  await db.oAuthState.deleteMany({});
 }
 
 export { SYSTEM_ACTOR };

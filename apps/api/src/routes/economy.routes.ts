@@ -17,22 +17,38 @@ import {
 } from "../../../../packages/economy/src/treasury.service.js";
 import { Money } from "../../../../packages/shared/src/index.js";
 import { getPrincipal, authenticate } from "../middleware/authenticate.js";
+import { scopeRefs } from "../middleware/company-scope.js";
 import { requirePermission } from "../middleware/require-permission.js";
 import { PERMISSIONS } from "../../../../packages/security/src/permissions.js";
 import { principalToActor } from "../../../../packages/security/src/rbac.js";
+import {
+  assertCompanyAccess,
+  assertPlatformWide,
+  companyScope,
+  filterVisibleWallets,
+} from "../../../../packages/security/src/company-access.js";
+import { notFound } from "../../../../packages/shared/src/index.js";
 import { getCorrelationId } from "../middleware/correlation.js";
 import { validate } from "../middleware/validate.js";
 import { newCorrelationId } from "../../../../packages/shared/src/index.js";
 
 export const economyRouter: Router = Router();
 economyRouter.use(authenticate);
+economyRouter.use(scopeRefs);
+
+// Treasury routes are company-scoped: an invisible company is a 404.
+economyRouter.param("companyId", (req: Request, _res: Response, next: NextFunction, id: string): void => {
+  assertCompanyAccess(prisma, getPrincipal(req), id).then(() => next(), next);
+});
 
 economyRouter.get(
   "/wallets",
   requirePermission(PERMISSIONS.WALLET_READ),
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const wallets = await listWallets(prisma);
+      const principal = getPrincipal(req);
+      const scope = await companyScope(prisma, principal);
+      const wallets = await filterVisibleWallets(prisma, principal, scope, await listWallets(prisma), (row) => row.wallet);
       res.json({ data: wallets, correlationId: getCorrelationId(req) });
     } catch (error) {
       next(error);
@@ -45,7 +61,10 @@ economyRouter.get(
   requirePermission(PERMISSIONS.WALLET_READ),
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
+      const principal = getPrincipal(req);
       const wallet = await requireWallet(prisma, req.params.id as string);
+      const visible = await filterVisibleWallets(prisma, principal, await companyScope(prisma, principal), [wallet], (row) => row);
+      if (visible.length === 0) throw notFound("Wallet", wallet.id);
       res.json({ data: wallet, correlationId: getCorrelationId(req) });
     } catch (error) {
       next(error);
@@ -67,7 +86,9 @@ economyRouter.get(
         ...(q.type !== undefined ? { type: q.type } : {}),
         limit: q.limit !== undefined ? Math.min(100, Number(q.limit) || 20) : 20,
       });
-      res.json({ data: statements, correlationId: getCorrelationId(req) });
+      const principal = getPrincipal(req);
+      const visible = await filterVisibleWallets(prisma, principal, await companyScope(prisma, principal), statements, (row) => row);
+      res.json({ data: visible, correlationId: getCorrelationId(req) });
     } catch (error) {
       next(error);
     }
@@ -80,6 +101,7 @@ economyRouter.get(
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const q = req.query as Record<string, string | undefined>;
+      assertPlatformWide(await companyScope(prisma, getPrincipal(req)));
       const totals = await getLedgerTotals(prisma, q.currency ?? "KW");
       res.json({ data: totals, correlationId: getCorrelationId(req) });
     } catch (error) {
@@ -93,6 +115,7 @@ economyRouter.get(
   requirePermission(PERMISSIONS.TRANSACTION_READ),
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
+      assertPlatformWide(await companyScope(prisma, getPrincipal(req)));
       const report = await verifyLedger(prisma);
       res.json({ data: report, correlationId: getCorrelationId(req) });
     } catch (error) {

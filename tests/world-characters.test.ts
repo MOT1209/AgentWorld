@@ -212,8 +212,8 @@ describe("idle animation", () => {
 describe("character factory", () => {
   it("builds a recognizable human silhouette standing on the ground", () => {
     const built = buildCharacter("factory-1", appearanceForAgentId("factory-1"), "WORKING");
-    // leg pivots + upper body + badge + ring + hit proxy
-    expect(built.group.children.length).toBe(6);
+    // leg pivots + upper body + badge + ring + hit proxy + social bubble
+    expect(built.group.children.length).toBe(7);
     // Hip pivots carry the leg mesh and the shoe each (Step 3 walk cycle).
     for (const leg of [built.parts.legL, built.parts.legR]) {
       expect(Math.abs(leg.position.y - 0.75)).toBeLessThan(1e-9);

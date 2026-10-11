@@ -28,9 +28,14 @@ Every response carries `correlationId`; errors are `{ code, message, correlation
 
 ## Event stream
 
-- `GET /events/stream?token=<JWT>&worldId=&companyId=&type=` — Server-Sent
-  Events (`text/event-stream`). EventSource cannot set headers, so the token may
-  be passed as a query parameter; `event.read` is required. Each message is
+- `POST /events/ticket` → `{ ticket, expiresInSeconds: 60 }` — a stream-only
+  token for EventSource clients.
+- `GET /events/stream?ticket=<ticket>&worldId=&companyId=&type=` — Server-Sent
+  Events (`text/event-stream`). Authenticate with the bearer header, or (since
+  EventSource cannot set headers) with a ticket from `POST /events/ticket`; the
+  access token itself is never accepted in the URL. The ticket is checked only
+  at connect, so reconnects need a fresh one. `event.read` is required; events
+  are filtered to the caller's company scope. Each message is
   `id: <EventLog.id>`, `event: <TYPE>`, `data: <persisted event JSON>`; a
   `connected` event and periodic `: heartbeat` comments keep the stream open.
 
@@ -39,6 +44,7 @@ Every response carries `correlationId`; errors are `{ code, message, correlation
 - `GET /companies`, `POST /companies {name, description?}`
 - `GET /companies/:id`, `GET /companies/:id/overview|members|departments|projects|agents`
 - `POST /companies/:id/departments|members|projects`
+- `GET /companies/:id/access`, `POST /companies/:id/access {email}`, `DELETE /companies/:id/access/:userId` — who besides the owner can see the company (company owner or platform owner manages it). Every `/companies/:id*` route answers 404 for a company the caller cannot see.
 
 ## Agents
 

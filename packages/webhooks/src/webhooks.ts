@@ -21,7 +21,7 @@ import { createHmac, randomUUID } from "node:crypto";
 import type { DbClient } from "../../database/src/index.js";
 import type { WebhookDelivery, WebhookSubscription } from "../../database/src/types.js";
 import { eventBus, EVENT_TYPES, type PersistedEvent } from "../../events/src/index.js";
-import { getConfig, logger, newCorrelationId, SYSTEM_ACTOR, toJson, validationError } from "../../shared/src/index.js";
+import { assertPublicUrl, getConfig, logger, newCorrelationId, SYSTEM_ACTOR, toJson, validationError } from "../../shared/src/index.js";
 import { open as vaultOpen, seal } from "../../vault/src/index.js";
 
 const log = logger.child({ component: "webhooks" });
@@ -73,12 +73,18 @@ function validateUrl(url: string): string {
   return parsed.toString();
 }
 
+/** Production: the full private-range + DNS check (see shared/net.ts). */
+async function assertDeliverableUrl(url: string): Promise<void> {
+  if (getConfig().isProduction) await assertPublicUrl(url);
+}
+
 export async function createSubscription(
   db: DbClient,
   input: CreateSubscriptionInput,
   ctx: SubscriptionContext,
 ): Promise<{ subscription: WebhookSubscription; secret: string }> {
   const url = validateUrl(input.url);
+  await assertDeliverableUrl(url);
   const events = input.events.length > 0 ? input.events : ["*"];
   const secret = `whsec_${randomUUID().replace(/-/g, "")}${randomUUID().replace(/-/g, "")}`;
   const sealed = seal(secret);
@@ -212,11 +218,16 @@ async function postWebhook(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
+    // Re-checked at delivery: DNS may have changed since the subscription
+    // was created. Redirects are not followed, so a public receiver cannot
+    // bounce the signed POST to an internal address.
+    await assertDeliverableUrl(url);
     const response = await fetch(url, {
       method: "POST",
       headers: { "content-type": "application/json", ...headers },
       body,
       signal: controller.signal,
+      redirect: "manual",
     });
     const text = await response.text().catch(() => "");
     return {

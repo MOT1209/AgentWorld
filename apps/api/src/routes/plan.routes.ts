@@ -11,9 +11,16 @@ import { requirePermission } from "../middleware/require-permission.js";
 import { PERMISSIONS } from "../../../../packages/security/src/permissions.js";
 import { principalToActor } from "../../../../packages/security/src/rbac.js";
 import { getCorrelationId } from "../middleware/correlation.js";
+import { scopeParam, scopeRefs, scoped } from "../middleware/company-scope.js";
 
 export const planRouter: Router = Router();
 planRouter.use(authenticate);
+planRouter.use(scopeRefs);
+
+scopeParam(planRouter, "id", "Plan", async (id) => {
+  const row = await prisma.plan.findUnique({ where: { id }, select: { companyId: true } });
+  return row && { companyId: row.companyId };
+});
 
 planRouter.get(
   "/",
@@ -28,7 +35,7 @@ planRouter.get(
         take: q.take !== undefined ? Math.min(200, Number(q.take) || 50) : 50,
         skip: q.skip !== undefined ? Number(q.skip) || 0 : 0,
       });
-      res.json({ data: { items: plans }, correlationId: getCorrelationId(req) });
+      res.json({ data: { items: await scoped(req, plans, (p) => ({ companyId: p.companyId })) }, correlationId: getCorrelationId(req) });
     } catch (error) {
       next(error);
     }

@@ -48,6 +48,7 @@ model User {
   conversations      Conversation[]
   wallets            Wallet[]
   apiKeys            ApiKey[]
+  companyAccess      CompanyAccess[]
 
   // Phase 2
   plansCreated        Plan[]       @relation("PlanCreatorUser")
@@ -86,7 +87,27 @@ model Company {
   webhookSubscriptions WebhookSubscription[]
   factoryRuns          FactoryRun[]
 
+  // Human visibility grants beyond the owner (see packages/security/src/company-access.ts).
+  accessGrants CompanyAccess[]
+
   @@index([ownerId])
+}
+
+/// A human user allowed to see one company. Visibility only: what the user
+/// may DO inside it is still decided by their global role permissions.
+/// Platform OWNERs and the company's own ownerId never need a row.
+model CompanyAccess {
+  id        String   @id @default(cuid())
+  companyId String
+  userId    String
+  grantedBy String?
+  createdAt DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, userId])
+  @@index([userId])
 }
 
 model Department {
@@ -1719,4 +1740,16 @@ model TrainingRun {
 
   @@index([agentId, skillName])
   @@index([status])
+}
+
+/// Pending OAuth authorization (the `state` round trip). Stored, not kept in
+/// process memory, so a callback can land on any API instance or after a
+/// restart. Single-use: completing deletes the row.
+model OAuthState {
+  state         String   @id
+  connectorSlug String
+  expiresAt     DateTime
+  createdAt     DateTime @default(now())
+
+  @@index([expiresAt])
 }

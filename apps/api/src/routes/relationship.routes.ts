@@ -13,12 +13,17 @@ import { requirePermission } from "../middleware/require-permission.js";
 import { PERMISSIONS } from "../../../../packages/security/src/permissions.js";
 import { principalToActor } from "../../../../packages/security/src/rbac.js";
 import { getCorrelationId } from "../middleware/correlation.js";
+import { owners, scopeParam, scopeRefs } from "../middleware/company-scope.js";
 import { validate } from "../middleware/validate.js";
 import { listRelationships, getRelationship, recordInteraction } from "../../../../packages/agents/src/index.js";
 
 export const relationshipRouter = Router();
 
 relationshipRouter.use(authenticate, requirePermission(PERMISSIONS.AGENT_READ));
+relationshipRouter.use(scopeRefs);
+
+scopeParam(relationshipRouter, "agentId", "Agent", owners.agent);
+scopeParam(relationshipRouter, "targetAgentId", "Agent", owners.agent);
 
 relationshipRouter.get(
   "/agents/:agentId",

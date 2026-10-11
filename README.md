@@ -346,7 +346,7 @@ Communication, Economy, Approvals, Activity |
 | `packages/workspace` | Phase 3 work environments — closed-root path guard, workspace lifecycle, members, file browsing, archive/reap |
 | `packages/execution` | Phase 3 execution runtime — `ExecutionBackend` (mock/local/OpenCode), guarded idempotent queue, non-blocking worker, spooled output, orphan recovery, verification pipeline |
 | `packages/skills` | external skill manifests — trust, security analysis, prompt-injection screening, installer, lockfile |
-| `database/` | Prisma SQLite schema (48 models) + migrations + idempotent `seed.ts` |
+| `database/` | Prisma SQLite schema (50 models) + migrations + idempotent `seed.ts` |
 | `tests/` | 31 suites, **313 tests** (298 passing, 15 environment-gated skips when Docker/CLI runtimes are absent — `npm run test` prints the current numbers on your machine) — finance races, ledger proofs, review loops, permissions, API, simulation, sandbox, AI platform, factory, QA, social/academy, payroll |
 | `docs/` | `ARCHITECTURE` · `SIMULATION_ENGINE` · `SECURITY` · `API` · `ROADMAP` · `FACTORY` · `AGENTWORLD_PHASE_3_ARCHITECTURE` · `PHASE3-AUDIT` |
 
@@ -383,7 +383,7 @@ curl -X POST localhost:4000/api/v1/simulation/start -H "Authorization: Bearer $T
 curl        localhost:4000/api/v1/simulation/state -H "Authorization: Bearer $TOKEN"
 curl        localhost:4000/api/v1/factory/runs -H "Authorization: Bearer $TOKEN"
 curl        localhost:4000/api/v1/integrations/providers -H "Authorization: Bearer $TOKEN"
-curl -N     "localhost:4000/api/v1/events/stream?token=$TOKEN"
+curl -N     localhost:4000/api/v1/events/stream -H "Authorization: Bearer $TOKEN"
 ```
 
 See [`plan.md`](plan.md) for the session handover record and [`docs/`](docs/) for

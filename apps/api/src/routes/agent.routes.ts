@@ -18,6 +18,7 @@ import { requirePermission } from "../middleware/require-permission.js";
 import { PERMISSIONS } from "../../../../packages/security/src/permissions.js";
 import { principalToActor } from "../../../../packages/security/src/rbac.js";
 import { getCorrelationId } from "../middleware/correlation.js";
+import { owners, scopeParam, scopeRefs, scoped } from "../middleware/company-scope.js";
 import { validate } from "../middleware/validate.js";
 import { agentRunRateLimit } from "../middleware/rate-limit.js";
 import { toAgentDto } from "../dto/index.js";
@@ -37,6 +38,9 @@ import {
 
 export const agentRouter: Router = Router();
 agentRouter.use(authenticate);
+agentRouter.use(scopeRefs);
+
+scopeParam(agentRouter, "id", "Agent", owners.agent);
 
 agentRouter.get(
   "/",
@@ -48,7 +52,7 @@ agentRouter.get(
         ...(q.companyId !== undefined ? { companyId: q.companyId } : {}),
         ...(q.roleKey !== undefined ? { roleKey: q.roleKey } : {}),
       });
-      res.json({ data: agents.map((a) => toAgentDto(a as unknown as Record<string, unknown>)), correlationId: getCorrelationId(req) });
+      res.json({ data: (await scoped(req, agents, (a) => ({ companyId: a.currentCompanyId }))).map((a) => toAgentDto(a as unknown as Record<string, unknown>)), correlationId: getCorrelationId(req) });
     } catch (error) {
       next(error);
     }

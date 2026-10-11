@@ -33,6 +33,37 @@
 | Modify company structure, delete agents | no | no | yes |
 | Transfer/withdraw money, read audit | no | no | yes |
 
+### Company scope (visibility)
+
+Roles decide what a user may *do*; company scope decides which companies they
+may *see* (`packages/security/src/company-access.ts`). A platform `OWNER`
+sees every company. Anyone else sees the companies they own plus those
+granted via `CompanyAccess` (`POST/DELETE /companies/:id/access`, managed by
+the company owner or a platform owner). An invisible company answers 404.
+Rows with no company (shared world, unaffiliated agents) stay visible.
+
+Enforcement (`apps/api/src/middleware/company-scope.ts`):
+
+- Every authenticated router runs `scopeRefs`: any company, agent
+  (`agentId`, `*AgentId`), task, plan or workspace id in the body or query
+  string must be visible, so work cannot be filed into, assigned from, or
+  filtered by another company.
+- `:id`-style params resolve their row's links (company directly, or via its
+  agent's current company, task, plan, or workspace agent); a row is visible
+  only when every link is.
+- Lists are filtered the same way (they can return fewer rows than `take`).
+- Event log, activity log and the SSE stream filter by actor and target;
+  non-owners never see other users' IP or user agent. The stream resolves
+  scope once per connection, so a grant change applies on reconnect.
+- `/economy/totals`, `/economy/verify`, and the global pending-approval
+  count are platform-owner figures.
+- API keys (MCP) act with platform-wide visibility, so they only work while
+  their owner is an active platform `OWNER`.
+
+Platform-level by design (no company): world/city/locations and the
+simulation clock, skills, tool catalogue, providers/models, credentials and
+API-key metadata. Visibility follows an agent's *current* company.
+
 Agent tools declare `requiredPermission` + `risk`; anything `HIGH`/`CRITICAL`
 or on the always-approve list (`agent.create`, `wallet.withdraw`, …) is
 withheld pending a human.
@@ -75,6 +106,26 @@ Tests: `tests/security-m4.test.ts`, `tests/execution-tools-m1.test.ts`,
 `evaluateApproval` combines action risk, declared risk, and spend threshold
 (`APPROVAL_SPEND_THRESHOLD` major units). Large `wallet.transfer` calls become
 `PENDING_APPROVAL` with frozen arguments; approval replays them exactly once.
+
+## Outbound requests (SSRF)
+
+URLs a caller chooses (webhook subscriptions, the `graphql` endpoint and
+`webhook-out` url an agent passes) go through `assertPublicUrl`
+(`packages/shared/src/net.ts`) in production: the host is resolved and every
+address must be public unicast (no loopback, RFC 1918, link-local/metadata,
+CGNAT, ULA, or IPv4-mapped/NAT64 spellings of those). Webhooks are re-checked
+at each delivery, and these requests never follow redirects. A `graphql`
+credential's token is only sent to its configured base-URL origin.
+Residual: fetch resolves DNS again, so a rebinding host with a ~0s TTL can
+still race the check; egress filtering at the network layer closes that.
+
+## Sessions in URLs and OAuth state
+
+- The SSE stream never takes the access token in a URL: browsers use a
+  60-second, stream-only ticket (`POST /events/ticket`, audience
+  `kingworld-stream`) that cannot call the API.
+- OAuth `state` is stored in the `OAuthState` table (single-use, 10-minute
+  TTL), so callbacks work across instances and restarts.
 
 ## Operational notes
 

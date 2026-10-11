@@ -18,7 +18,7 @@ function makeFigure(): MovableFigure {
   const part = (): THREE.Group => new THREE.Group();
   return {
     group,
-    parts: { torso: part(), head: part(), armL: part(), armR: part(), legL: part(), legR: part() },
+    parts: { torso: part(), head: part(), armL: part(), armR: part(), legL: part(), legR: part(), bubble: new THREE.Mesh() },
   };
 }
 

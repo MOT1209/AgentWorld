@@ -8,6 +8,7 @@
 import { Router, type NextFunction, type Request, type Response } from "express";
 import { prisma } from "../../../../packages/database/src/index.js";
 import { authenticate } from "../middleware/authenticate.js";
+import { owners, scopeParam, scopeRefs } from "../middleware/company-scope.js";
 import { requirePermission } from "../middleware/require-permission.js";
 import { PERMISSIONS } from "../../../../packages/security/src/permissions.js";
 import { agentPerformance, companyPerformance } from "../../../../packages/agents/src/index.js";
@@ -16,6 +17,10 @@ import { validationError } from "../../../../packages/shared/src/index.js";
 export const performanceRouter = Router();
 
 performanceRouter.use(authenticate, requirePermission(PERMISSIONS.AGENT_READ));
+performanceRouter.use(scopeRefs);
+
+scopeParam(performanceRouter, "agentId", "Agent", owners.agent);
+scopeParam(performanceRouter, "companyId", "Company", owners.company);
 
 performanceRouter.get(
   "/agents/:agentId",

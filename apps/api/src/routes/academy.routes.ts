@@ -14,6 +14,7 @@ import { requirePermission } from "../middleware/require-permission.js";
 import { PERMISSIONS } from "../../../../packages/security/src/permissions.js";
 import { principalToActor } from "../../../../packages/security/src/rbac.js";
 import { getCorrelationId } from "../middleware/correlation.js";
+import { owners, scopeParam, scopeRefs } from "../middleware/company-scope.js";
 import { validate } from "../middleware/validate.js";
 import {
   startTrainingRun,
@@ -27,6 +28,14 @@ import {
 export const academyRouter = Router();
 
 academyRouter.use(authenticate);
+academyRouter.use(scopeRefs);
+
+scopeParam(academyRouter, "agentId", "Agent", owners.agent);
+scopeParam(academyRouter, "companyId", "Company", owners.company);
+scopeParam(academyRouter, "id", "Training run", async (id) => {
+  const row = await prisma.trainingRun.findUnique({ where: { id }, select: { agentId: true } });
+  return row && { agentId: row.agentId };
+});
 
 const StartSchema = z.object({
   agentId: z.string().min(1),
