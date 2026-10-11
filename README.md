@@ -17,11 +17,12 @@ It is also a real AI platform and a Software Factory that ships code through it.
 [Features](#features) ·
 [Security](#security) ·
 [API & MCP](#api--mcp) ·
+[Screenshots](#screenshots) ·
 [Docs](#documentation)
 
-<img src="docs/screenshots/world.png" alt="The operator dashboard: a live 3D city with districts, buildings and walking agents beside district occupancy and agent status panels" width="900" />
+<img src="docs/screenshots/live-city.png" alt="The AgentWorld operator console: a grouped sidebar beside a live 3D cartoon city with buildings, roads and walking agents, with district occupancy and agent cards on the right" width="900" />
 
-<sub>The operator dashboard: a live 3D city where agents walk between home and work, with district occupancy and agent status beside it.</sub>
+<sub>The operator console: a live 3D city modelled in Blender, where agents walk between home and work, with district occupancy and agent status beside it.</sub>
 
 </div>
 
@@ -47,6 +48,32 @@ any of 20 vendors when you want real reasoning.
 | 🧠 **AI platform** | One gateway, capability/budget routing across 20 vendors, usage and cost tracking |
 | 🏭 **Software Factory** | GitHub URL in, analyzed, tested, reviewed PR out, with a human merge gate |
 | 🔐 **Company isolation** | Every company-linked record is scoped to the people allowed to see it |
+
+---
+
+## Screenshots
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/world-overview.png" alt="World overview: stat tiles for world, simulated time, phase, cities, places and agents above district cards" /></td>
+    <td width="50%"><img src="docs/screenshots/tasks.png" alt="Tasks table with status and priority pills, truncated ids and a refresh button" /></td>
+  </tr>
+  <tr>
+    <td align="center"><sub><b>World overview</b>: clock, phase and districts at a glance</sub></td>
+    <td align="center"><sub><b>Tasks</b>: status and priority pills, readable dates</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/login.png" alt="Two-column sign-in screen with the AgentWorld brand panel on the left and the form on the right" /></td>
+    <td width="50%" align="center"><img src="docs/screenshots/mobile.png" alt="The dashboard on a phone: a section picker in the top bar and stacked world tiles" width="240" /></td>
+  </tr>
+  <tr>
+    <td align="center"><sub><b>Sign in</b>: owner access only, every action audited</sub></td>
+    <td align="center"><sub><b>Mobile</b>: section picker and stacked layout</sub></td>
+  </tr>
+</table>
+
+The 3D characters, buildings and street decor are built by headless Blender scripts in
+[`tools/blender`](tools/blender/README.md) and exported as small GLB files.
 
 ---
 
@@ -137,7 +164,7 @@ and a failed factory stage is evidence, not an exception.
 | Agents | `agents` · `orchestration` · `runtime` · `tools` · `approvals` |
 | Work | `workspace` · `execution` · `skills` |
 | Platform | `ai` · `connectors` · `vault` · `webhooks` · `mcp` · `factory` |
-| Apps | `apps/api` (Express, `/api/v1`) · `apps/web` (React, Tailwind, three.js) |
+| Apps | `apps/api` (Express, `/api/v1`) · `apps/web` (React, Tailwind v4, three.js, Blender-built GLB models) |
 
 ---
 
@@ -364,5 +391,5 @@ Details: [`docs/ROADMAP.md`](docs/ROADMAP.md).
 | [CONTRIBUTING](CONTRIBUTING.md) | How to contribute |
 
 <div align="center">
-<sub>Internal codename: <b>King World</b>, which you will see in the dashboard and in package names.</sub>
+<sub>Internal codename: <b>King World</b>, which you will still see in package names and the seeded demo world.</sub>
 </div>

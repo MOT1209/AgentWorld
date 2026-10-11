@@ -382,7 +382,7 @@ function WorldOverview({ data, error }: { data: unknown; error: string | null })
                     <span className="font-semibold text-gray-900">{d.name}</span>
                     <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">{(d.kind ?? "").replace(/_/g, " ")}</span>
                   </div>
-                  <div className="mt-0.5 text-xs text-gray-500">{d.cityName ?? ""} · {places.length} places</div>
+                  <div className="mt-0.5 text-xs text-gray-500">{d.cityName ?? ""} · {places.length} {places.length === 1 ? "place" : "places"}</div>
                   {places.length > 0 && (
                     <ul className="mt-2 space-y-1 text-sm">
                       {places.map((l) => (
