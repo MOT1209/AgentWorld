@@ -33,6 +33,23 @@
 | Modify company structure, delete agents | no | no | yes |
 | Transfer/withdraw money, read audit | no | no | yes |
 
+### Company scope (visibility)
+
+Roles decide what a user may *do*; company scope decides which companies they
+may *see* (`packages/security/src/company-access.ts`). A platform `OWNER`
+sees every company. Anyone else sees the companies they own plus those
+granted via `CompanyAccess` (`POST/DELETE /companies/:id/access`, managed by
+the company owner or a platform owner). An invisible company answers 404.
+Rows with no company (shared world, unaffiliated agents) stay visible.
+
+Enforced today on: `/companies/*`, `/economy/treasury/:companyId`,
+`/economy/wallets*` and `/economy/statement` (filtered), `/tasks/*`.
+`/economy/totals` and `/economy/verify` are platform-owner only.
+**Not yet scoped (phase 2):** plans, conversations, approvals, the SSE event
+stream, logs, webhooks, factory runs, AI usage, `/performance` and
+`/academy` company routes, agent routes, and the MCP read tools. Until those
+land, treat non-owner accounts as trusted for those areas.
+
 Agent tools declare `requiredPermission` + `risk`; anything `HIGH`/`CRITICAL`
 or on the always-approve list (`agent.create`, `wallet.withdraw`, …) is
 withheld pending a human.

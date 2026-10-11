@@ -39,6 +39,7 @@ Every response carries `correlationId`; errors are `{ code, message, correlation
 - `GET /companies`, `POST /companies {name, description?}`
 - `GET /companies/:id`, `GET /companies/:id/overview|members|departments|projects|agents`
 - `POST /companies/:id/departments|members|projects`
+- `GET /companies/:id/access`, `POST /companies/:id/access {email}`, `DELETE /companies/:id/access/:userId` — who besides the owner can see the company (company owner or platform owner manages it). Every `/companies/:id*` route answers 404 for a company the caller cannot see.
 
 ## Agents
 

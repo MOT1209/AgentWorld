@@ -18,18 +18,31 @@ import { getPrincipal, authenticate } from "../middleware/authenticate.js";
 import { requirePermission } from "../middleware/require-permission.js";
 import { PERMISSIONS } from "../../../../packages/security/src/permissions.js";
 import { principalToActor } from "../../../../packages/security/src/rbac.js";
+import {
+  assertCanManageAccess,
+  assertCompanyAccess,
+  companyScope,
+  scopeAllows,
+} from "../../../../packages/security/src/company-access.js";
+import { notFound } from "../../../../packages/shared/src/index.js";
 import { getCorrelationId } from "../middleware/correlation.js";
 import { validate } from "../middleware/validate.js";
 
 export const companyRouter: Router = Router();
 companyRouter.use(authenticate);
 
+// Every /:id route below is company-scoped: an invisible company is a 404.
+companyRouter.param("id", (req: Request, _res: Response, next: NextFunction, id: string): void => {
+  assertCompanyAccess(prisma, getPrincipal(req), id).then(() => next(), next);
+});
+
 companyRouter.get(
   "/",
   requirePermission(PERMISSIONS.COMPANY_READ),
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const companies = await listCompanies(prisma);
+      const scope = await companyScope(prisma, getPrincipal(req));
+      const companies = (await listCompanies(prisma)).filter((company) => scopeAllows(scope, company.id));
       res.json({ data: companies, correlationId: getCorrelationId(req) });
     } catch (error) {
       next(error);
@@ -219,6 +232,69 @@ companyRouter.post(
         { actor: principalToActor(principal), correlationId: getCorrelationId(req), userId: principal.userId },
       );
       res.status(201).json({ data: project, correlationId: getCorrelationId(req) });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// --- Who can see this company --------------------------------------------
+
+companyRouter.get(
+  "/:id/access",
+  requirePermission(PERMISSIONS.COMPANY_READ),
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const grants = await prisma.companyAccess.findMany({
+        where: { companyId: req.params.id as string },
+        include: { user: { select: { id: true, email: true, displayName: true, role: true } } },
+        orderBy: { createdAt: "asc" },
+      });
+      res.json({
+        data: grants.map((grant) => ({ userId: grant.userId, user: grant.user, grantedBy: grant.grantedBy, createdAt: grant.createdAt })),
+        correlationId: getCorrelationId(req),
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+const GrantAccessSchema = z.object({ email: z.string().email() });
+
+companyRouter.post(
+  "/:id/access",
+  requirePermission(PERMISSIONS.COMPANY_READ),
+  validate("body", GrantAccessSchema),
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const principal = getPrincipal(req);
+      const companyId = req.params.id as string;
+      await assertCanManageAccess(prisma, principal, companyId);
+      const body = req.body as z.infer<typeof GrantAccessSchema>;
+      const user = await prisma.user.findUnique({ where: { email: body.email.toLowerCase() }, select: { id: true } });
+      if (user === null) throw notFound("User", body.email);
+      const grant = await prisma.companyAccess.upsert({
+        where: { companyId_userId: { companyId, userId: user.id } },
+        create: { companyId, userId: user.id, grantedBy: principal.userId },
+        update: {},
+      });
+      res.status(201).json({ data: { userId: grant.userId, companyId, createdAt: grant.createdAt }, correlationId: getCorrelationId(req) });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+companyRouter.delete(
+  "/:id/access/:userId",
+  requirePermission(PERMISSIONS.COMPANY_READ),
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const companyId = req.params.id as string;
+      await assertCanManageAccess(prisma, getPrincipal(req), companyId);
+      await prisma.companyAccess.deleteMany({ where: { companyId, userId: req.params.userId as string } });
+      res.status(204).end();
     } catch (error) {
       next(error);
     }

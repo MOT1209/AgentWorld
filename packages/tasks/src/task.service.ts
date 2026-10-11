@@ -25,6 +25,7 @@ import {
 import { conflict, forbidden, notFound } from "../../shared/src/index.js";
 import type { DbClient } from "../../database/src/index.js";
 import type { Agent, Task } from "../../database/src/types.js";
+import type { Prisma } from "@prisma/client";
 import { eventBus } from "../../events/src/index.js";
 import { recordActivity } from "../../events/src/audit.js";
 import { EVENT_TYPES } from "../../events/src/index.js";
@@ -404,36 +405,43 @@ export interface ListTasksQuery {
   parentTaskId?: string;
   priority?: string;
   search?: string;
+  /** Restrict to these companies plus company-less tasks (company scope). */
+  companyIdIn?: string[];
   skip?: number;
   take?: number;
 }
 
-export async function listTasks(db: DbClient, query: ListTasksQuery = {}) {
+/** One filter for list and count, so pagination totals match the page. */
+function taskWhere(query: ListTasksQuery): Prisma.TaskWhereInput {
   const statuses =
     query.status === undefined
       ? undefined
       : Array.isArray(query.status)
         ? query.status
         : [query.status];
+  const and: Prisma.TaskWhereInput[] = [];
+  if (query.search !== undefined) {
+    and.push({ OR: [{ title: { contains: query.search } }, { description: { contains: query.search } }] });
+  }
+  if (query.companyIdIn !== undefined) {
+    // Company scope: visible companies plus shared (company-less) tasks.
+    and.push({ OR: [{ companyId: { in: query.companyIdIn } }, { companyId: null }] });
+  }
+  return {
+    ...(statuses !== undefined ? { status: { in: statuses } } : {}),
+    ...(query.assigneeAgentId !== undefined ? { assigneeAgentId: query.assigneeAgentId } : {}),
+    ...(query.creatorAgentId !== undefined ? { creatorAgentId: query.creatorAgentId } : {}),
+    ...(query.companyId !== undefined ? { companyId: query.companyId } : {}),
+    ...(query.projectId !== undefined ? { projectId: query.projectId } : {}),
+    ...(query.parentTaskId !== undefined ? { parentTaskId: query.parentTaskId } : {}),
+    ...(query.priority !== undefined ? { priority: query.priority } : {}),
+    ...(and.length > 0 ? { AND: and } : {}),
+  };
+}
 
+export async function listTasks(db: DbClient, query: ListTasksQuery = {}) {
   return db.task.findMany({
-    where: {
-      ...(statuses !== undefined ? { status: { in: statuses } } : {}),
-      ...(query.assigneeAgentId !== undefined ? { assigneeAgentId: query.assigneeAgentId } : {}),
-      ...(query.creatorAgentId !== undefined ? { creatorAgentId: query.creatorAgentId } : {}),
-      ...(query.companyId !== undefined ? { companyId: query.companyId } : {}),
-      ...(query.projectId !== undefined ? { projectId: query.projectId } : {}),
-      ...(query.parentTaskId !== undefined ? { parentTaskId: query.parentTaskId } : {}),
-      ...(query.priority !== undefined ? { priority: query.priority } : {}),
-      ...(query.search !== undefined
-        ? {
-            OR: [
-              { title: { contains: query.search } },
-              { description: { contains: query.search } },
-            ],
-          }
-        : {}),
-    },
+    where: taskWhere(query),
     orderBy: [{ priority: "desc" }, { createdAt: "desc" }],
     skip: query.skip ?? 0,
     take: query.take ?? 100,
@@ -441,19 +449,7 @@ export async function listTasks(db: DbClient, query: ListTasksQuery = {}) {
 }
 
 export async function countTasks(db: DbClient, query: ListTasksQuery = {}): Promise<number> {
-  const statuses =
-    query.status === undefined
-      ? undefined
-      : Array.isArray(query.status)
-        ? query.status
-        : [query.status];
-  return db.task.count({
-    where: {
-      ...(statuses !== undefined ? { status: { in: statuses } } : {}),
-      ...(query.assigneeAgentId !== undefined ? { assigneeAgentId: query.assigneeAgentId } : {}),
-      ...(query.companyId !== undefined ? { companyId: query.companyId } : {}),
-    },
-  });
+  return db.task.count({ where: taskWhere(query) });
 }
 
 export interface TaskDetail {

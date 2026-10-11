@@ -15,12 +15,24 @@ import { getPrincipal, authenticate } from "../middleware/authenticate.js";
 import { requirePermission } from "../middleware/require-permission.js";
 import { PERMISSIONS } from "../../../../packages/security/src/permissions.js";
 import { principalToActor } from "../../../../packages/security/src/rbac.js";
+import { assertCompanyAccess, companyScope, scopeAllows } from "../../../../packages/security/src/company-access.js";
+import { notFound } from "../../../../packages/shared/src/index.js";
 import { getCorrelationId } from "../middleware/correlation.js";
 import { validate } from "../middleware/validate.js";
 import { toTaskDto, paginated } from "../dto/index.js";
 
 export const taskRouter: Router = Router();
 taskRouter.use(authenticate);
+
+// A task tied to an invisible company is a 404 on every /:id route.
+taskRouter.param("id", (req: Request, _res: Response, next: NextFunction, id: string): void => {
+  void (async () => {
+    const task = await prisma.task.findUnique({ where: { id }, select: { companyId: true } });
+    if (task !== null && !scopeAllows(await companyScope(prisma, getPrincipal(req)), task.companyId)) {
+      throw notFound("Task", id);
+    }
+  })().then(() => next(), next);
+});
 
 const CreateTaskSchema = z.object({
   title: z.string().min(3).max(200),
@@ -42,6 +54,7 @@ taskRouter.post(
     try {
       const principal = getPrincipal(req);
       const body = req.body as z.infer<typeof CreateTaskSchema>;
+      if (typeof body.companyId === "string") await assertCompanyAccess(prisma, principal, body.companyId);
       const task = await createTask(
         prisma,
         {
@@ -77,6 +90,7 @@ taskRouter.get(
       const q = req.query as Record<string, string | undefined>;
       const page = Math.max(1, Number(q.page ?? "1") || 1);
       const pageSize = Math.min(200, Math.max(1, Number(q.pageSize ?? "50") || 50));
+      const scope = await companyScope(prisma, getPrincipal(req));
       const filter = {
         ...(q.status !== undefined ? { status: q.status } : {}),
         ...(q.assigneeAgentId !== undefined ? { assigneeAgentId: q.assigneeAgentId } : {}),
@@ -84,6 +98,7 @@ taskRouter.get(
         ...(q.projectId !== undefined ? { projectId: q.projectId } : {}),
         ...(q.priority !== undefined ? { priority: q.priority } : {}),
         ...(q.search !== undefined ? { search: q.search } : {}),
+        ...(scope.all ? {} : { companyIdIn: [...scope.companyIds] }),
         skip: (page - 1) * pageSize,
         take: pageSize,
       };
