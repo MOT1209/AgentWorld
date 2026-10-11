@@ -1741,3 +1741,15 @@ model TrainingRun {
   @@index([agentId, skillName])
   @@index([status])
 }
+
+/// Pending OAuth authorization (the `state` round trip). Stored, not kept in
+/// process memory, so a callback can land on any API instance or after a
+/// restart. Single-use: completing deletes the row.
+model OAuthState {
+  state         String   @id
+  connectorSlug String
+  expiresAt     DateTime
+  createdAt     DateTime @default(now())
+
+  @@index([expiresAt])
+}

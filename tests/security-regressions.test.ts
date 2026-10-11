@@ -176,7 +176,7 @@ describe("OAuth state integrity", () => {
       scopes: ["read"],
     });
     try {
-      const begun = beginAuthorization(SLUG, ctx);
+      const begun = await beginAuthorization(SLUG, ctx);
       const [rawState, signature] = begun.state.split(".") as [string, string];
       // A same-length forgery exercises the constant-time compare...
       const tampered = `${rawState}.${signature.endsWith("A") ? "B" : "A"}${signature.slice(1)}`;
@@ -208,10 +208,14 @@ describe("OAuth state integrity", () => {
         /Malformed OAuth state/,
       );
 
-      const begun = beginAuthorization(SLUG, ctx);
+      const begun = await beginAuthorization(SLUG, ctx);
+      // Stored in the database, so any API instance can complete it.
+      const rawState = begun.state.split(".")[0] as string;
+      expect(await prisma.oAuthState.count({ where: { state: rawState } })).toBe(1);
       await expect(
         completeAuthorization({ code: "c", state: begun.state }, { ...ctx, fetchImpl: refusingFetch }),
       ).rejects.toThrow(/Token exchange failed/);
+      expect(await prisma.oAuthState.count({ where: { state: rawState } })).toBe(0);
       // Replaying the same state is refused even though its signature verifies.
       await expect(completeAuthorization({ code: "c", state: begun.state }, ctx)).rejects.toThrow(
         /already used|expired/,

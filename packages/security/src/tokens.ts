@@ -73,6 +73,43 @@ export function verifyAccessToken(token: string): AccessTokenClaims {
   }
 }
 
+const STREAM_AUDIENCE = "kingworld-stream";
+export const STREAM_TICKET_TTL_SECONDS = 60;
+
+/**
+ * Short-lived ticket for the SSE stream. EventSource cannot send headers, so
+ * the credential travels in the URL, where proxies and browsers log it. A
+ * 60-second, stream-only token is worthless by the time a log is read, and its
+ * audience keeps it from working as an API access token (and vice versa).
+ */
+export function signStreamTicket(userId: string): string {
+  return jwt.sign({ kind: "stream" }, getConfig().jwt.secret, {
+    algorithm: "HS256",
+    expiresIn: STREAM_TICKET_TTL_SECONDS,
+    issuer: ISSUER,
+    audience: STREAM_AUDIENCE,
+    subject: userId,
+  });
+}
+
+/** Returns the ticket's user id, or throws 401. */
+export function verifyStreamTicket(ticket: string): string {
+  try {
+    const decoded = jwt.verify(ticket, getConfig().jwt.secret, {
+      algorithms: ALLOWED_ALGORITHMS,
+      issuer: ISSUER,
+      audience: STREAM_AUDIENCE,
+    });
+    if (typeof decoded === "string" || decoded.sub === undefined) throw unauthenticated("Malformed stream ticket");
+    return decoded.sub;
+  } catch (error) {
+    if (error instanceof jwt.JsonWebTokenError || error instanceof jwt.NotBeforeError) {
+      throw unauthenticated(error instanceof jwt.TokenExpiredError ? "Stream ticket expired" : "Invalid stream ticket");
+    }
+    throw error;
+  }
+}
+
 /** Extracts a bearer token without validating it. */
 export function extractBearerToken(header: string | undefined): string | null {
   if (!header) return null;

@@ -88,3 +88,36 @@ describe("MCP rate limit", () => {
     expect(() => rateLimitClient(ip, 3, t0 + 60_000)).not.toThrow();
   });
 });
+
+describe("MCP discovery", () => {
+  it("does not list tool names to unauthenticated callers", async () => {
+    const { default: request } = await import("supertest");
+    const { createApp } = await import("../apps/api/src/app.js");
+    const res = await request(createApp()).get("/api/v1/mcp/");
+    expect(res.status).toBe(200);
+    expect(res.body.data.tools).toBeUndefined();
+  });
+});
+
+describe("event stream tickets", () => {
+  it("keeps access tokens out of URLs and tickets out of the API", async () => {
+    const { default: request } = await import("supertest");
+    const { createApp } = await import("../apps/api/src/app.js");
+    const { signAccessToken, signStreamTicket, verifyStreamTicket } = await import("../packages/security/src/tokens.js");
+    const { createTestUser } = await import("./helpers.js");
+    const app = createApp();
+    const user = await createTestUser();
+    const access = signAccessToken({ userId: user.id, email: user.email, displayName: "T", role: "OWNER" });
+
+    const issued = await request(app).post("/api/v1/events/ticket").set("Authorization", `Bearer ${access}`);
+    expect(issued.status).toBe(200);
+    const ticket = issued.body.data.ticket as string;
+    expect(verifyStreamTicket(ticket)).toBe(user.id);
+
+    // The old ?token= form no longer authenticates the stream.
+    expect((await request(app).get(`/api/v1/events/stream?token=${access}`)).status).toBe(401);
+    // An access token is not a ticket, and a ticket is not an access token.
+    expect(() => verifyStreamTicket(access)).toThrow();
+    expect((await request(app).get("/api/v1/companies").set("Authorization", `Bearer ${signStreamTicket(user.id)}`)).status).toBe(401);
+  });
+});

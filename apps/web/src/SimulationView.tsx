@@ -700,9 +700,14 @@ export function SimulationView({ token }: { token: string }): JSX.Element {
   }, [load, loadDirectory]);
 
   // Live refresh from the event stream (throttled).
+  // The stream authenticates with a 60-second ticket (never the access token
+  // in a URL). EventSource would retry with the same, by then expired, URL,
+  // so every reconnect fetches a fresh ticket instead.
   useEffect(() => {
-    const source = new EventSource(`${API_BASE}/events/stream?token=${encodeURIComponent(token)}`);
+    let source: EventSource | null = null;
     let pending: number | undefined;
+    let retry: number | undefined;
+    let stopped = false;
     const schedule = (): void => {
       if (pending !== undefined) return;
       pending = window.setTimeout(() => {
@@ -710,11 +715,28 @@ export function SimulationView({ token }: { token: string }): JSX.Element {
         void load();
       }, 1_500);
     };
-    for (const type of RELOAD_EVENTS) source.addEventListener(type, schedule);
-    source.onopen = schedule;
+    const connect = async (): Promise<void> => {
+      try {
+        const { data } = await api.post<{ ticket: string }>("/events/ticket");
+        if (stopped) return;
+        source = new EventSource(`${API_BASE}/events/stream?ticket=${encodeURIComponent(data.ticket)}`);
+        for (const type of RELOAD_EVENTS) source.addEventListener(type, schedule);
+        source.onopen = schedule;
+        source.onerror = () => {
+          source?.close();
+          source = null;
+          if (!stopped) retry = window.setTimeout(() => void connect(), 3_000);
+        };
+      } catch {
+        if (!stopped) retry = window.setTimeout(() => void connect(), 10_000);
+      }
+    };
+    void connect();
     return () => {
-      source.close();
+      stopped = true;
+      source?.close();
       if (pending !== undefined) window.clearTimeout(pending);
+      if (retry !== undefined) window.clearTimeout(retry);
     };
   }, [token, load]);
 

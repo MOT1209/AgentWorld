@@ -8,7 +8,7 @@
 import { Router, type NextFunction, type Request, type Response } from "express";
 import { prisma } from "../../../../packages/database/src/index.js";
 import { parseApiKey } from "../../../../packages/security/src/api-keys.js";
-import { handleMcpRequest, MCP_TOOLS, MCP_PROTOCOL_VERSION, MCP_SERVER_NAME, MCP_SERVER_VERSION } from "../../../../packages/mcp/src/index.js";
+import { handleMcpRequest, MCP_PROTOCOL_VERSION, MCP_SERVER_NAME, MCP_SERVER_VERSION } from "../../../../packages/mcp/src/index.js";
 import { rateLimited } from "../../../../packages/shared/src/index.js";
 
 export const mcpRouter: Router = Router();
@@ -41,7 +41,7 @@ mcpRouter.get("/", (_req: Request, res: Response): void => {
       server: MCP_SERVER_NAME,
       version: MCP_SERVER_VERSION,
       protocolVersion: MCP_PROTOCOL_VERSION,
-      tools: MCP_TOOLS.map((tool) => tool.name),
+      // Tool names are listed only to authenticated clients (JSON-RPC tools/list).
       auth: "Authorization: Bearer aw_<api-key>",
     },
   });

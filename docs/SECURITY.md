@@ -119,6 +119,14 @@ credential's token is only sent to its configured base-URL origin.
 Residual: fetch resolves DNS again, so a rebinding host with a ~0s TTL can
 still race the check; egress filtering at the network layer closes that.
 
+## Sessions in URLs and OAuth state
+
+- The SSE stream never takes the access token in a URL: browsers use a
+  60-second, stream-only ticket (`POST /events/ticket`, audience
+  `kingworld-stream`) that cannot call the API.
+- OAuth `state` is stored in the `OAuthState` table (single-use, 10-minute
+  TTL), so callbacks work across instances and restarts.
+
 ## Operational notes
 
 - `npm 11` blocks install scripts: approve `prisma`, `@prisma/client`,

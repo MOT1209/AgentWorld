@@ -447,10 +447,10 @@ integrationsRouter.get(
 integrationsRouter.post(
   "/oauth/:slug/begin",
   requirePermission(PERMISSIONS.CREDENTIAL_MANAGE),
-  (req: Request, res: Response, next: NextFunction): void => {
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const principal = getPrincipal(req);
-      const { authorizationUrl, state } = beginAuthorization(req.params.slug as string, {
+      const { authorizationUrl, state } = await beginAuthorization(req.params.slug as string, {
         actor: principalToActor(principal),
         db: prisma,
         correlationId: getCorrelationId(req),
