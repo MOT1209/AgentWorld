@@ -4,7 +4,7 @@ import { getConfig, resetConfigCache } from "../packages/shared/src/index.js";
 const savedEnv: Record<string, string | undefined> = {};
 
 function snapshotEnv(): void {
-  for (const key of ["NODE_ENV", "JWT_SECRET", "DATABASE_URL", "SEED_OWNER_PASSWORD", "EXEC_SANDBOX"] as const) {
+  for (const key of ["NODE_ENV", "JWT_SECRET", "DATABASE_URL", "SEED_OWNER_PASSWORD", "EXEC_SANDBOX", "EXEC_ALLOW_UNSANDBOXED_PRODUCTION"] as const) {
     savedEnv[key] = process.env[key];
   }
 }
@@ -88,10 +88,20 @@ describe("command sandbox default", () => {
     expect(getConfig().exec.sandbox).toBe("local");
   });
 
-  it("still honours an explicit EXEC_SANDBOX in production", () => {
+  it("refuses EXEC_SANDBOX=local in production without the explicit opt-in", () => {
     production();
     process.env.EXEC_SANDBOX = "local";
+    delete process.env.EXEC_ALLOW_UNSANDBOXED_PRODUCTION;
+    resetConfigCache();
+    expect(() => getConfig()).toThrow(/EXEC_SANDBOX=local in production/);
+  });
+
+  it("honours an explicit EXEC_SANDBOX=local in production only with the opt-in", () => {
+    production();
+    process.env.EXEC_SANDBOX = "local";
+    process.env.EXEC_ALLOW_UNSANDBOXED_PRODUCTION = "true";
     resetConfigCache();
     expect(getConfig().exec.sandbox).toBe("local");
+    expect(getConfig().exec.allowUnsandboxedInProduction).toBe(true);
   });
 });

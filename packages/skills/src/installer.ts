@@ -167,8 +167,15 @@ export function planInstallation(options: InstallOptions): InstallPlan {
 
 /** Commit a planned install into the catalog (caller enforces approval first). */
 export function commitInstallation(catalog: SkillCatalog, source: SkillSource, externalId: string, plan: InstallPlan, opts: { enable?: boolean; now?: string } = {}): SkillCatalogRecord {
+  return catalog.upsert(buildInstallationRecord(catalog.get(plan.manifest.key), source, externalId, plan, opts));
+}
+
+/**
+ * The catalog record a planned install produces, given the current record
+ * (if any). Pure: callers with a durable store persist the result themselves.
+ */
+export function buildInstallationRecord(existing: SkillCatalogRecord | undefined, source: SkillSource, externalId: string, plan: InstallPlan, opts: { enable?: boolean; now?: string } = {}): SkillCatalogRecord {
   const now = opts.now ?? new Date().toISOString();
-  const existing = catalog.get(plan.manifest.key);
   const base =
     existing ??
     blankRecord({
@@ -186,6 +193,7 @@ export function commitInstallation(catalog: SkillCatalog, source: SkillSource, e
     version: plan.manifest.version,
     integrityHash: plan.integrityHash,
     installedAt: now,
+    manifest: plan.manifest,
   };
   const record: SkillCatalogRecord = {
     ...base,
@@ -214,7 +222,7 @@ export function commitInstallation(catalog: SkillCatalog, source: SkillSource, e
     lastChecked: now,
     lastUpdated: now,
   };
-  return catalog.upsert(record);
+  return record;
 }
 
 /** Plan an update OLD -> NEW with diff + approval gating on widened authority. */

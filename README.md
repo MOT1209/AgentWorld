@@ -353,7 +353,7 @@ sandbox tests on Linux.
 | `apps/api` | Express REST API (`/api/v1`): auth, RBAC, company scope, approval replay, simulation control, SSE |
 | `apps/web` | React operator dashboard with the three.js city and 19 operator views |
 | `packages/*` | Domain packages (see [Architecture](#architecture)) |
-| `database/` | Prisma SQLite schema (50 models), migrations, idempotent `seed.ts` |
+| `database/` | Prisma SQLite schema (55 models), migrations, idempotent `seed.ts` |
 | `tests/` | Vitest suites |
 | `docs/` | Architecture, simulation engine, security, API, factory, sandbox, roadmap |
 

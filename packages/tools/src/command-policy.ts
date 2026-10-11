@@ -270,6 +270,20 @@ function isReservedEnvKey(key: string): boolean {
 }
 
 /**
+ * Last line of defence at the runner: drops any variable whose NAME looks
+ * like a secret, whoever built the env. `filterEnv` already does this for the
+ * known callers; this keeps a future caller from leaking a token by mistake.
+ */
+export function stripSecretEnv(env: Record<string, string>): Record<string, string> {
+  const output: Record<string, string> = {};
+  for (const [key, value] of Object.entries(env)) {
+    if (SECRET_KEY_PATTERN.test(key)) continue;
+    output[key] = value;
+  }
+  return output;
+}
+
+/**
  * Environment an agent child process may see: the process allow-list plus
  * agent/workspace-declared variables, minus anything shaped like a secret and
  * minus reserved loader/interpreter/PATH variables. `PATH`/`SystemRoot`
