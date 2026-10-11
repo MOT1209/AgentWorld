@@ -344,3 +344,189 @@ describe("AW-10: a skill approval is bound to its payload and single-use", () =>
     expect(replayed.status).toBe(202);
   });
 });
+
+describe("AW-14: ids of other kinds are scope-checked too", () => {
+  let alice: Awaited<ReturnType<typeof makeUser>>;
+  let companyA: string;
+  let companyB: string;
+  let agentA: string;
+  let agentB: string;
+  let conversationB: string;
+
+  beforeAll(async () => {
+    alice = await makeUser("ADMIN");
+    const bob = await makeUser("ADMIN");
+    companyA = (await request(app).post("/api/v1/companies").set("Authorization", alice.auth).send({ name: unique("AW14 A") })).body.data.id as string;
+    companyB = (await request(app).post("/api/v1/companies").set("Authorization", bob.auth).send({ name: unique("AW14 B") })).body.data.id as string;
+    agentA = (await createTestAgent({ companyId: companyA })).id;
+    agentB = (await createTestAgent({ companyId: companyB })).id;
+    const conv = await prisma.conversation.create({
+      data: { kind: "HUMAN_AGENT", title: "B private", companyId: companyB, participants: { create: [{ agentId: agentB }] } },
+    });
+    conversationB = conv.id;
+    await prisma.message.create({ data: { conversationId: conversationB, senderType: "HUMAN", content: "B-ONLY-SECRET" } });
+  });
+
+  it("refuses to run an agent against another company's conversation", async () => {
+    const before = await prisma.message.count({ where: { conversationId: conversationB } });
+    const res = await request(app)
+      .post(`/api/v1/agents/${agentA}/run`)
+      .set("Authorization", alice.auth)
+      .send({ trigger: "CHAT", conversationId: conversationB, userMessage: "summarise" });
+    expect(res.status).toBe(404);
+    expect(JSON.stringify(res.body)).not.toContain("B-ONLY-SECRET");
+    expect(await prisma.message.count({ where: { conversationId: conversationB } })).toBe(before);
+  });
+
+  it("refuses foreign conversation, project and department ids in bodies", async () => {
+    const project = await prisma.project.create({ data: { companyId: companyB, name: unique("B project") } });
+    const department = await prisma.department.create({ data: { companyId: companyB, name: unique("B dept") } });
+    const memory = await request(app)
+      .post("/api/v1/memories")
+      .set("Authorization", alice.auth)
+      .send({ agentId: agentA, kind: "FACT", content: "x", conversationId: conversationB });
+    expect(memory.status).toBe(404);
+    const task = await request(app)
+      .post("/api/v1/tasks")
+      .set("Authorization", alice.auth)
+      .send({ title: "into B project", companyId: companyA, projectId: project.id });
+    expect(task.status).toBe(404);
+    const member = await request(app)
+      .post(`/api/v1/companies/${companyA}/members`)
+      .set("Authorization", alice.auth)
+      .send({ agentId: agentA, roleKey: "EXECUTOR", title: "x", departmentId: department.id });
+    // ADMIN lacks company.structure.modify (403) — either way it must not succeed.
+    expect([403, 404]).toContain(member.status);
+  });
+});
+
+describe("AW-15: an execution idempotency key cannot return another caller's job", () => {
+  it("conflicts when the colliding key links a different agent", async () => {
+    const { enqueueExecution } = await import("../packages/execution/src/index.js");
+    const key = unique("exec-key");
+    const command = JSON.stringify(["echo", "hi"]);
+    const first = await enqueueExecution(prisma, { kind: "COMMAND", command, backendId: "mock", agentId: (await createTestAgent()).id, idempotencyKey: key });
+    const again = await enqueueExecution(prisma, { kind: "COMMAND", command, backendId: "mock", agentId: first.agentId as string, idempotencyKey: key });
+    expect(again.id).toBe(first.id);
+    await expect(
+      enqueueExecution(prisma, { kind: "COMMAND", command, backendId: "mock", agentId: (await createTestAgent()).id, idempotencyKey: key }),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+    await expect(enqueueExecution(prisma, { kind: "COMMAND", command, backendId: "mock", idempotencyKey: key })).rejects.toMatchObject({ code: "CONFLICT" });
+  });
+});
+
+describe("AW-16: a failing MCP tool call is audited", () => {
+  it("records MCP_REQUEST with the failure reason", async () => {
+    const owner = await makeUser("OWNER");
+    const ownerPrincipal = buildPrincipal({ id: owner.id, email: owner.email, displayName: "OWNER", role: "OWNER" });
+    const { secret } = await createApiKey(
+      prisma,
+      { userId: owner.id, name: unique("mcp-fail"), scopes: ["task.create"], ownerPermissions: ownerPrincipal.permissions },
+      { actor: SYSTEM },
+    );
+    const client = unique("audit-client");
+    const res = await handleMcpRequest(
+      { db: prisma, apiKey: secret, clientName: client },
+      { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "tasks.create", arguments: { companyId: "missing-company", title: "x" } } },
+    );
+    expect(res.error).toBeDefined();
+    const rows = await prisma.eventLog.findMany({ where: { type: "MCP_REQUEST" }, orderBy: { id: "desc" }, take: 20 });
+    const row = rows.find((r) => r.payload.includes(client));
+    expect(row?.payload).toContain("failed:");
+  });
+});
+
+describe("AW-17: opt-in four-eyes rule for approvals", () => {
+  async function raise(userId: string): Promise<string> {
+    const req = await requestApproval(
+      prisma,
+      { action: "skill.install", actionPayload: {}, reason: "t", risk: "HIGH", requester: { actorType: "USER", actorId: userId } },
+      { actor: SYSTEM },
+    );
+    return req.id;
+  }
+
+  it("blocks self-approval only when APPROVAL_FOUR_EYES is on", async () => {
+    const { resetConfigCache } = await import("../packages/shared/src/index.js");
+    const requester = await makeUser("OWNER");
+    const other = await makeUser("OWNER");
+    const ctx = (id: string) => ({ actor: SYSTEM, permissions: buildPrincipal({ id, email: "x@y.z", displayName: "O", role: "OWNER" }).permissions, userId: id });
+
+    const offId = await raise(requester.id);
+    const off = await decideApproval(prisma, { requestId: offId, decision: "APPROVED", decidedByUserId: requester.id }, ctx(requester.id));
+    expect(off.status).toBe("APPROVED");
+
+    process.env.APPROVAL_FOUR_EYES = "true";
+    resetConfigCache();
+    try {
+      const onId = await raise(requester.id);
+      await expect(
+        decideApproval(prisma, { requestId: onId, decision: "APPROVED", decidedByUserId: requester.id }, ctx(requester.id)),
+      ).rejects.toMatchObject({ code: "FORBIDDEN" });
+      const byOther = await decideApproval(prisma, { requestId: onId, decision: "APPROVED", decidedByUserId: other.id }, ctx(other.id));
+      expect(byOther.status).toBe("APPROVED");
+    } finally {
+      delete process.env.APPROVAL_FOUR_EYES;
+      resetConfigCache();
+    }
+  });
+});
+
+describe("AW-18: opt-in AI budget floor", () => {
+  it("refuses paid calls for a company below AI_MIN_TREASURY_MINOR, never mock-only ones", async () => {
+    const { resetConfigCache } = await import("../packages/shared/src/index.js");
+    const { complete, ProviderRegistry, MockProvider } = await import("../packages/ai/src/index.js");
+    let paidCalls = 0;
+    const paid = {
+      id: "openai-compatible",
+      kind: "OPENAI_COMPATIBLE" as const,
+      isAvailable: () => true,
+      describe: () => ({ id: "openai-compatible", kind: "OPENAI_COMPATIBLE" as const, displayName: "paid", configured: true, defaultModel: "gpt-4o", models: ["gpt-4o"] }),
+      complete: async (req: { model: string }) => {
+        paidCalls += 1;
+        return { content: "ok", toolCalls: [], finishReason: "stop" as const, usage: { promptTokens: 1, completionTokens: 1 }, providerId: "openai-compatible", model: req.model, latencyMs: 1 };
+      },
+    };
+    const registry = new ProviderRegistry([new MockProvider(), paid as never]);
+    const owner = await makeUser("OWNER");
+    const company = await prisma.company.create({ data: { name: unique("Budget Co"), ownerId: owner.id } });
+    const treasury = await ensureWallet(prisma, { ownerType: "COMPANY", ownerId: company.id });
+    const ask = (providerId: string) =>
+      complete(
+        prisma,
+        { model: providerId === "mock" ? "mock-1" : "gpt-4o", providerId, allowMockFallback: false, companyId: company.id, messages: [{ role: "user", content: "hi" }] },
+        { actor: SYSTEM, registry },
+      );
+
+    process.env.AI_MIN_TREASURY_MINOR = "100";
+    resetConfigCache();
+    try {
+      await expect(ask("openai-compatible")).rejects.toThrow(/AI budget exhausted/);
+      expect(paidCalls).toBe(0);
+      await expect(ask("mock")).resolves.toMatchObject({ providerId: "mock" });
+
+      await deposit({ toWalletId: treasury.id, amount: Money.fromMinor(500), description: "fund", actor: SYSTEM, correlationId: "aw18" });
+      await expect(ask("openai-compatible")).resolves.toMatchObject({ providerId: "openai-compatible" });
+      expect(paidCalls).toBe(1);
+    } finally {
+      delete process.env.AI_MIN_TREASURY_MINOR;
+      resetConfigCache();
+    }
+  });
+});
+
+describe("AW-19: production refuses an account still on the dev seed password", () => {
+  it("finds active seed accounts that accept the default password", async () => {
+    const { findAccountsWithDevPassword } = await import("../packages/security/src/password.js");
+    const { DEV_SEED_OWNER_PASSWORD } = await import("../packages/shared/src/index.js");
+    const email = "king@kingworld.local";
+    await prisma.user.upsert({
+      where: { email },
+      update: { passwordHash: hashPassword(DEV_SEED_OWNER_PASSWORD, 10), isActive: true },
+      create: { email, passwordHash: hashPassword(DEV_SEED_OWNER_PASSWORD, 10), displayName: "King", role: "OWNER", isActive: true },
+    });
+    expect(await findAccountsWithDevPassword(prisma)).toContain(email);
+    await prisma.user.update({ where: { email }, data: { passwordHash: hashPassword("Changed-Password-123", 10) } });
+    expect(await findAccountsWithDevPassword(prisma)).not.toContain(email);
+  });
+});

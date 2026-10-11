@@ -5,21 +5,31 @@ recommendations with acceptance criteria, not implemented work.
 
 ## Phase 1 — Confirmed defects (done)
 
-AW-01 … AW-12, see [AGENTWORLD_AUDIT.md](AGENTWORLD_AUDIT.md). Acceptance:
-each has a test in `tests/audit-2026-10-regressions.test.ts` that failed
-before the fix and passes after; full suite, typecheck, lint, build green
+AW-01 … AW-13, see [AGENTWORLD_AUDIT.md](AGENTWORLD_AUDIT.md). Acceptance:
+AW-01 … AW-11 each have a test in `tests/audit-2026-10-regressions.test.ts`
+that failed before the fix and passes after (AW-12/13 are doc and test fixes); full suite, typecheck, lint, build green
 (see [AGENTWORLD_TEST_REPORT.md](AGENTWORLD_TEST_REPORT.md)).
 
-## Phase 2 — P1/P2 hardening (recommended next)
+## Phase 2 — P1/P2 hardening (done, second pass)
 
-| Item | Why | Acceptance criteria | Depends on |
-|---|---|---|---|
-| Run the Docker sandbox suite | Only real boundary for untrusted agents; blocked here | `tests/docker-sandbox.test.ts` passes on Linux CI (already wired in `ci.yml`) | Docker Hub access / registry mirror |
-| Pre-flight AI budget cap | Spend is charged after the fact only | A run is refused (and evented) when the company's remaining budget is below the call's estimated cost; test with mock costs | Decide budget source (treasury balance vs. explicit cap) |
-| Four-eyes option for approvals | Requester can approve own request | Config flag; when on, `decideApproval` refuses `decidedByUserId === requesterUserId`; test both modes | Product decision |
-| Route-by-route trace of other id kinds | `conversationId`, `approvalRequestId`, `toUserId`, wallet ids are not covered by `scopeRefs` | Each route either scope-checks or is documented as platform-level; one isolation test per route | — |
-| Audit MCP handler failures | Only success/denial are evented | `MCP_REQUEST` with `authorized: true, error` on throw; test | — |
-| Per-caller execution idempotency | Global key namespace | Key unique per (createdBy, key) via migration; test cross-user collision | Migration + `tests/setup.ts` |
+| Item | Outcome |
+|---|---|
+| Run the Docker sandbox suite | 11/12 pass on `node:22-alpine`; repo image build blocked by egress policy here, CI builds it |
+| Route-by-route trace of other id kinds | Found AW-14 (P1); fixed with `INDIRECT_LINKS` |
+| Per-caller execution idempotency | AW-15, fixed without a migration (links are part of the replay shape) |
+| Audit MCP handler failures | AW-16 |
+| Four-eyes option | AW-17, `APPROVAL_FOUR_EYES` (default off) |
+| Pre-flight AI budget | AW-18, `AI_MIN_TREASURY_MINOR` floor (default off) |
+| Seeded password in a reused DB | AW-19, startup refusal |
+
+### Still open (needs a decision or more design)
+
+| Item | Acceptance criteria |
+|---|---|
+| Turn on four-eyes / budget floor in production | Product decision; then set the env values in deployment config |
+| Cost-estimating budget (not just a floor) | Refuse when estimated cost of the call exceeds remaining budget; needs a token estimator |
+| Path-guard TOCTOU | Open files with `O_NOFOLLOW` per path segment, or rely on Docker mode only; test with a racing symlink swap |
+| `toUserId` / wallet ids in `scopeRefs` | Decide visibility rules for users; add loaders + isolation tests |
 
 ## Phase 3 — P3 / developer experience
 

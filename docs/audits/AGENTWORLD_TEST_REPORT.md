@@ -56,7 +56,32 @@ the test always tamper (strictly stronger). Product code
 (`packages/connectors/src/oauth.ts`) was correct. Passed 3/3 reruns and in the
 final full run.
 
-## Skipped and blocked
+## Second pass (AW-14 … AW-19)
+
+AW-14, AW-15 and AW-16 were confirmed failing before their fixes (AW-14: the
+agent run returned 200; AW-15 and AW-16 by reverting only the fixed file).
+
+Docker: the daemon was started and `node:22-alpine` pulled successfully this
+time, but the repository image (`docker/sandbox`) still could not be built:
+`apk add` gets **HTTP 403 from the session's egress policy** for
+`dl-cdn.alpinelinux.org`. The boundary suite was run against the plain base
+image under a test-only tag (`TEST_DOCKER_IMAGE=kingworld-sandbox:base-only`);
+the isolation flags come from `DockerRunner`, not the image.
+
+| Command | Exit | Result |
+|---|---|---|
+| `npm run typecheck` | 0 | Clean |
+| `npm run lint` | 0 | Clean |
+| `npm run check:docs` | 0 | Counts match |
+| `npm test` (with Docker) | 0 | 43 files: 42 passed, 1 skipped; **447 tests: 445 passed, 2 skipped**; 92 s |
+| `npm run build` | 0 | Same chunk-size warning |
+
+`tests/docker-sandbox.test.ts`: 11 passed (non-root user, no network, no host
+filesystem, read-only root, dropped capabilities, pid cap, timeout kill, live
+kill, output cap, fail-closed, root-owned refusal); 1 skipped (git inside the
+container — the base image has no git).
+
+## Skipped and blocked (first pass)
 
 | Suite | Tests | Why |
 |---|---|---|

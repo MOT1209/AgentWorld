@@ -1,10 +1,11 @@
 # AgentWorld — Repository Audit (2026-10-11)
 
 Scope: the checked-out tree on branch `claude/agentworld-audit-hardening-yaml8k`
-(base `6476d9c`, merge of PR #14). Findings AW-01 … AW-11 were reproduced with a failing
-test before they were fixed; the tests live in
-`tests/audit-2026-10-regressions.test.ts` and carry the finding id. AW-12 and
-AW-13 are documentation / test fixes.
+(base `6476d9c`, merge of PR #14). Defects AW-01 … AW-11 and AW-14 … AW-16
+were reproduced with a failing test before they were fixed; AW-17 and AW-18
+are new opt-in settings tested both on and off; AW-19 adds a startup check
+with a unit test. All tests live in `tests/audit-2026-10-regressions.test.ts`
+and carry the finding id. AW-12 and AW-13 are documentation / test fixes.
 
 Related: [Implementation plan](AGENTWORLD_IMPLEMENTATION_PLAN.md) ·
 [Test report](AGENTWORLD_TEST_REPORT.md) ·
@@ -68,30 +69,36 @@ Checked by reading code and by the existing + new tests passing:
 | AW-07 | P3 | Login skipped bcrypt for unknown/inactive accounts → account enumeration by timing. | Helper absent | Fixed |
 | AW-12 | P3 | `docs/ROADMAP.md` test/model counts stale ("313 tests", "48 models"). | `check:docs` reports 50 models | Fixed |
 | AW-13 | P3 | Test bug: the OAuth tamper test changed the first signature character based on the *last* one, so ~1.6 % of runs "tampered" nothing and failed. Product code was correct. | Failed once in the final run | Fixed (test) |
+| AW-14 | P1 | `conversationId` (and session, job, approval, project, department ids) were not scope-checked. `POST /agents/:id/run` with another company's conversation fed its recent messages into the caller's agent prompt and posted the reply into it (cross-tenant read **and** write). Also memory/report/task rows could be linked to foreign conversations and projects. | Run returned 200; task in foreign project 201 | Fixed (`INDIRECT_LINKS` in `scopeRefs`) |
+| AW-15 | P2 | Execution idempotency keys are global; a colliding key with the same command returned the other caller's job row even when it linked a different agent. | Returned the foreign row | Fixed (links are part of the replay shape) |
+| AW-16 | P2 | An authorised MCP tool call that threw was not audited at all. | No `MCP_REQUEST` row | Fixed |
+| AW-17 | P2 | No four-eyes option: a human could approve a request they raised. | — (policy gap) | Added `APPROVAL_FOUR_EYES` (default off) |
+| AW-18 | P2 | No pre-flight AI budget control; spend only charged after the call. | — (feature gap) | Added `AI_MIN_TREASURY_MINOR` floor (default off) |
+| AW-19 | P2 | Production start only rejected the default seed password in env, not an account in the database that still accepts it. | Helper absent | Fixed (startup refuses) |
 
-## 4. Risks requiring further validation (not confirmed defects)
+## 4. Remaining risks (not fixed)
 
-- **No four-eyes rule.** A human holding `approval.decide` can approve a
-  request they created (relevant for skill flows). Policy decision, not a bug.
-- **No pre-flight AI budget enforcement.** `packages/ai/src/gateway.ts` records
-  usage and charges the treasury after each call; a failed charge is logged and
-  the run continues. There is no hard per-company/agent spend cap.
+Second pass (same day): the four-eyes rule, budget control, execution
+idempotency, MCP failure audit, seeded-password and id-kind items that were
+listed here are now AW-14 … AW-19. The Docker sandbox suite was also run
+(see the test report). What remains:
+
+- **Four-eyes and budget floor are off by default.** Turning them on changes
+  behaviour for existing users; that is a product decision.
+- **The budget floor is a floor, not a cost estimate.** A call above the floor
+  can still cost more than what is left; the charge then fails (logged) and
+  the next call is refused.
 - **Local execution mode is host code execution** by design (`npm test`,
   `node file.js`, git hooks run agent-written files). Only the Docker sandbox
-  is a boundary; its tests could not run here (Docker Hub 429).
-- **Execution idempotency keys are global**, not per caller: a key collision
-  with an identical command/workspace returns the other caller's job row.
+  is a boundary.
 - **Path guard TOCTOU**: realpath check then use; a concurrent symlink swap
   inside the workspace could race it. Requires a process already able to
-  write symlinks in the workspace.
+  write symlinks in the workspace (in Docker mode, a container).
 - **SSRF check is production-only**; development agents can reach localhost.
-- **Seed password** check covers the env value only; an account seeded in
-  development keeps its password if the DB is reused in production.
-- **MCP tool results** are not audited on handler failure (only success and
-  denial emit events).
-- **Unscoped id kinds**: only company/agent/task/plan/workspace keys are
-  checked automatically. Other id kinds in bodies (e.g. `conversationId`,
-  `approvalRequestId`, `toUserId`) were not exhaustively traced route by route.
+- **Wallet and user ids** in bodies (`toUserId` on escalations, wallet ids on
+  OWNER-only economy routes) are not resolved by `scopeRefs`. Economy writes
+  are platform-owner only; escalating to an arbitrary user id was not traced
+  further.
 
 ## 5. Documentation inconsistencies found
 

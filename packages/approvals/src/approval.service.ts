@@ -25,7 +25,7 @@ import {
   type ApprovalStatus,
   type RiskLevel,
 } from "../../shared/src/index.js";
-import { conflict, forbidden, notFound } from "../../shared/src/index.js";
+import { conflict, forbidden, getConfig, notFound } from "../../shared/src/index.js";
 import type { DbClient } from "../../database/src/index.js";
 import type { ApprovalRequest } from "../../database/src/types.js";
 import { eventBus } from "../../events/src/index.js";
@@ -152,6 +152,11 @@ export async function decideApproval(
   if (request.expiresAt !== null && request.expiresAt.getTime() <= Date.now()) {
     await expireRequest(db, request, correlationId);
     throw conflict("Approval request has expired", { requestId: request.id });
+  }
+  if (getConfig().approvals.fourEyes && request.requesterUserId !== null && request.requesterUserId === input.decidedByUserId) {
+    throw forbidden("Four-eyes rule: a request must be decided by someone other than its requester", {
+      requestId: request.id,
+    });
   }
 
   // Compare-and-set on PENDING: two concurrent decisions both pass the read

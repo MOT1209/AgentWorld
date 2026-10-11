@@ -14,8 +14,8 @@ Historical snapshot at Phase 1 close; current totals in brackets.
 - Agent runtime (think-act-observe) + 4 role profiles + 19 tools
   [now 82 tools]
 - REST API (auth, RBAC, approvals replay, agent wakeup), seed, 25 tests
-  [now 440 tests in 43 files as of 2026-10-11: 427 passing + 13 environment-gated skips when
-  Docker/OpenCode runtimes are absent; see docs/audits/AGENTWORLD_TEST_REPORT.md],
+  [now 447 tests in 43 files as of 2026-10-11: 445 passing + 2 skipped with Docker available,
+  13 environment-gated skips without Docker; see docs/audits/AGENTWORLD_TEST_REPORT.md],
   operator dashboard, docs
 
 ## Phase 2 (done): orchestration

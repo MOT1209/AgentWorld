@@ -53,8 +53,11 @@ Enforcement (`apps/api/src/middleware/company-scope.ts`):
   be filed into, assigned from, or filtered by another company. Prefixed and
   plural keys count (`currentCompanyId`, `parentTaskId`, `assigneeAgentId`,
   `participantAgentIds`); arrays are checked element by element. Ids of other
-  kinds are checked in their route: execution `sessionId` and verify-report
-  `jobIds` must belong to visible rows.
+  kinds are resolved through the row they name: conversation, session,
+  execution job, approval request, project and department ids (`conversationId`,
+  `sessionId`, `jobIds`, …) must belong to visible rows. A foreign
+  `conversationId` on an agent run would otherwise feed that conversation into
+  the prompt and post the reply into it.
 - `:id`-style params resolve their row's links (company directly, or via its
   agent's current company, task, plan, or workspace agent); a row is visible
   only when every link is.
@@ -122,8 +125,13 @@ A decision is a compare-and-set on `PENDING`: of two concurrent decisions
 exactly one wins and the other gets 409, so a rejection cannot be overwritten
 by a late approval. Replay runs with the approving human's permissions.
 
-Known gap: there is no four-eyes rule. A human who triggers a held tool call
-(e.g. via `/tools`) can approve it themselves if they hold `approval.decide`.
+Four-eyes rule: off by default. With `APPROVAL_FOUR_EYES=true` a human cannot
+decide a request they raised (skill install/update/assign); agent-raised
+requests are unaffected because agents can never decide.
+
+AI budget floor: with `AI_MIN_TREASURY_MINOR` > 0, paid provider calls are
+refused for a company whose treasury is below the floor (the free mock
+provider still answers). Spend itself is charged after each call.
 
 ## Outbound requests (SSRF)
 
@@ -150,6 +158,12 @@ an error), so a hostile endpoint cannot make the server buffer without bound.
   `kingworld-stream`) that cannot call the API.
 - OAuth `state` is stored in the `OAuthState` table (single-use, 10-minute
   TTL), so callbacks work across instances and restarts.
+
+## Startup checks
+
+Production refuses to start when `JWT_SECRET` is missing, short or the
+placeholder, when `SEED_OWNER_PASSWORD` is the development default, or when
+an active seed account in the database still accepts that default password.
 
 ## Operational notes
 

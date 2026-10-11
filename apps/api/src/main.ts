@@ -3,6 +3,7 @@ import { createApp } from "./app.js";
 import { getConfig, logger, redactedConfig } from "../../../packages/shared/src/index.js";
 import { connectDatabase, disconnectDatabase, prisma } from "../../../packages/database/src/index.js";
 import { verifyCommandRunner } from "../../../packages/tools/src/command-runner.js";
+import { findAccountsWithDevPassword } from "../../../packages/security/src/password.js";
 import { getSimulationEngine } from "../../../packages/simulation/src/index.js";
 import { startExecutionWorker } from "../../../packages/execution/src/index.js";
 import { startWebhookDispatcher, enqueueDeliveriesForEvent } from "../../../packages/webhooks/src/index.js";
@@ -16,6 +17,12 @@ async function main(): Promise<void> {
 
   await verifyCommandRunner();
   await connectDatabase();
+  if (config.isProduction) {
+    const exposed = await findAccountsWithDevPassword(prisma);
+    if (exposed.length > 0) {
+      throw new Error(`Account(s) ${exposed.join(", ")} still use the development seed password. Change it before starting in production.`);
+    }
+  }
 
   // The simulation heartbeat only advances a world whose status is RUNNING; a
   // paused or stopped world costs nothing but a timer tick.

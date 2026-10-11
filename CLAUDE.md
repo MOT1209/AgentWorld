@@ -35,8 +35,9 @@ Change these only with a regression test in `tests/`:
 - **Company isolation** — `apps/api/src/middleware/company-scope.ts`
   (`scopeRefs`, `scopeParam`, `scoped`). Any body/query key ending in
   `companyId`/`agentId`/`taskId`/`planId`/`workspaceId` (or the plural `…Ids`)
-  is checked automatically. Ids of other kinds (sessions, jobs, wallets) need
-  an explicit check in the route.
+  is checked automatically, and so are conversation, session, execution job,
+  approval request, project and department ids (`INDIRECT_LINKS`). Other id
+  kinds (wallets, users) need an explicit check in the route.
 - **Agent permissions** — role grant ∩ declared capabilities
   (`packages/agents/src/agent.service.ts#buildRuntimeProfile`). Human-only
   permissions (`HUMAN_ONLY_PERMISSIONS`) can never reach a role. Skills and

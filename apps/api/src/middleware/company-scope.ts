@@ -115,21 +115,73 @@ function linkForKey(key: string): keyof OwnerRef | null {
 }
 
 /**
+ * Ids of rows that are not links themselves but belong to one: the loader
+ * returns the row's links (null when it does not exist, leaving the 404 to
+ * the handler). Matched like linkForKey: exact, prefixed or plural.
+ */
+const INDIRECT_LINKS: Array<{ suffix: string; load: (id: string) => Promise<OwnerRef | null> }> = [
+  {
+    // Messages of a conversation are fed into an agent's prompt and its reply
+    // is posted back, so a foreign conversation id is a read and a write.
+    suffix: "conversationId",
+    load: async (id) => {
+      const row = await prisma.conversation.findUnique({ where: { id }, select: { companyId: true } });
+      return row && { companyId: row.companyId };
+    },
+  },
+  {
+    suffix: "sessionId",
+    load: async (id) =>
+      prisma.agentSession.findUnique({ where: { id }, select: { agentId: true, taskId: true, workspaceId: true } }),
+  },
+  {
+    suffix: "jobId",
+    load: async (id) =>
+      prisma.executionJob.findUnique({ where: { id }, select: { agentId: true, taskId: true, workspaceId: true } }),
+  },
+  {
+    suffix: "approvalRequestId",
+    load: async (id) => {
+      const row = await prisma.approvalRequest.findUnique({ where: { id }, select: { companyId: true, taskId: true, requesterAgentId: true } });
+      return row && { companyId: row.companyId, taskId: row.taskId, agentId: row.requesterAgentId };
+    },
+  },
+  {
+    suffix: "projectId",
+    load: async (id) => prisma.project.findUnique({ where: { id }, select: { companyId: true } }),
+  },
+  {
+    suffix: "departmentId",
+    load: async (id) => prisma.department.findUnique({ where: { id }, select: { companyId: true } }),
+  },
+];
+
+function indirectLinkForKey(key: string): ((id: string) => Promise<OwnerRef | null>) | null {
+  const singular = key.endsWith("Ids") ? key.slice(0, -1) : key;
+  const capitalised = (suffix: string): string => suffix.charAt(0).toUpperCase() + suffix.slice(1);
+  const match = INDIRECT_LINKS.find((link) => singular === link.suffix || singular.endsWith(capitalised(link.suffix)));
+  return match?.load ?? null;
+}
+
+/**
  * Router middleware: every company/agent/task/plan/workspace id that arrives
  * in the body or query string must be visible, so a caller can neither file
  * work into another company nor filter a list by another company's ids.
  * Arrays of ids (`participantAgentIds`, repeated query keys) are checked
- * element by element.
+ * element by element; ids in INDIRECT_LINKS are checked through the row
+ * they name.
  */
 export function scopeRefs(req: Request, _res: Response, next: NextFunction): void {
-  const refs: Array<{ owner: OwnerRef; key: string; id: string }> = [];
+  const refs: Array<{ owner: OwnerRef | (() => Promise<OwnerRef | null>); key: string; id: string }> = [];
   for (const source of [req.body, req.query] as unknown[]) {
     if (source === null || typeof source !== "object" || Array.isArray(source)) continue;
     for (const [key, value] of Object.entries(source as Record<string, unknown>)) {
       const link = linkForKey(key);
-      if (link === null) continue;
+      const load = link === null ? indirectLinkForKey(key) : null;
+      if (link === null && load === null) continue;
       for (const id of Array.isArray(value) ? value : [value]) {
-        if (typeof id === "string" && id.length > 0) refs.push({ owner: { [link]: id }, key, id });
+        if (typeof id !== "string" || id.length === 0) continue;
+        refs.push({ owner: link !== null ? { [link]: id } : () => (load as (id: string) => Promise<OwnerRef | null>)(id), key, id });
       }
     }
   }
@@ -141,7 +193,9 @@ export function scopeRefs(req: Request, _res: Response, next: NextFunction): voi
     const scope = await requestScope(req);
     if (scope.all) return;
     for (const ref of refs) {
-      const visible = await filterByScope(scope, [ref.owner], (o) => o);
+      const owner = typeof ref.owner === "function" ? await ref.owner() : ref.owner;
+      if (owner === null) continue;
+      const visible = await filterByScope(scope, [owner], (o) => o);
       if (visible.length === 0) throw notFound(ref.key.replace(/Ids?$/, ""), ref.id);
     }
   })().then(() => next(), next);

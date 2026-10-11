@@ -650,7 +650,16 @@ export async function handleMcpRequest(ctx: McpAuthContext, raw: unknown): Promi
         request.params?.arguments !== null && typeof request.params?.arguments === "object"
           ? (request.params.arguments as Record<string, unknown>)
           : {};
-      const data = await tool.run(ctx.db, gate.auth, args);
+      let data: unknown;
+      try {
+        data = await tool.run(ctx.db, gate.auth, args);
+      } catch (error) {
+        // An authorised call that failed may have done part of its work: it is
+        // audited like a success, with the error as the reason.
+        const message = error instanceof Error ? error.message : String(error);
+        await gate.audit(method, name, true, `failed: ${message.slice(0, 200)}`);
+        throw error;
+      }
       await gate.audit(method, name, true);
       return ok(rpcId, {
         content: [{ type: "text", text: JSON.stringify(data) }],
