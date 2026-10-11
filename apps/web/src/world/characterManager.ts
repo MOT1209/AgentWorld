@@ -107,6 +107,8 @@ export class CharacterManager {
    * their pose, after the idle pass) without fighting over it.
    */
   private readonly pinned = new Set<string>();
+  /** When set, the ambient idle pass (breathing + badge spin) freezes too. */
+  private ambientPaused = false;
 
   constructor(private readonly parent: THREE.Group) {}
 
@@ -119,6 +121,10 @@ export class CharacterManager {
 
   isPinned(agentId: string): boolean {
     return this.pinned.has(agentId);
+  }
+
+  setAmbientPaused(paused: boolean): void {
+    this.ambientPaused = paused;
   }
 
   get size(): number {
@@ -203,8 +209,10 @@ export class CharacterManager {
         pos.lerp(_lerpTarget, step);
       }
       pos.y = 0; // feet stay glued to the ground plane
-      updateIdleMotion(entry.character.parts, timeSeconds, entry.character.appearance.phase);
-      entry.character.parts.badge.rotation.y = timeSeconds * 0.8;
+      if (!this.ambientPaused) {
+        updateIdleMotion(entry.character.parts, timeSeconds, entry.character.appearance.phase);
+        entry.character.parts.badge.rotation.y = timeSeconds * 0.8;
+      }
     }
   }
 
