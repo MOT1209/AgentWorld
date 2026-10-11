@@ -1,4 +1,5 @@
 export { prisma, connectDatabase, disconnectDatabase, databaseHealth } from "./client.js";
+export { backupDatabase, defaultBackupPath } from "./backup.js";
 export {
   withTransaction,
   withRetry,

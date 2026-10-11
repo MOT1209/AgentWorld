@@ -9,6 +9,7 @@ import { correlationMiddleware } from "./middleware/correlation.js";
 import { errorHandler, notFoundHandler } from "./middleware/error-handler.js";
 import { defaultRateLimit } from "./middleware/rate-limit.js";
 import { registerRoutes } from "./config/routes.js";
+import { mountWebApp } from "./middleware/web-app.js";
 import { databaseHealth } from "../../../packages/database/src/index.js";
 
 export function createApp(): Express {
@@ -27,6 +28,8 @@ export function createApp(): Express {
       credentials: false,
     }),
   );
+  // Static dashboard first: serving files must not consume the API rate-limit budget.
+  if (config.web.serve) mountWebApp(app, config.web.distDir);
   app.use(express.json({ limit: "256kb" }));
   app.use(correlationMiddleware);
   app.use(defaultRateLimit());

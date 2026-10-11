@@ -1,0 +1,37 @@
+# AgentWorld in one container: API + dashboard on http://localhost:4000
+#
+#   export JWT_SECRET=$(openssl rand -hex 48)
+#   export VAULT_MASTER_KEY=$(openssl rand -base64 32)
+#   export SEED_OWNER_PASSWORD='choose-a-long-password'
+#   docker compose up --build
+#
+# Compose refuses to start while a required secret is missing. Full guide: docs/DEPLOYMENT.md
+services:
+  agentworld:
+    build: .
+    image: agentworld:local
+    ports:
+      - "${AGENTWORLD_PORT:-4000}:4000"
+    environment:
+      NODE_ENV: production
+      PORT: "4000"
+      SERVE_WEB: "1"
+      DATABASE_URL: file:/data/agentworld.db
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET, e.g. openssl rand -hex 48}
+      VAULT_MASTER_KEY: ${VAULT_MASTER_KEY:?set VAULT_MASTER_KEY, e.g. openssl rand -base64 32}
+      SEED_OWNER_EMAIL: ${SEED_OWNER_EMAIL:-owner@agentworld.local}
+      SEED_OWNER_PASSWORD: ${SEED_OWNER_PASSWORD:?set SEED_OWNER_PASSWORD (10+ characters)}
+      # Same origin, so no CORS. Behind a reverse proxy also set TRUST_PROXY to the exact hop count.
+      CORS_ORIGINS: ""
+      # Agent commands run inside this container, not in a throwaway sandbox container. That is only
+      # acceptable with the offline mock provider or agents you fully trust. Mounting the Docker socket
+      # to get the real sandbox would hand the container control of the host: see docs/SANDBOX.md.
+      EXEC_SANDBOX: local
+    volumes:
+      - data:/data
+      - workspaces:/app/workspaces
+    restart: unless-stopped
+
+volumes:
+  data:
+  workspaces:

@@ -22,6 +22,11 @@ if (!getConfig().isProduction) {
 
 export async function connectDatabase(): Promise<void> {
   await prisma.$connect();
+  if (getConfig().isProduction) {
+    // WAL lets readers (dashboard polling) proceed while the simulation writes. The mode is stored
+    // in the database file, so this runs once per boot. It returns a row, hence $queryRawUnsafe.
+    await prisma.$queryRawUnsafe("PRAGMA journal_mode=WAL");
+  }
   logger.info("Database connected", { action: "database.connect" });
 }
 
