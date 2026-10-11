@@ -1,201 +1,189 @@
-# AgentWorld 👑
+<div align="center">
 
-<pre align="center">
-██╗  ██╗██╗███╗   ██╗ ██████╗     ██╗    ██╗ ██████╗ ██████╗ ██╗     ██████╗
-██║ ██╔╝██║████╗  ██║██╔════╝     ██║    ██║██╔═══██╗██╔══██╗██║     ██╔══██╗
-█████╔╝ ██║██╔██╗ ██║██║  ███╗    ██║ █╗ ██║██║   ██║██████╔╝██║     ██║  ██║
-██╔═██╗ ██║██║╚██╗██║██║   ██║    ██║███╗██║██║   ██║██╔══██╗██║     ██║  ██║
-██║  ██╗██║██║ ╚████║╚██████╔╝    ╚███╔███╔╝╚██████╔╝██║  ██║███████╗██████╔╝
-╚═╝  ╚═╝╚═╝╚═╝  ╚═══╝ ╚═════╝      ╚══╝╚══╝  ╚═════╝╚═╝  ╚═╝╚══════╝╚═════╝
-</pre>
+# AgentWorld
 
-<p align="center">
-  <b>A simulated digital company where AI agents hold jobs, money, identities,
-  memories — and answer for what they do. Plus a real AI platform and a real
-  Software Factory that ships code through it.</b>
-</p>
+**A simulated company where AI agents hold jobs, wallets, memories and reputations,
+and answer for what they do.**
+It is also a real AI platform and a Software Factory that ships code through it.
 
-<p align="center">
-  <img src="https://img.shields.io/badge/Phase_1-complete-brightgreen" alt="Phase 1 complete" />
-  <img src="https://img.shields.io/badge/Phase_2-complete-brightgreen" alt="Phase 2 complete" />
-  <img src="https://img.shields.io/badge/Phase_3-execution_runtime_landed-blue" alt="Phase 3 execution runtime landed" />
-  <img src="https://img.shields.io/badge/Phase_11-AI_platform_%2B_factory-blue" alt="Phase 11 AI platform and factory" />
-  <!-- No test count here: it drifts every time a suite is added, and the doc guard
-       deliberately does not check it. CI runs `npm run test` on every push. -->
-  <img src="https://img.shields.io/badge/tests-CI_suite-brightgreen" alt="test suite runs in CI (npm run test)" />
-  <img src="https://img.shields.io/badge/verify-typecheck_%E2%80%A2_lint_%E2%80%A2_test_%E2%80%A2_build-blue" alt="verify pipeline" />
-  <img src="https://img.shields.io/badge/keys-zero_required-black" alt="zero API keys needed" />
-</p>
+[![verify](https://github.com/MOT1209/AgentWorld/actions/workflows/ci.yml/badge.svg)](https://github.com/MOT1209/AgentWorld/actions/workflows/ci.yml)
+![Node](https://img.shields.io/badge/node-%E2%89%A520.11-339933?logo=node.js&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
+![SQLite](https://img.shields.io/badge/storage-SQLite-003B57?logo=sqlite&logoColor=white)
+![API keys](https://img.shields.io/badge/API_keys-none_required-111111)
+
+[Quick start](#quick-start) ·
+[Architecture](#architecture) ·
+[Features](#features) ·
+[Security](#security) ·
+[API & MCP](#api--mcp) ·
+[Docs](#documentation)
+
+<img src="docs/screenshots/world.png" alt="The operator dashboard: a live 3D city with districts, buildings and walking agents beside district occupancy and agent status panels" width="900" />
+
+<sub>The operator dashboard: a live 3D city where agents walk between home and work, with district occupancy and agent status beside it.</sub>
+
+</div>
 
 ---
 
-## 🌍 The world in one picture
+## Why AgentWorld
+
+Most agent demos are a loop around a chat model. AgentWorld is a company with
+rules. Agents have a role, a wallet in a double-entry ledger, a memory, a
+reputation earned from evidence, and a daily routine in a simulated city.
+They act **only through audited tools**. Spending above a threshold, merging
+code and anything else risky waits for a human.
+
+The whole system runs offline on a laptop: SQLite for storage and a
+deterministic `mock` model provider, so no keys and no Docker are needed. Plug in
+any of 20 vendors when you want real reasoning.
+
+| | |
+|---|---|
+| 🏙️ **Living simulation** | World clock, needs, routines, goals and a 3D city view with road-following movement |
+| 💰 **Real economy** | Integer money, a single ledger, payroll, treasury, no double-spend |
+| 🤖 **Tool-only agents** | 82 tools behind one enforcement point: permission → validation → approval → audit |
+| 🧠 **AI platform** | One gateway, capability/budget routing across 20 vendors, usage and cost tracking |
+| 🏭 **Software Factory** | GitHub URL in, analyzed, tested, reviewed PR out, with a human merge gate |
+| 🔐 **Company isolation** | Every company-linked record is scoped to the people allowed to see it |
+
+---
+
+## Quick start
+
+**Prerequisites:** Node 20.11+ (22 recommended), npm, git.
+
+```bash
+npm install
+cp .env.example .env            # works as-is; Windows: copy .env.example .env
+npm run doctor                  # checks node, env, client and database
+npm run db:generate
+npm run db:migrate:deploy       # apply migrations (see note below if this hangs)
+npm run db:seed                 # owner account, company, two agents, wallets
+
+npm run dev                     # API        → http://localhost:4000
+npm run dev:web                 # Dashboard  → http://localhost:5173
+```
+
+Sign in with the seeded owner:
+
+| Email | Password |
+|---|---|
+| `king@kingworld.local` | `KingWorld!2026` |
+
+> [!IMPORTANT]
+> Change `SEED_OWNER_*` and `JWT_SECRET` before any shared or production use.
+> In production the server refuses to start with the defaults.
+
+<details>
+<summary><b>If the Prisma CLI hangs on your machine</b> (seen on some Windows setups)</summary>
+
+Apply the migration SQL through the query engine instead:
+
+```bash
+# macOS / Linux
+for d in database/migrations/*/; do npx tsx scripts/apply-migration.ts "$(basename "$d")"; done
+```
+
+```powershell
+# Windows PowerShell
+Get-ChildItem database/migrations -Directory -Name | Sort-Object |
+  ForEach-Object { .\node_modules\.bin\tsx.cmd scripts/apply-migration.ts $_ }
+```
+
+</details>
+
+**Your first five minutes**
+
+1. Meet **Ahmad** (Planner) and **Rashid** (Executor) in *Agents*.
+2. Talk to one in *Communication*, then watch it plan, delegate, spend and report.
+3. Decide the pending request waiting in *Approvals*.
+4. Open *Factory*, paste a public GitHub URL, and advance the run stage by stage.
+
+---
+
+## Architecture
 
 ```mermaid
 flowchart TB
-    subgraph SIM["🧱 SIMULATION STATE (never crashes)"]
-        WORLD[World clock]
-        AGENT[Agent state]
-        TASK[Task + Plan]
+    subgraph SIM["Simulation state (never crashes)"]
+        WORLD[World clock] --> AGENT[Agent state] --> TASK[Tasks and plans]
     end
-    subgraph WORK["⚙️ WORK EXECUTION STATE (may fail safely)"]
-        WS[Workspace]
-        RUN[AgentRuntime]
-        AI[AI Gateway → Model Router → Provider]
-        TOOLS[82 tools]
+    subgraph WORK["Work execution (may fail safely)"]
+        WS[Workspace] --> RUN[Agent runtime] --> GW[AI gateway → router → provider]
+        RUN --> TOOLS[82-tool registry]
     end
-    subgraph FACT["🏭 SOFTWARE FACTORY (bounded pipeline)"]
-        PIPE[Intake → Analyze → Plan → Build → Test → Fix → Review → PR → Merge → Deploy]
+    subgraph FACT["Software Factory (bounded pipeline)"]
+        PIPE[Intake → Analyze → Plan → Build → Test ⇄ Fix → Review → PR → Merge → Deploy]
     end
-    WORLD --> AGENT --> TASK --> WS --> RUN --> AI --> TOOLS
+    TASK --> WS
     TOOLS -->|result| TASK
-    RUN -->|FAILED = event, never a crash| SIM
-    TASK -->|fix tasks| PIPE
-    PIPE -->|PR + approval| TASK
+    RUN -->|failure is an event, never a crash| SIM
+    TASK --> PIPE
+    PIPE -->|PR + human approval| TASK
 ```
 
-> **The one rule everything obeys:** the simulation may know an agent is
-> `WORKING`, but real work runs through the Workspace/Runtime layer. If the
-> runtime fails, the task becomes `FAILED`/`BLOCKED` per policy, the failure
-> becomes an event, and the agent stays available for recovery. **A workspace
-> failure never crashes the world.** The factory obeys the same rule: a failed
-> stage is evidence, never an exception.
+**One rule everything obeys:** the simulation may know an agent is `WORKING`,
+but real work runs in the workspace/runtime layer. When work fails, the task
+becomes `FAILED` or `BLOCKED` by policy, the failure is recorded as an event,
+and the agent stays available. A workspace failure never crashes the world,
+and a failed factory stage is evidence, not an exception.
+
+| Layer | Packages |
+|---|---|
+| Foundations | `shared` · `database` · `security` · `events` |
+| Domain | `economy` · `company` · `world` · `simulation` · `tasks` · `memory` |
+| Agents | `agents` · `orchestration` · `runtime` · `tools` · `approvals` |
+| Work | `workspace` · `execution` · `skills` |
+| Platform | `ai` · `connectors` · `vault` · `webhooks` · `mcp` · `factory` |
+| Apps | `apps/api` (Express, `/api/v1`) · `apps/web` (React, Tailwind, three.js) |
 
 ---
 
-## 🚀 Run it — from clone to a living company
+## Features
 
-Prerequisites: **Node 20.11+** (22 recommended), **npm**, **git**. Nothing
-else — no Docker, no Postgres, no API keys. Storage is SQLite, models run on
-the deterministic `mock` provider, so the whole loop works offline.
+### 💰 Money with seven locks
 
-```bash
-# 1. Install and configure (Windows: use `copy` instead of `cp`)
-npm install
-cp .env.example .env          # works as-is — no keys needed
+All amounts are integer minor units (the `Money` value object; floats are not
+allowed). The ledger is the **only** code that writes balances.
 
-# 2. Let the doctor check your machine (node version, env, client, DB)
-npm run doctor
+| Guarantee | How |
+|---|---|
+| Atomicity | Balance update and `Transaction` append in one DB transaction |
+| No overdraft | A debit below zero is refused |
+| Double entry | DEBIT and CREDIT legs share a `transferGroupId` |
+| Idempotency | A unique `idempotencyKey` turns a retry into a no-op |
+| Immutability | SQLite triggers abort any `UPDATE`/`DELETE` on `Transaction` |
+| Optimistic locking | Each write asserts the wallet `version` |
+| No deadlocks | Two-wallet operations lock wallet ids in sorted order |
 
-# 3. Generate the database client
-npm run db:generate
+`verifyLedger()` replays the whole ledger and checks that every balance equals
+the sum of its entries. AI spend above a threshold is charged through this same
+ledger as a `FEE`; there is no second money system.
 
-# 4. Build the database from the migration SQL, in order.
-#    (The Prisma CLI hangs in this repo — never call `prisma migrate`
-#    directly; execute the SQL through the query engine instead.)
-#    macOS / Linux:
-for d in database/migrations/*/; do
-  npx tsx scripts/apply-migration.ts "$(basename "$d")"
-done
-#    Windows PowerShell:
-Get-ChildItem database/migrations -Directory -Name |
-  Where-Object { $_ -notlike "*.toml" } | Sort-Object |
-  ForEach-Object { .\node_modules\.bin\tsx.cmd scripts/apply-migration.ts $_ }
-
-# 5. Seed the world (owner account, company, Ahmad + Rashid, wallets)
-npm run db:seed
-
-# 6. Start the API (terminal 1) and the dashboard (terminal 2)
-npm run dev                   # API on http://localhost:4000
-npm run dev:web               # Dashboard on http://localhost:5173
-```
-
-Then open the dashboard and sign in with the seeded owner account:
-
-| Field | Default (from `.env.example`) |
-|-------|-------------------------------|
-| Email | `king@kingworld.local` |
-| Password | `KingWorld!2026` |
-
-(Change both via `SEED_OWNER_*` before any shared/production use. In
-production `JWT_SECRET` must also be replaced — the server refuses to boot
-otherwise.)
-
-**Your first five minutes.** Meet **Ahmad** (the Planner) and **Rashid**
-(the Executor) — two seeded agents with real wallets, memories, jobs, and a
-pending approval waiting for you. Talk to one in *Communication*. Watch it
-plan, delegate, spend, and report. Then open the *Factory* tab, paste any
-public GitHub URL, and advance the run stage by stage: analyze → plan →
-build → test → review → PR → approve → merge. Plug in a real vendor only
-when you want real model reasoning — `GET /integrations/providers` shows all
-20 catalogued vendors and exactly which env change enables each one.
-Switching is a database `UPDATE`, never a deployment.
-
-**Everyday commands.**
-
-| Command | What it does |
-|---------|--------------|
-| `npm run verify` | the one command to trust: typecheck → lint → test → build |
-| `npm run doctor` | environment health check with exact fix hints |
-| `npm run check:docs` | README tool/model counts match the tree |
-| `.\node_modules\.bin\vitest.cmd run <file>` | run one test file (never bare `npx` here — it hangs) |
-| `npm run db:seed` | re-seed (idempotent, safe to re-run) |
-
-**Troubleshooting.**
-
-| Symptom | Fix |
-|---------|-----|
-| `prisma --version` / `prisma migrate` hangs | Expected here — use `npm run db:generate` + `scripts/apply-migration.ts`, never the CLI |
-| `npx …` hangs | Call binaries directly: `.\node_modules\.bin\vitest.cmd`, `.\node_modules\.bin\tsx.cmd` |
-| `EADDRINUSE :4000` / `:5173` | Another server holds the port — stop it or set `PORT=` / `VITE_API_BASE_URL=` |
-| `SQLITE_BUSY` / locked DB | Stop other servers/tests; test DBs are per-process (`test-<pid>.db`), `dev.db` is yours alone |
-| Want a clean database | Delete `dev.db*`, re-apply the migrations (step 4), re-seed (step 5) |
-| Dashboard can't reach the API | `VITE_API_BASE_URL` defaults to `http://localhost:4000/api/v1` — set it only if the API moved |
-| Path with spaces fails (Windows) | Quote it: `Set-Location -LiteralPath "alle folder von code\AgentWorld"` or pass `-workdir` explicitly |
-
----
-
-## 💰 Money with seven locks
-
-Every cent is integer minor units (`Money` value object — floats are banned).
-The ledger is the **only** writer of balances, and it guarantees:
-
-| # | Guarantee | How |
-|---|-----------|-----|
-| 1 | **Atomicity** | balance update + `Transaction` append in one DB transaction |
-| 2 | **No overdraft** | a debit below zero is refused |
-| 3 | **Double entry** | DEBIT + CREDIT legs share a `transferGroupId` |
-| 4 | **Idempotency** | `idempotencyKey` turns a retry into a no-op (unique index) |
-| 5 | **Immutability** | SQLite triggers abort any `UPDATE`/`DELETE` on `Transaction` |
-| 6 | **Optimistic locking** | each write asserts the wallet `version` — no double-spend |
-| 7 | **Deadlock-free** | two-wallet ops sort wallet ids before touching them |
-
-`verifyLedger()` replays the whole ledger and proves every balance equals the
-sum of its entries. The finance suite tests all seven — including concurrent
-double-spend races and trigger-tampering attempts. AI spend crosses into this
-same ledger (as `FEE`) only above a configured threshold — there is no second
-money system.
-
----
-
-## 🤖 Agents that can only act through tools
+### 🤖 Agents that act only through tools
 
 ```
-human message ──▶ wakeup ──▶ THINKING ──▶ act (tools) ──▶ observe ──▶ reply ──▶ IDLE
-                                       │         │
-                                       │         ▼
-                                       │    ┌──────────┐
-                                       └───▶│ DENIED?  │──▶ recorded, loop continues
-                                            │ APPROVAL?│──▶ frozen, human decides, replayed once
-                                            └──────────┘
+message → wake → THINKING → act (tools) → observe → reply → IDLE
+                              │
+                              ├─ denied?   → recorded, loop continues
+                              └─ approval? → frozen, a human decides, replayed exactly once
 ```
 
-- The runtime holds **no database handle** — its only capability is the
-  injected `ToolInvoker`. There is no code path from a tool call to a handler
-  that skips permission → Zod → approval → audit.
-- Behaviour comes from `roleKey → RoleProfile`, **never** from a name. There
-  is no `if (agent.name === ...)` anywhere in the repository.
-- The registry **refuses to load** any role granting a human-only permission —
-  that is the structural reason an agent cannot approve its own spend.
-- Recipients are addressed **by role** (`message.send({to: "EXECUTOR"})`), so
-  replacing an agent never breaks caller logic.
-- Every run writes episodic + fact + obligation memories, so the next turn
-  has continuity — and pending approvals are remembered, not retried.
+- The runtime has **no database handle**. Its only capability is the injected
+  tool invoker, so every call passes permission → schema → approval → audit.
+- Behaviour comes from `roleKey → RoleProfile`, never from an agent's name.
+- The role registry **refuses to load** a role that grants a human-only
+  permission, which is why an agent cannot approve its own spend.
+- Every run writes episodic, fact and obligation memories, so the next turn
+  has continuity.
 
-**82 tools** behind the single `ToolExecutor` enforcement point:
+<details>
+<summary><b>The 82 tools by family</b></summary>
 
 | Family | Tools |
-|--------|-------|
+|---|---|
 | Tasks | `task.create/update/list/detail`, dependencies |
 | Communication | `message.send/read` |
 | Memory | `memory.store/search/forget` |
@@ -204,187 +192,177 @@ human message ──▶ wakeup ──▶ THINKING ──▶ act (tools) ──�
 | Company | `company.*` |
 | Events & audit | `event.emit`, activity |
 | Approvals | `approval.list/get/decide` (decide is human-only) |
-| Planning & orchestration | `plan.*`, `review.submit`, `report.submit`, `agent.escalate`, `session.*` |
-| Workspaces, files, terminal, git | `workspace.*`, `fs.*`, `terminal.*`, `git.*` |
+| Planning | `plan.*`, `review.submit`, `report.submit`, `agent.escalate`, `session.*` |
+| Workspaces | `workspace.*`, `fs.*`, `terminal.*`, `git.*` |
 | Execution | `execution.create/get/list/cancel` |
 | AI platform | `provider.list/complete/usage`, `connector.list/get/call` |
-| Testing & QA | `testing.run/get/list/settle` |
-| Software Factory | `factory.start/advance/get/list/project/team.suggest/failure.analyze/fix/review/deploy/merge` (`merge` is human-only) |
-| Social, performance & academy | `relationship.list/peers/get/observe`, `agent.performance`, `academy.train/list`, `agent.evolution` |
+| Testing | `testing.run/get/list/settle` |
+| Factory | `factory.start/advance/get/list/project/team.suggest/failure.analyze/fix/review/deploy/merge` (`merge` is human-only) |
+| Social & growth | `relationship.*`, `agent.performance`, `academy.train/list`, `agent.evolution` |
 
----
+</details>
 
-## 🧠 AI platform — one gateway, honest vendors
-
-```
-Agent ──▶ ToolExecutor ──▶ AI Gateway ──▶ Model Router ──▶ Provider Adapter ──▶ Model
-                                    │            │
-                                    │            └── capability · task type · context ·
-                                    │                budget · availability (cheapest wins)
-                                    └── resolve · execute · bounded retry/fallback ·
-                                        usage + cost + latency tracking · redaction
-```
-
-- **20 vendors catalogued as data** (`VENDOR_CATALOG`): OpenAI, Anthropic,
-  Google, Mistral, Groq, Cohere, xAI, DeepSeek, OpenRouter, Together,
-  Fireworks, Perplexity, Cerebras, Azure OpenAI, AWS Bedrock, Google Vertex,
-  Hugging Face, Ollama, vLLM, llama.cpp. Unconfigured vendors report
-  `configured: false` with the exact env change that enables them — availability
-  is never faked.
-- **Routing by capability, task type, context size, cost budget and
-  availability.** Fallback is bounded (never infinite) and every fallback is
-  recorded. No agent ever calls a provider directly.
-- **One path in**: the agent runtime's *own* thinking calls go through the
-  same gateway as the `provider.complete` tool — no agent dials a provider
-  adapter directly. A scripted `mock` fallback is allowed only for an agent
-  pinned to `mock`; a pinned real provider that fails is reported, never
-  silently answered by a script.
-- **Usage & cost**: every call appends an `AiUsage` row (tokens, estimated
-  cost, latency, correlation ID). Above `AI_CHARGE_THRESHOLD_MINOR` the
-  estimate is charged to the company treasury as a `FEE` through the one
-  ledger, keyed by the usage row — a retry replays as a no-op instead of
-  double-charging.
-- **Secrets**: API keys and OAuth tokens live sealed in the Vault and are
-  injected server-side. Agents never see credentials; CAPTCHAs, paywalls and
-  provider auth are never bypassed.
-
----
-
-## 🔌 Universal Connect — agents reach the outside world safely
+### 🧠 AI platform: one gateway, honest vendors
 
 ```
-Agent ──▶ ToolExecutor (connector.call) ──▶ Connector Adapter ──▶ External Service
-                                                    │
-                                                    └── credential resolved server-side via Vault
+Agent → ToolExecutor → AI Gateway → Model Router → Provider Adapter → Model
+                                        └─ capability · task type · context · budget · availability
 ```
 
-Marketplace transports: **REST** (GitHub, Slack, generic HTTP), **GraphQL**
-(generic endpoint), **outbound webhooks** (SSRF-guarded, forwards no
-credentials), **OAuth** (signed single-use flow), plus honestly-unavailable
-bridges for CLI / database / external-MCP / WebSocket — registered with setup
-notes, failing loudly instead of reaching the network. Every connector
-declares version, category, capabilities, required scopes and security posture;
-every call is audited.
+- **20 vendors catalogued as data**: OpenAI, Anthropic, Google, Mistral, Groq,
+  Cohere, xAI, DeepSeek, OpenRouter, Together, Fireworks, Perplexity, Cerebras,
+  Azure OpenAI, AWS Bedrock, Google Vertex, Hugging Face, Ollama, vLLM and
+  llama.cpp. An unconfigured vendor reports `configured: false` and names the
+  exact setting that enables it.
+- Routing by capability, task type, context size, budget and availability.
+  Fallback is bounded and every fallback is recorded.
+- Every call writes an `AiUsage` row (tokens, estimated cost, latency,
+  correlation id). Keys live sealed in the vault; agents never see them.
 
-**Webhooks**: registration, HMAC-SHA256 signatures, bounded retries with
-backoff, dead-letter state, auto-disable on repeated failure, idempotent
-delivery, full audit.
+### 🔌 Connectors and webhooks
 
----
+REST (GitHub, Slack, generic HTTP), GraphQL, outbound webhooks and OAuth.
+Bridges that are not configured (CLI, database, external MCP, WebSocket) say so
+instead of touching the network. Webhooks are HMAC-SHA256 signed and retried
+with backoff. Repeated failures go to dead-letter and then auto-disable the
+subscription.
 
-## 🏭 Software Factory — GitHub URL in, reviewed PR out
+### 🏭 Software Factory
 
 ```
 URL → INTAKE → ANALYZING → PLANNING → BUILDING → TESTING ⇄ FIXING
-  → REVIEWING → AWAITING_APPROVAL → (human merge) → COMPLETED → DEPLOYED
+    → REVIEWING → AWAITING_APPROVAL → (human merge) → COMPLETED → DEPLOYED
 ```
 
-- **Evidence belongs to its run**: the TESTING stage only reads test runs in
-  its own task/workspace scope, consumes a settled verdict exactly once, and
-  waits while a job is in flight. Re-advancing queues a retest rather than
-  re-entering FIXING on stale evidence, and never spawns a duplicate job.
-- **Repository analyzer** separates *observed facts* (tree, manifests, CI,
-  docs, secrets hygiene, score) from *inferred* findings and *hypotheses*.
-  LLM output is advisory and never overwrites facts.
-- **Managed-project view** maps stages onto DISCOVERING…DEPLOYED with team,
-  task, tests, review verdict, PR and deployments in one object.
-- **Team formation** ranks agents by skills, availability, workload and
-  reputation — suggestion only; assignment stays with the delegation engine.
-- **Testing & QA**: UNIT, INTEGRATION, E2E, BROWSER, MOBILE, SECURITY,
-  PERFORMANCE. Browser/mobile without runners record honest simulated ERROR
-  rows (never passes); security runs real self-checks; performance stores
-  real latencies. TesterArmy is a reserved adapter, never the only mechanism.
-- **Autonomous fix loop is bounded** (attempts, runtime, model calls):
-  failure analysis quotes evidence verbatim → exactly one fix task per call →
-  retest. Exhaustion means FAILED/BLOCKED, never another loop.
-- **Review gate** (analysis, plan, passing tests, secret hygiene, budget,
-  branch) records its verdict and never opens the PR. **Merge and deploy
-  respect the approval policy** — the human decides at the gate.
-- **Deployment** (`vercel|docker|cloud|local|custom`): `custom` with an
-  explicit workspace command executes for real through the runtime; anything
-  else records BLOCKED naming the missing piece. Rollback only with a
-  recorded rollback command. Success is never claimed without evidence.
+- The repository analyzer separates **observed facts** from inferences and
+  hypotheses. Model output is advisory and never overwrites facts.
+- The fix loop is bounded by attempts, runtime and model calls, and creates one
+  fix task per failure. When the budget runs out the run ends `FAILED`/`BLOCKED`
+  instead of looping again.
+- Seven test adapters (unit, integration, E2E, browser, mobile, security,
+  performance). A missing runner records an honest error, never a pass.
+- The review gate records a verdict. Merge and deploy follow the approval
+  policy, and success is never claimed without evidence.
 
-See [`docs/FACTORY.md`](docs/FACTORY.md) for the full operator contract.
+Full operator contract: [`docs/FACTORY.md`](docs/FACTORY.md).
 
 ---
 
-## 🌐 Public API & MCP — one security architecture
+## Security
 
-Base: `http://localhost:4000/api/v1` (JWT auth). Every endpoint has
-authentication, authorization, input validation, pagination, rate limiting,
-audit and consistent errors. Resources: `auth, world, companies, agents,
-tasks, conversations, memories, economy, approvals, tools, logs, simulation,
-events, plans, sessions, reviews, reports, escalations, conflicts,
-workspaces, skills, executions, integrations, mcp, testing, factory,
-relationships, performance`. Full reference: [`docs/API.md`](docs/API.md).
+| Area | What is enforced |
+|---|---|
+| **Company isolation** | A platform owner sees everything. Other users see only companies they own or were granted (`POST /companies/:id/access`). Agents, tasks, plans, wallets, approvals, executions, logs and the event stream all follow the company they belong to. An invisible company answers 404. |
+| **Agent safety** | Tools only, human-only permissions that roles cannot grant, approval with frozen arguments replayed exactly once |
+| **Outbound requests** | Agent-chosen URLs are resolved and must be public: no loopback, private, link-local or metadata addresses, and redirects are not followed. Vault tokens go only to their configured origin. |
+| **Credentials** | Sealed vault, API keys stored as hashes, HS256 JWT with pinned algorithm, issuer and audience |
+| **Sessions** | The SSE stream uses a 60-second stream-only ticket, never the access token in a URL. OAuth state is single-use and stored in the database. |
+| **Execution** | Argument-vector spawning (no shell), command policy, path guard, Docker sandbox in production |
 
-**MCP** (`/mcp`, JSON-RPC 2.0, `aw_`-scoped API keys): **21 tools**
-(agents, companies, projects, tasks, memory, testing, world, economy,
-factory, providers, models, connectors, webhooks, approvals, sessions,
-workspaces, plans) and **10 resources** — all scope-checked and audited.
-External agents, the dashboard and internal tools all pass the same
-Auth → RBAC → ToolExecutor → Audit gauntlet. MCP never bypasses it.
+Threat model, permission matrix and known residual risks:
+[`docs/SECURITY.md`](docs/SECURITY.md).
 
 ---
 
-## 🗺️ Where things are
+## API & MCP
 
-| Area | What lives there |
-|------|------------------|
-| `apps/api` | Express REST (`/api/v1`, 29 route files): JWT auth, RBAC, approval replay, agent wakeup, simulation control + SSE stream |
-| `apps/web` | React + Tailwind operator dashboard — Simulation (three.js), World, Company, Agents, Performance,
-Tasks, Plans, Sessions, Workspaces, Executions, **Factory, Testing, Integrations**, Escalations, Skills,
-Communication, Economy, Approvals, Activity |
-| `packages/{shared,database,security}` | enums, `Money`, errors, config, JWT, RBAC, rate limits, sanitisation |
-| `packages/{economy,events,tasks,memory,world,company}` | ledger, event bus + audit, state machines, decay-ranked memory, dual clock |
-| `packages/{agents,orchestration,runtime}` | runtime loop, roles, capabilities, hierarchy, relationships, performance center, plans, delegation, reviews + rework budgets, reports, escalations, sessions |
-| `packages/{ai,tools}` | provider abstraction + `ModelRouter` + vendor catalog, 82-tool registry + single enforcement point |
-| `packages/{connectors,vault,webhooks,mcp}` | connector marketplace + OAuth, sealed credentials, signed deliveries, scoped MCP server |
-| `packages/{factory}` | pipeline, repository analyzer, GitHub client, testing engine (7 adapters), project mapping, team suggestions, fix loop, review gate, deployment adapters |
-| `packages/simulation` | needs, routines, goals, activities, deterministic decision engine, world tick loop |
-| `packages/workspace` | Phase 3 work environments — closed-root path guard, workspace lifecycle, members, file browsing, archive/reap |
-| `packages/execution` | Phase 3 execution runtime — `ExecutionBackend` (mock/local/OpenCode), guarded idempotent queue, non-blocking worker, spooled output, orphan recovery, verification pipeline |
-| `packages/skills` | external skill manifests — trust, security analysis, prompt-injection screening, installer, lockfile |
-| `database/` | Prisma SQLite schema (50 models) + migrations + idempotent `seed.ts` |
-| `tests/` | 31 suites, **313 tests** (298 passing, 15 environment-gated skips when Docker/CLI runtimes are absent — `npm run test` prints the current numbers on your machine) — finance races, ledger proofs, review loops, permissions, API, simulation, sandbox, AI platform, factory, QA, social/academy, payroll |
-| `docs/` | `ARCHITECTURE` · `SIMULATION_ENGINE` · `SECURITY` · `API` · `ROADMAP` · `FACTORY` · `AGENTWORLD_PHASE_3_ARCHITECTURE` · `PHASE3-AUDIT` |
+**REST:** `http://localhost:4000/api/v1` with JWT bearer auth. Every endpoint
+has authentication, authorization, validation, rate limiting, audit and
+consistent errors. Resources cover auth, world, companies, agents, tasks,
+conversations, memories, economy, approvals, tools, logs, simulation, events,
+plans, sessions, reviews, reports, escalations, conflicts, workspaces, skills,
+executions, integrations, testing, factory, relationships, performance and
+academy. Reference: [`docs/API.md`](docs/API.md).
+
+```bash
+TOKEN=$(curl -s localhost:4000/api/v1/auth/login -H 'content-type: application/json' \
+  -d '{"email":"king@kingworld.local","password":"KingWorld!2026"}' | jq -r .token)
+
+curl -X POST localhost:4000/api/v1/simulation/start  -H "Authorization: Bearer $TOKEN"
+curl         localhost:4000/api/v1/simulation/state  -H "Authorization: Bearer $TOKEN"
+curl -N      localhost:4000/api/v1/events/stream     -H "Authorization: Bearer $TOKEN"
+```
+
+**MCP** (`/api/v1/mcp`, JSON-RPC 2.0, scoped `aw_` API keys): **21 tools** and
+**10 resources**, all scope-checked and audited. External agents go through the
+same auth → RBAC → tool executor → audit path as the dashboard.
 
 ---
 
-## 🧭 Phases
+## Development
+
+| Command | Purpose |
+|---|---|
+| `npm run verify` | Typecheck → lint → test → build (the one to trust) |
+| `npm test` | Vitest suites: ledger proofs and races, permissions, isolation, API, simulation, sandbox, AI platform, factory |
+| `npm run check:docs` | Confirms the counts in this README match the code |
+| `npm run doctor` | Environment health check with fix hints |
+| `npm run db:seed` | Re-seed (idempotent) |
+| `npm run db:clean:test` | Delete leftover per-process test databases |
+
+CI runs `verify` on Ubuntu and Windows with Node 20 and 22, plus real Docker
+sandbox tests on Linux.
+
+<details>
+<summary><b>Troubleshooting</b></summary>
+
+| Symptom | Fix |
+|---|---|
+| Prisma CLI hangs | Use `npm run db:generate` and `scripts/apply-migration.ts` (see Quick start) |
+| `npx …` hangs (Windows) | Call binaries directly, e.g. `.\node_modules\.bin\vitest.cmd run <file>` |
+| `EADDRINUSE :4000` / `:5173` | Stop the other server, or set `PORT` / `VITE_API_BASE_URL` |
+| `SQLITE_BUSY` | Stop other servers or tests; each test process uses its own database |
+| Clean database | Delete `database/*.db*`, re-apply migrations, re-seed |
+| Dashboard can't reach the API | `VITE_API_BASE_URL` defaults to `http://localhost:4000/api/v1` |
+| A non-owner sees no companies | Expected: grant access with `POST /companies/:id/access` |
+
+</details>
+
+<details>
+<summary><b>Repository layout</b></summary>
+
+| Path | Contents |
+|---|---|
+| `apps/api` | Express REST API (`/api/v1`): auth, RBAC, company scope, approval replay, simulation control, SSE |
+| `apps/web` | React operator dashboard with the three.js city and 19 operator views |
+| `packages/*` | Domain packages (see [Architecture](#architecture)) |
+| `database/` | Prisma SQLite schema (50 models), migrations, idempotent `seed.ts` |
+| `tests/` | Vitest suites |
+| `docs/` | Architecture, simulation engine, security, API, factory, sandbox, roadmap |
+
+</details>
+
+---
+
+## Roadmap
 
 | Phase | Scope | Status |
-|-------|-------|--------|
-| **1 — Core engine** | ledger, events, providers, tasks, memory, world, runtime, tools, approvals, API, seed, dashboard | ✅ complete |
-| **2 — Orchestration** | plans, delegation, capabilities, hierarchy, reviews + rework, reports, escalations, sessions, simulation engine, `ModelRouter` | ✅ complete |
-| **3 — Real workspace** | `AgentWorkspace`, process isolation, `terminal`/`fs`/`git` tools, `OpenCodeAdapter`, verification pipeline, live UI, 3D link | ✅ landed ([audit](docs/PHASE3-AUDIT.md)) |
-| **4 — Districts** | `District` model, geometry metadata, capacity enforcement, dashboard surface | ✅ complete |
-| **5 — Daily routines** | event-driven routine engine on the tick path, `ROUTINE_*` events, misses surfaced never crashing | ✅ complete |
-| **6 — Social graph & reputation** | `AgentRelationship` edges from observed interactions (`relationship.*` tools + REST), reputation evolved only from measured evidence (`agent.evolution`, ≤5 points/pass, audited) | ✅ core landed |
-| **Performance Center** | evidence-based agent/company performance summaries from tasks, reviews, executions and AI usage (`agent.performance` + REST + dashboard view) | ✅ core landed |
-| **Academy** | `TrainingRun` lifecycle — skills granted only on a passed scored evaluation, widening requires human authority (`academy.train` + REST) | ✅ core landed |
-| **Payroll heartbeat** | daily payroll on the tick path, idempotent per (company, agent, simulated day), shortfalls recorded never crashing | ✅ core landed |
-| **11 — AI platform + Factory** | 20-vendor catalog, budget/context routing, connector marketplace, webhooks, MCP (21 tools/10 resources), `/api/v1` growth, testing engine (7 adapters), full factory lifecycle (analyze→plan→team→build→test→fix→review→PR→merge→deploy), Factory/Testing/Integrations dashboard | ✅ complete ([contract](docs/FACTORY.md)) |
+|---|---|---|
+| 1 · Core engine | Ledger, events, providers, tasks, memory, world, runtime, tools, approvals, API, dashboard | ✅ Complete |
+| 2 · Orchestration | Plans, delegation, hierarchy, reviews and rework, reports, escalations, sessions, model router | ✅ Complete |
+| 3 · Real workspaces | Workspaces, process isolation, `terminal`/`fs`/`git` tools, OpenCode adapter, verification | ✅ Landed ([audit](docs/PHASE3-AUDIT.md)) |
+| 4 · Districts | District model, capacity, dashboard surface | ✅ Complete |
+| 5 · Daily routines | Event-driven routine engine on the tick path | ✅ Complete |
+| 6 · Social & reputation | Relationship graph, evidence-based reputation, performance center, academy, payroll | ✅ Core landed |
+| 11 · AI platform & factory | 20-vendor catalog, connectors, webhooks, MCP, testing engine, full factory lifecycle | ✅ Complete |
+| 3D world | Explorable city, characters, road-following movement, social bubbles | 🚧 In progress |
+
+Details: [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ---
 
-## ✅ Verify everything with one command
+## Documentation
 
-```bash
-npm run verify   # typecheck → lint → test → build
-npm run check:docs  # README tool/model counts match the tree
-```
+| Document | Covers |
+|---|---|
+| [ARCHITECTURE](docs/ARCHITECTURE.md) | System design and package boundaries |
+| [SIMULATION_ENGINE](docs/SIMULATION_ENGINE.md) | Clock, needs, routines, decisions |
+| [SECURITY](docs/SECURITY.md) | Threat model, permissions, company scope, residual risks |
+| [API](docs/API.md) | REST reference |
+| [FACTORY](docs/FACTORY.md) | Software Factory operator contract |
+| [SANDBOX](docs/SANDBOX.md) | Execution sandbox |
+| [CONTRIBUTING](CONTRIBUTING.md) | How to contribute |
 
-Plus a taste of the API:
-
-```bash
-curl -X POST localhost:4000/api/v1/simulation/start -H "Authorization: Bearer $TOKEN"
-curl        localhost:4000/api/v1/simulation/state -H "Authorization: Bearer $TOKEN"
-curl        localhost:4000/api/v1/factory/runs -H "Authorization: Bearer $TOKEN"
-curl        localhost:4000/api/v1/integrations/providers -H "Authorization: Bearer $TOKEN"
-curl -N     localhost:4000/api/v1/events/stream -H "Authorization: Bearer $TOKEN"
-```
-
-See [`plan.md`](plan.md) for the session handover record and [`docs/`](docs/) for
-the full story. The company is open for business. 👑
+<div align="center">
+<sub>Internal codename: <b>King World</b>, which you will see in the dashboard and in package names.</sub>
+</div>
