@@ -1,4 +1,4 @@
-# King World — Security
+# AgentWorld — Security
 
 ## Threat model
 

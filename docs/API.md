@@ -1,4 +1,4 @@
-# King World — API
+# AgentWorld — API
 
 Base: `http://localhost:4000/api/v1`. Auth: `Authorization: Bearer <JWT>`.
 Every response carries `correlationId`; errors are `{ code, message, correlationId }`.

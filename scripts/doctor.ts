@@ -3,6 +3,7 @@
  * Environment doctor. Checks everything `npm run verify` silently assumes
  * and tells you exactly what to fix. Exit 0 = healthy, 1 = something wrong.
  */
+import "dotenv/config";
 import { existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";

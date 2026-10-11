@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "King World operator dashboard",
+  "description": "AgentWorld operator dashboard",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",

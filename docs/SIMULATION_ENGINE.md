@@ -1,4 +1,4 @@
-# King World — Simulation Engine (Phase 1)
+# AgentWorld — Simulation Engine
 
 The simulation layer lives in `packages/simulation`. It depends on the world,
 agents, memory and events services and never on the HTTP layer, so the same

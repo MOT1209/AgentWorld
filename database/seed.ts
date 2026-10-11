@@ -1,5 +1,5 @@
 /**
- * King World seed — idempotent development bootstrap.
+ * AgentWorld seed — idempotent development bootstrap.
  *
  * Creates, in dependency order:
  * owner user, world + city + locations, company, Ahmad (PLANNER) + Rashid (EXECUTOR),

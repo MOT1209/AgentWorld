@@ -1,8 +1,8 @@
-# King World - Architecture
+# AgentWorld - Architecture
 
-Phases to date: Phase 1 core engine, Phase 2 orchestration (plans, sessions,
-reviews, reports, escalations), Phase 3 real workspaces + execution runtime
-(in progress, see `docs/PHASE3-AUDIT.md`).
+The phase-by-phase delivery history lives in [`ROADMAP.md`](ROADMAP.md). In short: core engine,
+orchestration, real workspaces and execution, integrations, districts, routines, social/academy,
+a stylized 3D city and the operator console are delivered; Postgres is deferred.
 
 ## Monorepo
 
@@ -174,10 +174,10 @@ the tick never stops because of money.
 
 ## Database portability
 
-SQLite (Phase 1) has no native `enum` or `Json`: enum-like columns are `String`
+SQLite has no native `enum` or `Json`: enum-like columns are `String`
 validated by Zod (`packages/shared/src/enums.ts`), payloads are `String`
 holding JSON (`packages/shared/src/json.ts`), money is `Int` minor units.
-Phase 2 (Postgres): real `enum` + `jsonb` + `numeric(19,4)`. Only `Money` and
+Postgres (deferred, see ROADMAP): real `enum` + `jsonb` + `numeric(19,4)`. Only `Money` and
 the schema change.
 
 Known limit: `MAX_MINOR` 2,147,483,647 = 21,474,836.47 KW.

@@ -1,4 +1,4 @@
-# King World CI — mirrors `npm run verify` (typecheck -> lint -> test -> build).
+# AgentWorld CI — mirrors `npm run verify` (typecheck -> lint -> test -> build).
 #
 # Test isolation: every job gets its own database file via TEST_DATABASE_URL
 # (see tests/setup.ts), so matrix jobs and concurrent runs never share state.
@@ -8,6 +8,15 @@ on:
   push:
     branches: [main]
   pull_request:
+
+# Least privilege: CI only reads the repository.
+permissions:
+  contents: read
+
+# A newer push to the same branch or PR supersedes the older run.
+concurrency:
+  group: verify-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   verify:
@@ -35,6 +44,9 @@ jobs:
           docker build -t kingworld-sandbox:1 docker/sandbox
           echo "TEST_DOCKER_IMAGE=kingworld-sandbox:1" >> "$GITHUB_ENV"
       - run: npm run check:docs
+      # Production dependencies only; fails on high or critical advisories.
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
       - run: npm run typecheck
       - run: npm run lint
       - run: npm run test
