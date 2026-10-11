@@ -47,14 +47,23 @@ export function baseBehaviorFor(backendState: string): BaseBehavior {
 export interface MovableFigure {
   group: THREE.Group;
   parts: {
-    torso: THREE.Group;
-    head: THREE.Group;
-    armL: THREE.Group;
-    armR: THREE.Group;
-    legL: THREE.Group;
-    legR: THREE.Group;
+    torso: THREE.Object3D;
+    head: THREE.Object3D;
+    armL: THREE.Object3D;
+    armR: THREE.Object3D;
+    legL: THREE.Object3D;
+    legR: THREE.Object3D;
     bubble: THREE.Mesh;
   };
+}
+
+/**
+ * Hip height of a figure's torso pivot at rest. Modelled characters store it
+ * in `userData.restY`; the procedural figure keeps the historical 0.75.
+ */
+export function torsoRestY(torso: THREE.Object3D): number {
+  const rest = (torso.userData as { restY?: unknown }).restY;
+  return typeof rest === "number" ? rest : 0.75;
 }
 
 /** Pin sink so movers own their position (satisfied by CharacterManager). */
@@ -373,7 +382,7 @@ export class MovementSystem {
     figure.parts.legR.rotation.x = -swing * WALK_SWING;
     figure.parts.armL.rotation.x = -swing * ARM_SWING;
     figure.parts.armR.rotation.x = swing * ARM_SWING;
-    figure.parts.torso.position.y = 0.75 + Math.abs(Math.cos(mover.walkPhase)) * 0.03;
+    figure.parts.torso.position.y = torsoRestY(figure.parts.torso) + Math.abs(Math.cos(mover.walkPhase)) * 0.03;
     figure.parts.torso.rotation.x = 0.05;
   }
 

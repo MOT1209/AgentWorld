@@ -15,6 +15,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { API_BASE, api } from "./api.js";
+import { loadCharacterTemplate } from "./world/characterAssets.js";
 import { stateColorHex } from "./world/characterAppearance.js";
 import {
   FALLBACK_CENTER,
@@ -263,6 +264,12 @@ export function SimulationView({ token }: { token: string }): JSX.Element {
       (id) => agentManager.get(id),
       agentManager,
     );
+    // Swap the procedural placeholders for the modelled characters once the
+    // GLB arrives; if it never does, the procedural figures simply stay.
+    let unmounted = false;
+    void loadCharacterTemplate().then((ok) => {
+      if (ok && !unmounted) agentManager.rebuildAll();
+    });
 
     const ctx: SceneContext = {
       scene,
@@ -523,6 +530,7 @@ export function SimulationView({ token }: { token: string }): JSX.Element {
     window.addEventListener("keydown", onKeyDown);
 
     return () => {
+      unmounted = true;
       cancelAnimationFrame(frame);
       window.removeEventListener("resize", onResize);
       window.removeEventListener("keydown", onKeyDown);
