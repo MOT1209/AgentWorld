@@ -11,8 +11,12 @@ import {
   buildGround,
   buildPatchMesh,
   buildRoadMesh,
+  GROUND_COLOR,
 } from "./buildings.js";
 import type { BuildingPlan, WorldLayoutPlan } from "./types.js";
+
+/** Daylight sky, also the fog colour so the horizon blends in. */
+export const SKY_COLOR = 0xbfe3f7;
 
 export interface BuildingHit {
   key: string;
@@ -32,28 +36,65 @@ export class WorldScene {
   private readonly plans = new Map<string, BuildingPlan>();
   private selectedKey: string | null = null;
   private hoveredKey: string | null = null;
+  private lastPlan: WorldLayoutPlan | null = null;
+  /** The one shadow-casting light; its shadow camera is fitted to the city. */
+  readonly sun = new THREE.DirectionalLight(0xfff1d6, 1.35);
 
   constructor() {
-    this.scene.background = new THREE.Color(0x0b1020);
+    // Bright cartoon daylight: sky-blue background fading into matching fog.
+    this.scene.background = new THREE.Color(SKY_COLOR);
+    this.scene.fog = new THREE.Fog(SKY_COLOR, 260, 900);
     this.scene.add(this.root);
-    this.scene.add(new THREE.AmbientLight(0xffffff, 0.65));
-    const sun = new THREE.DirectionalLight(0xfff4e0, 0.95);
-    sun.position.set(60, 110, 40);
-    this.scene.add(sun);
-    const fill = new THREE.DirectionalLight(0xbcd4ff, 0.35);
-    fill.position.set(-40, 30, -50);
+    this.scene.add(new THREE.HemisphereLight(0xd8ecff, 0x6f8f4e, 0.9));
+    this.scene.add(new THREE.AmbientLight(0xffffff, 0.25));
+    // Upper left, slightly in front: the default camera looks from +Z, so shadows
+    // fall to the right of buildings where they are visible, and fronts stay lit.
+    this.sun.position.set(-110, 150, 35);
+    this.sun.castShadow = true;
+    this.sun.shadow.mapSize.set(2048, 2048);
+    this.sun.shadow.bias = -0.0004;
+    this.sun.shadow.normalBias = 0.05;
+    this.scene.add(this.sun, this.sun.target);
+    const fill = new THREE.DirectionalLight(0xbfd8ff, 0.35);
+    fill.position.set(-60, 40, -70);
     this.scene.add(fill);
-    this.scene.add(new THREE.HemisphereLight(0x9ec8ff, 0x3a4a32, 0.35));
+    // Grass all the way to the horizon so the fog, not a hard edge, ends the world.
+    const horizon = new THREE.Mesh(
+      new THREE.CircleGeometry(1800, 48).rotateX(-Math.PI / 2),
+      new THREE.MeshStandardMaterial({ color: GROUND_COLOR, roughness: 1 }),
+    );
+    horizon.position.y = -0.06;
+    horizon.receiveShadow = true;
+    horizon.userData = { kind: "horizon" };
+    this.horizon = horizon;
+    this.scene.add(horizon);
+  }
+
+  private readonly horizon: THREE.Mesh;
+
+  /** Fits the sun's orthographic shadow camera to a ground of `size`. */
+  private fitShadow(size: number): void {
+    const half = size / 2 + 10;
+    const cam = this.sun.shadow.camera;
+    cam.left = -half;
+    cam.right = half;
+    cam.top = half;
+    cam.bottom = -half;
+    cam.near = 1;
+    cam.far = 600;
+    cam.updateProjectionMatrix();
   }
 
   /** Reconcile the scene against a new plan. Unchanged buildings keep meshes. */
   applyPlan(plan: WorldLayoutPlan): void {
+    this.lastPlan = plan;
     // Ground.
     if (this.ground === null || this.groundSize !== plan.groundSize) {
       this.disposeMesh(this.ground);
       this.ground = buildGround(plan.groundSize);
       this.groundSize = plan.groundSize;
       this.root.add(this.ground);
+      this.fitShadow(plan.groundSize);
     }
 
     // Roads + patches: rebuilt whenever the plan reference changes (cheap
@@ -77,9 +118,7 @@ export class WorldScene {
     for (const [key, mesh] of this.buildings) {
       const planFor = wanted.get(key);
       if (planFor === undefined) {
-        this.root.remove(mesh);
-        mesh.geometry.dispose();
-        (mesh.material as THREE.Material).dispose();
+        this.disposeMesh(mesh);
         this.buildings.delete(key);
         this.plans.delete(key);
         continue;
@@ -128,6 +167,18 @@ export class WorldScene {
     return null;
   }
 
+  /**
+   * Rebuilds every building and decor mesh from the last plan, e.g. once the
+   * Blender city models have loaded. Selection and hover are kept.
+   */
+  rebuildModels(): void {
+    if (this.lastPlan === null) return;
+    for (const mesh of this.buildings.values()) this.disposeMesh(mesh);
+    this.buildings.clear();
+    this.plans.clear();
+    this.applyPlan(this.lastPlan);
+  }
+
   setSelected(key: string | null): void {
     this.selectedKey = key;
     this.applyHighlights();
@@ -159,8 +210,8 @@ export class WorldScene {
 
   private applyHighlights(): void {
     for (const [key, mesh] of this.buildings) {
-      const material = mesh.material;
-      if (!(material instanceof THREE.MeshStandardMaterial)) continue;
+      const material = mesh.material as THREE.Material & { emissive?: THREE.Color };
+      if (!(material.emissive instanceof THREE.Color)) continue;
       if (key === this.selectedKey) material.emissive.setHex(0x2a4a66);
       else if (key === this.hoveredKey) material.emissive.setHex(0x152a3a);
       else material.emissive.setHex(0x000000);
@@ -170,13 +221,17 @@ export class WorldScene {
   private disposeMesh(mesh: THREE.Mesh | null): void {
     if (mesh === null) return;
     this.root.remove(mesh);
-    mesh.geometry.dispose();
+    // Modelled buildings share one geometry per archetype (worldModels.ts).
+    if (mesh.userData.sharedGeometry !== true) mesh.geometry.dispose();
     (mesh.material as THREE.Material).dispose();
   }
 
   private groundSize = 0;
 
   dispose(): void {
+    this.scene.remove(this.horizon);
+    this.horizon.geometry.dispose();
+    (this.horizon.material as THREE.Material).dispose();
     this.disposeMesh(this.ground);
     this.disposeMesh(this.roads);
     this.disposeMesh(this.patches);

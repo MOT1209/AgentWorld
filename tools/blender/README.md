@@ -6,7 +6,9 @@ edited by hand. Change a script and re-run it to change a model.
 | Script | Output | What it builds |
 |---|---|---|
 | `characters.py` | `character.glb` | Stylized chibi character: named animation pivots, four hairstyles, baked outlines |
-| `common.py` | – | Shared helpers: mesh builder, role materials, outline hull, GLB export, preview renders |
+| `buildings.py` | `buildings.glb` | One cartoon building per archetype (20), built at its exact footprint |
+| `decor.py` | `decor.glb` | Trees (3 variants), bush, bench, lamp, sign, fountain |
+| `common.py` | – | Shared helpers: mesh builder, role materials, outline hulls, vertex-colour bake, GLB export, preview renders |
 
 ## Run
 
@@ -32,7 +34,13 @@ the constants at the top of the script.
 `--preview DIR` writes Cycles renders of each hairstyle (front and three-quarter views).
 Outlines are hidden in previews because Cycles has no back-face culling.
 
-## Contract with the web app
+Buildings and decor are baked differently from the character: every model is one mesh
+with colours in the `Color` attribute (COLOR_0), an outline hull merged in with reversed
+winding, and no normals (the web computes flat ones). That keeps a whole building,
+outline included, to one draw call with one material. Footprints in `buildings.py` must
+match `FOOTPRINTS` in `apps/web/src/world/layout.ts`.
+
+## Contract with the web app (characters)
 
 `apps/web/src/world/characterFactory.ts` relies on:
 
@@ -44,5 +52,6 @@ Outlines are hidden in previews because Cycles has no back-face culling.
   materials, so colours set in Blender are previews only.
 - `*__outline` meshes are inverted hulls, rendered back-face only.
 
-`tests/world-character-model.test.ts` checks the committed GLB against this contract. If the
-model is missing or fails to load, the app falls back to its procedural figure.
+`tests/world-character-model.test.ts` and `tests/world-city-models.test.ts` check the committed
+GLBs against these contracts. If a model is missing or fails to load, the app falls back to its
+procedural figures, buildings and decor.

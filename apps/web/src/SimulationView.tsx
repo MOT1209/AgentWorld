@@ -16,6 +16,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { API_BASE, api } from "./api.js";
 import { loadCharacterTemplate } from "./world/characterAssets.js";
+import { loadWorldModels } from "./world/worldAssets.js";
 import { stateColorHex } from "./world/characterAppearance.js";
 import {
   FALLBACK_CENTER,
@@ -240,6 +241,8 @@ export function SimulationView({ token }: { token: string }): JSX.Element {
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
     renderer.setSize(width, height);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     mount.appendChild(renderer.domElement);
 
     // Explicit fallback plaza for unassigned agents — a visible, intentional
@@ -269,6 +272,9 @@ export function SimulationView({ token }: { token: string }): JSX.Element {
     let unmounted = false;
     void loadCharacterTemplate().then((ok) => {
       if (ok && !unmounted) agentManager.rebuildAll();
+    });
+    void loadWorldModels().then((ok) => {
+      if (ok && !unmounted) world.rebuildModels();
     });
 
     const ctx: SceneContext = {
