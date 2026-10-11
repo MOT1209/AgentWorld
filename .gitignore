@@ -42,3 +42,6 @@ Thumbs.db
 # browser-automation scratch output (agent-browser / Playwright MCP)
 .playwright-mcp/
 
+
+# Python bytecode (tools/blender)
+__pycache__/

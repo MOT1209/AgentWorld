@@ -18,6 +18,7 @@ import {
   type BuiltCharacter,
 } from "./characterFactory.js";
 import type { PlacedAgent } from "./characterPlacement.js";
+import { torsoRestY } from "./agentMovement.js";
 
 export interface SyncAgent {
   id: string;
@@ -35,6 +36,7 @@ interface Entry {
   targetX: number;
   targetZ: number;
   state: string;
+  highlight?: "none" | "hover" | "selected";
 }
 
 export function diffIds(
@@ -90,7 +92,7 @@ export function updateIdleMotion(
   const sway = Math.sin(t * 0.5 + phase);
   parts.torso.rotation.x = breathe * 0.02;
   parts.torso.rotation.y = sway * 0.06;
-  parts.torso.position.y = 0.75 + breathe * 0.012;
+  parts.torso.position.y = torsoRestY(parts.torso) + breathe * 0.012;
   parts.head.rotation.y = Math.sin(t * 0.4 + phase * 1.7) * 0.28;
   parts.head.rotation.x = Math.sin(t * 0.9 + phase) * 0.05;
   parts.armL.rotation.x = breathe * 0.07;
@@ -225,7 +227,29 @@ export class CharacterManager {
   }
 
   setHighlight(agentId: string, mode: "none" | "hover" | "selected"): void {
-    this.entries.get(agentId)?.character.setHighlight(mode);
+    const entry = this.entries.get(agentId);
+    if (entry === undefined) return;
+    entry.highlight = mode;
+    entry.character.setHighlight(mode);
+  }
+
+  /**
+   * Rebuilds every character in place (same position, heading, state and
+   * highlight), e.g. once the modelled character template has loaded.
+   * Movement looks figures up by id each frame, so routes carry on.
+   */
+  rebuildAll(): void {
+    for (const [id, entry] of this.entries) {
+      const old = entry.character;
+      const next = buildCharacter(id, appearanceForAgentId(id), entry.state);
+      next.group.position.copy(old.group.position);
+      next.group.rotation.copy(old.group.rotation);
+      next.parts.bubble.visible = old.parts.bubble.visible;
+      if (entry.highlight !== undefined && entry.highlight !== "none") next.setHighlight(entry.highlight);
+      disposeCharacter(old.group);
+      this.parent.add(next.group);
+      entry.character = next;
+    }
   }
 
   clear(): void {

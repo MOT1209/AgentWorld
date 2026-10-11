@@ -1,14 +1,18 @@
 /**
- * Procedural 3D human character factory.
+ * 3D human character factory.
  *
  * Every character shares cached geometries and a small palette of cached
  * materials, so N agents cost ~N groups/draw-call overhead instead of N
  * unique GPU resources. Per-character variation comes from choosing among the
  * shared materials/geometries deterministically (see characterAppearance.ts).
  *
- * Proportions (unscaled, origin at the feet):
- *   shoes 0–0.12 · legs 0–0.75 · torso 0.75–1.30 · neck 1.30–1.40 ·
- *   head centre 1.56 (r 0.16) · state badge 1.98.
+ * Two bodies share one contract (CharacterParts + overlays):
+ *   - the modelled chibi from tools/blender/characters.py, used once its GLB
+ *     has loaded: hips 0.5 · neck 1.0 · head centre 1.3 (r 0.3) · cel-shaded
+ *     with baked outlines, recoloured per agent by material role;
+ *   - the procedural primitive figure (fallback): legs 0–0.75 · torso
+ *     0.75–1.30 · head centre 1.56 (r 0.16).
+ * Both keep the state badge at 1.98.
  * The group is uniformly scaled by CHARACTER_SCALE for readability at the
  * normal desktop camera distance.
  */
@@ -26,13 +30,13 @@ export const LABEL_ANCHOR_HEIGHT = 2.95;
 export type HighlightMode = "none" | "hover" | "selected";
 
 export interface CharacterParts {
-  torso: THREE.Group;
-  head: THREE.Group;
-  armL: THREE.Group;
-  armR: THREE.Group;
+  torso: THREE.Object3D;
+  head: THREE.Object3D;
+  armL: THREE.Object3D;
+  armR: THREE.Object3D;
   /** Hip pivots for the walk cycle (Step 3); idle leaves them neutral. */
-  legL: THREE.Group;
-  legR: THREE.Group;
+  legL: THREE.Object3D;
+  legR: THREE.Object3D;
   badge: THREE.Mesh;
   ring: THREE.Mesh;
   /** Social bubble (Step 4): shown when chatting with a nearby agent. */
@@ -139,9 +143,122 @@ function geometries(): Record<string, THREE.BufferGeometry> {
   };
 }
 
-/* ------------------------------------------------------------- factory */
-
 const BUILD_WIDTH = [0.88, 1.0, 1.14] as const;
+
+/* ------------------------------------------------- modelled template */
+
+/**
+ * The Blender-authored character (tools/blender/characters.py), set once the
+ * GLB has loaded (characterAssets.ts). While it is null, or if it lacks a
+ * required node, the procedural builder below is used, so the world never
+ * depends on the asset being present.
+ */
+let characterTemplate: THREE.Object3D | null = null;
+
+export function setCharacterTemplate(template: THREE.Object3D | null): void {
+  characterTemplate = template;
+}
+
+export function hasCharacterTemplate(): boolean {
+  return characterTemplate !== null;
+}
+
+const PIVOT_NAMES = ["torso", "head", "armL", "armR", "legL", "legR"] as const;
+const HAIR_VARIANTS = 4;
+
+/** Colours for material roles the agent palette does not drive. */
+const FIXED_ROLE_COLORS: Readonly<Record<string, number>> = {
+  shoes: 0x2b2233,
+  eye: 0x1c1917,
+  white: 0xffffff,
+  blush: 0xf59e9e,
+  accent: 0xf8fafc,
+};
+const OUTLINE_COLOR = 0x2b2233;
+
+let toonGradient: THREE.DataTexture | null = null;
+
+/** Three-band ramp for the cel-shaded look (shadow, mid, lit). */
+function toonGradientMap(): THREE.DataTexture {
+  if (toonGradient !== null) return toonGradient;
+  const tones = new Uint8Array([110, 110, 110, 255, 185, 185, 185, 255, 255, 255, 255, 255]);
+  toonGradient = new THREE.DataTexture(tones, 3, 1, THREE.RGBAFormat);
+  toonGradient.minFilter = THREE.NearestFilter;
+  toonGradient.magFilter = THREE.NearestFilter;
+  toonGradient.generateMipmaps = false;
+  toonGradient.needsUpdate = true;
+  return toonGradient;
+}
+
+function toonMaterial(color: number): THREE.MeshToonMaterial {
+  const key = `toon:${color.toString(16)}`;
+  const existing = materialCache.get(key);
+  if (existing !== undefined) return existing as THREE.MeshToonMaterial;
+  const created = new THREE.MeshToonMaterial({ color, gradientMap: toonGradientMap() });
+  materialCache.set(key, created);
+  return created;
+}
+
+/** Inverted-hull outline: unlit, back faces only (the hull is baked in Blender). */
+function outlineMaterial(): THREE.MeshBasicMaterial {
+  const key = "outline:hull";
+  const existing = materialCache.get(key);
+  if (existing !== undefined) return existing as THREE.MeshBasicMaterial;
+  const created = new THREE.MeshBasicMaterial({ color: OUTLINE_COLOR, side: THREE.BackSide });
+  materialCache.set(key, created);
+  return created;
+}
+
+function materialName(material: THREE.Material | THREE.Material[]): string {
+  return Array.isArray(material) ? (material[0]?.name ?? "") : material.name;
+}
+
+/**
+ * Builds the figure body from the modelled template, or returns null when the
+ * template is missing a pivot (the caller then falls back to procedural).
+ */
+function bodyFromTemplate(
+  template: THREE.Object3D,
+  appearance: CharacterAppearance,
+): { body: THREE.Object3D; pivots: Record<(typeof PIVOT_NAMES)[number], THREE.Object3D> } | null {
+  const body = template.clone(true);
+  const pivots = {} as Record<(typeof PIVOT_NAMES)[number], THREE.Object3D>;
+  for (const name of PIVOT_NAMES) {
+    const node = body.getObjectByName(name);
+    if (node === undefined) return null;
+    pivots[name] = node;
+  }
+  const roleColors: Readonly<Record<string, number>> = {
+    ...FIXED_ROLE_COLORS,
+    skin: appearance.skin,
+    hair: appearance.hair,
+    top: appearance.clothing,
+    bottom: appearance.pants,
+  };
+  body.traverse((node) => {
+    if (!(node instanceof THREE.Mesh)) return;
+    const role = materialName(node.material);
+    node.material = role === "outline" ? outlineMaterial() : toonMaterial(roleColors[role] ?? 0xcbd5e1);
+  });
+  const style = appearance.hairStyle % HAIR_VARIANTS;
+  for (let i = 0; i < HAIR_VARIANTS; i += 1) {
+    for (const suffix of ["", "__outline"]) {
+      const hair = body.getObjectByName(`hair_${i}${suffix}`);
+      if (hair !== undefined) hair.visible = i === style;
+    }
+  }
+  const width = BUILD_WIDTH[appearance.build % BUILD_WIDTH.length] ?? 1.0;
+  for (const name of ["chest", "chest__outline"]) {
+    const chest = body.getObjectByName(name);
+    if (chest !== undefined) chest.scale.x = width;
+  }
+  pivots.armL.position.x *= width;
+  pivots.armR.position.x *= width;
+  pivots.torso.userData = { ...pivots.torso.userData, restY: pivots.torso.position.y };
+  return { body, pivots };
+}
+
+/* ------------------------------------------------------------- factory */
 
 function buildHair(
   geo: Record<string, THREE.BufferGeometry>,
@@ -173,17 +290,11 @@ function buildHair(
   }
 }
 
-/**
- * Builds a recognizable stylized human character. The returned group is
- * owned by the caller (add it to the scene, remove on deletion); geometries
- * and materials stay shared and must NOT be disposed per character — use
- * {@link disposeSharedCaches} once when the whole view unmounts.
- */
-export function buildCharacter(
-  agentId: string,
+/** The original primitive figure: used until (or unless) the modelled template is available. */
+function proceduralBody(
+  group: THREE.Group,
   appearance: CharacterAppearance,
-  state: string,
-): BuiltCharacter {
+): Record<(typeof PIVOT_NAMES)[number], THREE.Object3D> {
   const geo = geometries();
   const skinMat = standardMaterial(appearance.skin, 0.6);
   const clothMat = standardMaterial(appearance.clothing, 0.8);
@@ -193,11 +304,6 @@ export function buildCharacter(
   const eyeMat = standardMaterial(0x1c1917, 0.5);
 
   const width = BUILD_WIDTH[appearance.build % BUILD_WIDTH.length] ?? 1.0;
-
-  const group = new THREE.Group();
-  group.name = `agent:${agentId}`;
-  group.userData = { kind: "character", agentId };
-  group.scale.setScalar(CHARACTER_SCALE);
 
   // -- legs + footwear (hip pivots; neutral at rest, driven by walk cycle) --
   const legL = new THREE.Group();
@@ -270,6 +376,36 @@ export function buildCharacter(
   }
   torso.add(head);
 
+  return { torso, head, armL, armR, legL, legR };
+}
+
+/**
+ * Builds a recognizable stylized human character. The returned group is
+ * owned by the caller (add it to the scene, remove on deletion); geometries
+ * and materials stay shared and must NOT be disposed per character — use
+ * {@link disposeSharedCaches} once when the whole view unmounts.
+ */
+export function buildCharacter(
+  agentId: string,
+  appearance: CharacterAppearance,
+  state: string,
+): BuiltCharacter {
+  const geo = geometries();
+  const group = new THREE.Group();
+  group.name = `agent:${agentId}`;
+  group.userData = { kind: "character", agentId };
+  group.scale.setScalar(CHARACTER_SCALE);
+
+  const modelled = characterTemplate !== null ? bodyFromTemplate(characterTemplate, appearance) : null;
+  let pivots: Record<(typeof PIVOT_NAMES)[number], THREE.Object3D>;
+  if (modelled !== null) {
+    group.add(modelled.body);
+    pivots = modelled.pivots;
+  } else {
+    pivots = proceduralBody(group, appearance);
+  }
+  const { torso, head, armL, armR, legL, legR } = pivots;
+
   // -- state badge (shared per-state material, swapped on update) ----------
   const badge = new THREE.Mesh(
     geo["badge"] as THREE.BufferGeometry,
@@ -293,7 +429,9 @@ export function buildCharacter(
 
   // -- social bubble (hidden unless chatting nearby; Step 4) -----------------
   const bubble = new THREE.Mesh(geo["bubble"] as THREE.BufferGeometry, bubbleMaterial());
-  bubble.position.set(0.3, 1.62, 0.05);
+  // Beside the head: the modelled chibi head is larger than the procedural one.
+  if (modelled !== null) bubble.position.set(0.46, 1.74, 0.05);
+  else bubble.position.set(0.3, 1.62, 0.05);
   bubble.visible = false;
   group.add(bubble);
 
