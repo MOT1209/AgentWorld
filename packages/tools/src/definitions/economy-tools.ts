@@ -89,8 +89,23 @@ export const walletTransferTool: ToolDefinition<{
   }),
   requiredPermission: PERMISSIONS.WALLET_TRANSFER,
   risk: "MEDIUM",
-  approvalPolicy: (input, context) => {
+  approvalPolicy: async (input, context) => {
     if (context.isApprovalReplay === true) return null;
+    // Paying an agent of another company is never routine: a prompt-injected
+    // agent could otherwise drain its wallet in sub-threshold pieces. The
+    // human who approves sees the whole request.
+    if (input.toOwner !== true && input.toAgentId !== undefined && context.agentId !== undefined) {
+      const [sender, recipient] = await Promise.all([
+        context.db.agent.findUnique({ where: { id: context.agentId }, select: { currentCompanyId: true } }),
+        context.db.agent.findUnique({ where: { id: input.toAgentId }, select: { currentCompanyId: true } }),
+      ]);
+      if (recipient !== null && (sender?.currentCompanyId ?? null) !== recipient.currentCompanyId) {
+        return {
+          risk: "HIGH",
+          reason: "Transfer to an agent of a different company needs human approval, whatever the amount.",
+        };
+      }
+    }
     const amount = parseAmount(input.amount);
     return requiresHumanApproval("wallet.transfer", { amountMinor: amount.minor });
   },
@@ -101,15 +116,20 @@ export const walletTransferTool: ToolDefinition<{
     const amount = parseAmount(input.amount);
     const from = await ensureWallet(context.db, { ownerType: "AGENT", ownerId: agentId });
 
-    const to = input.toOwner === true
-      ? await ensureWallet(context.db, {
-          ownerType: "USER",
-          ownerId: context.actor.actorId ?? (await resolveOwnerId(context)),
-        })
-      : await ensureWallet(context.db, {
-          ownerType: "AGENT",
-          ownerId: requireString(input.toAgentId, "toAgentId is required unless toOwner is true"),
-        });
+    let to;
+    if (input.toOwner === true) {
+      to = await ensureWallet(context.db, {
+        ownerType: "USER",
+        ownerId: context.actor.actorId ?? (await resolveOwnerId(context)),
+      });
+    } else {
+      const recipientId = requireString(input.toAgentId, "toAgentId is required unless toOwner is true");
+      // ensureWallet mints a wallet for any id it is given, so an unknown id
+      // would turn a typo or a hallucinated id into money nobody controls.
+      const recipient = await context.db.agent.findUnique({ where: { id: recipientId }, select: { id: true } });
+      if (recipient === null) throw validationError(`Recipient agent '${recipientId}' does not exist`);
+      to = await ensureWallet(context.db, { ownerType: "AGENT", ownerId: recipient.id });
+    }
 
     const result = await transfer({
       fromWalletId: from.id,

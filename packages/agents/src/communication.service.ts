@@ -231,19 +231,29 @@ export async function sendMessage(
  * agent through the Agent Factory does not require rewriting any caller's
  * addressing logic.
  */
+/**
+ * `scopeCompanyId` confines an agent-originated message to the sender's own
+ * company (null = unaffiliated agents only). Omit it for callers that are not
+ * agents. A recipient outside the scope answers "not found", exactly like a
+ * missing one, so ids cannot be probed across companies.
+ */
 export async function resolveRecipient(
   db: DbClient,
   spec: RecipientSpec,
+  scopeCompanyId?: string | null,
 ): Promise<Agent[]> {
+  const scoped = scopeCompanyId !== undefined;
   switch (spec.kind) {
     case "AGENT": {
       const agent = await db.agent.findUnique({ where: { id: spec.agentId } });
-      if (agent === null) throw notFound("Agent", spec.agentId);
+      if (agent === null || (scoped && agent.currentCompanyId !== scopeCompanyId)) {
+        throw notFound("Agent", spec.agentId);
+      }
       return [agent];
     }
     case "ROLE": {
       const agents = await db.agent.findMany({
-        where: { roleKey: spec.roleKey, isActive: true },
+        where: { roleKey: spec.roleKey, isActive: true, ...(scoped ? { currentCompanyId: scopeCompanyId } : {}) },
         orderBy: { createdAt: "asc" },
       });
       if (agents.length === 0) {

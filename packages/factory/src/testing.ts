@@ -26,7 +26,7 @@ import type { DbClient } from "../../database/src/index.js";
 import type { TestRun } from "../../database/src/types.js";
 import { eventBus, EVENT_TYPES } from "../../events/src/index.js";
 import { enqueueExecution } from "../../execution/src/index.js";
-import { getConfig, newCorrelationId, SYSTEM_ACTOR, toJson, validationError } from "../../shared/src/index.js";
+import { assertPublicUrl, getConfig, newCorrelationId, SYSTEM_ACTOR, toJson, validationError } from "../../shared/src/index.js";
 
 export const TEST_ADAPTERS = ["command", "http", "testerarmy", "browser", "mobile", "security", "performance"] as const;
 export type TestAdapter = (typeof TEST_ADAPTERS)[number];
@@ -257,6 +257,11 @@ async function probeHttp(db: DbClient, probe: ProbeInput): Promise<TestRun> {
   if (!/^https?:\/\//i.test(probe.url)) {
     throw validationError("probe requires an absolute http(s) URL");
   }
+  // The URL is chosen by the caller (an agent, through testing.run) and fetched
+  // from the API host: in production it gets the same private-range and DNS
+  // check as webhooks and connectors. Development keeps probing localhost, which
+  // is where a project under test normally runs.
+  if (getConfig().isProduction) await assertPublicUrl(probe.url);
   const started = Date.now();
   let status: number | null = null;
   let observed = "request failed";
