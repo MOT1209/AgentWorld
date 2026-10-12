@@ -61,14 +61,21 @@ function has(ctx: EscalationActorContext, permission: Permission): boolean {
   return ctx.permissions.has(permission);
 }
 
-/** Supervisor of the raiser's role, as a live agent, or null = human. */
+/**
+ * Supervisor of the raiser's role, as a live agent, or null = human.
+ *
+ * The supervisor must work in the raiser's own company (an unaffiliated raiser
+ * is matched with unaffiliated supervisors). Without that, every company's
+ * escalations were routed to the oldest supervisor in the whole system and
+ * their detail text landed in another tenant's inbox.
+ */
 async function routeByHierarchy(
   db: DbClient,
   fromAgentId: string,
 ): Promise<{ toAgentId: string | null; toUserId: null; routed: "AGENT" | "HUMAN" }> {
   const from = await db.agent.findUnique({
     where: { id: fromAgentId },
-    select: { id: true, roleKey: true },
+    select: { id: true, roleKey: true, currentCompanyId: true },
   });
   if (from === null) throw notFound("Agent", fromAgentId);
 
@@ -78,7 +85,7 @@ async function routeByHierarchy(
   }
 
   const supervisors = await db.agent.findMany({
-    where: { roleKey: supervisorRole, isActive: true },
+    where: { roleKey: supervisorRole, isActive: true, currentCompanyId: from.currentCompanyId },
     select: { id: true },
     orderBy: { createdAt: "asc" },
     take: 1,

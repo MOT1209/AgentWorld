@@ -29,6 +29,7 @@ import { EVENT_TYPES } from "../../events/src/index.js";
 import { isAlwaysApproved, riskForAction } from "../../approvals/src/index.js";
 import { requestApproval } from "../../approvals/src/index.js";
 import type { Permission } from "../../security/src/permissions.js";
+import { agentScopeViolation } from "./agent-scope.js";
 import type { ToolRegistry } from "./registry.js";
 import type {
   ToolExecutionContext,
@@ -119,6 +120,17 @@ export class ToolExecutor {
       );
     }
     const input = parsed.data as never;
+
+    // 4b. Company boundary: an agent may only name rows of its own company.
+    if (context.agentId !== undefined) {
+      const hidden = await agentScopeViolation(context.db, context.agentId, parsed.data, {
+        allowForeignAgents: tool.crossCompanyAgentRefs === true,
+      });
+      if (hidden !== null) {
+        // Same answer as a missing row, so ids cannot be probed across companies.
+        return this.fail(name, rawArguments, context, `${hidden.key.replace(/Ids?$/, "")} '${hidden.id}' not found`, started);
+      }
+    }
 
     // 5. Approval
     const trigger = await this.evaluateApproval(tool, input, context);

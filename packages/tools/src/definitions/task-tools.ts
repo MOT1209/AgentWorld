@@ -15,6 +15,7 @@ import {
   unmetDependencies,
   updateTask,
 } from "../../../tasks/src/index.js";
+import { agentCompanyScope } from "../agent-scope.js";
 import type { ToolDefinition } from "../types.js";
 
 export const taskCreateTool: ToolDefinition<{
@@ -196,7 +197,10 @@ export const taskListTool: ToolDefinition<{
     const assignedAgentId =
       input.assignedToMe === true ? context.agentId : undefined;
 
+    // An agent lists its own company's tasks plus shared ones, nothing else.
+    const scope = context.agentId !== undefined ? await agentCompanyScope(context.db, context.agentId) : null;
     const tasks = await listTasks(context.db, {
+      ...(scope !== null && !scope.all ? { companyIdIn: [...scope.companyIds] } : {}),
       ...(assignedAgentId !== undefined ? { assigneeAgentId: assignedAgentId } : {}),
       ...(input.status !== undefined ? { status: input.status } : {}),
       ...(input.search !== undefined ? { search: input.search } : {}),

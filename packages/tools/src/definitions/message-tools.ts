@@ -53,8 +53,12 @@ export const messageSendTool: ToolDefinition<{
     // A fabricated task id would make the message permanently untraceable.
     if (input.taskId !== undefined) await requireTask(context.db, input.taskId);
 
-    const spec = parseRecipientSpec(input.to, context.companyId ?? null);
-    const recipients = await resolveRecipient(context.db, spec);
+    // The sender's company comes from the database, not from the call context:
+    // a context that omits it must not widen who can be messaged.
+    const sender = await context.db.agent.findUnique({ where: { id: agentId }, select: { currentCompanyId: true } });
+    const senderCompanyId = sender?.currentCompanyId ?? null;
+    const spec = parseRecipientSpec(input.to, senderCompanyId);
+    const recipients = await resolveRecipient(context.db, spec, senderCompanyId);
 
     // Never message yourself: it adds no information and clutters the transcript.
     const targets = recipients.filter((agent) => agent.id !== agentId);

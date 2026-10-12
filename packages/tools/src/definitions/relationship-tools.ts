@@ -25,6 +25,7 @@ export const relationshipListTool: ToolDefinition<{ agentId?: string }> = {
     agentId: z.string().optional().describe("Defaults to the calling agent"),
   }),
   requiredPermission: PERMISSIONS.AGENT_READ,
+  crossCompanyAgentRefs: true, // the social graph spans the shared world, not one company (documented in SECURITY.md)
   risk: "LOW",
   async execute(context, input) {
     const agentId = input.agentId ?? context.agentId;
@@ -43,6 +44,7 @@ export const relationshipPeersTool: ToolDefinition<{ limit?: number }> = {
     limit: z.number().int().min(1).max(20).default(5),
   }),
   requiredPermission: PERMISSIONS.AGENT_READ,
+  crossCompanyAgentRefs: true, // the social graph spans the shared world, not one company (documented in SECURITY.md)
   risk: "LOW",
   async execute(context, input) {
     const agentId = context.agentId;
@@ -60,6 +62,7 @@ export const relationshipGetTool: ToolDefinition<{ targetAgentId: string; agentI
     targetAgentId: z.string().min(1),
   }),
   requiredPermission: PERMISSIONS.AGENT_READ,
+  crossCompanyAgentRefs: true, // the social graph spans the shared world, not one company (documented in SECURITY.md)
   risk: "LOW",
   async execute(context, input) {
     const agentId = input.agentId ?? context.agentId;
@@ -88,6 +91,7 @@ export const relationshipObserveTool: ToolDefinition<{
     weight: z.number().int().min(1).max(5).optional().describe("1 normal, 5 major"),
   }),
   requiredPermission: PERMISSIONS.AGENT_READ,
+  crossCompanyAgentRefs: true, // the social graph spans the shared world, not one company (documented in SECURITY.md)
   risk: "LOW",
   async execute(context, input) {
     const agentId = context.agentId;

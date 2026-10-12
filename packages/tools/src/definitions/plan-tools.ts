@@ -14,6 +14,7 @@ import {
   updatePlan,
   planMilestones,
 } from "../../../orchestration/src/index.js";
+import { agentCompanyScope } from "../agent-scope.js";
 import type { ToolDefinition } from "../types.js";
 
 function planSummary(id: string, title: string, status: string): string {
@@ -133,8 +134,12 @@ export const planListTool: ToolDefinition<{
   requiredPermission: PERMISSIONS.PLAN_READ,
   risk: "LOW",
   async execute(context, input) {
+    // An agent lists its own company's plans plus shared ones. The company comes from
+    // the database: a call context that omits it must not list every company's plans.
+    const scope = context.agentId !== undefined ? await agentCompanyScope(context.db, context.agentId) : null;
     const plans = await listPlans(context.db, {
       ...(input.status !== undefined ? { status: input.status } : {}),
+      ...(scope !== null && !scope.all ? { companyIdIn: [...scope.companyIds] } : {}),
       ...(input.companyId ?? context.companyId !== undefined
         ? { companyId: input.companyId ?? (context.companyId as string) }
         : {}),
