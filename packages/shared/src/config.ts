@@ -33,6 +33,9 @@ const csv = z
       .filter(Boolean),
   );
 
+/** Development seed password; production refuses it in env and in the database. */
+export const DEV_SEED_OWNER_PASSWORD = "KingWorld!2026";
+
 const EnvSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: int(4000, 1, 65535),
@@ -52,7 +55,7 @@ const EnvSchema = z.object({
   WEB_DIST_DIR: z.string().default("apps/web/dist"),
 
   SEED_OWNER_EMAIL: z.string().email().default("king@kingworld.local"),
-  SEED_OWNER_PASSWORD: z.string().min(10).default("KingWorld!2026"),
+  SEED_OWNER_PASSWORD: z.string().min(10).default(DEV_SEED_OWNER_PASSWORD),
 
   DEFAULT_PROVIDER: z.string().default("mock"),
   OPENAI_COMPATIBLE_ENABLED: bool(false),
@@ -72,6 +75,8 @@ const EnvSchema = z.object({
   APPROVAL_ENABLED: bool(true),
   APPROVAL_SPEND_THRESHOLD: int(1000, 0),
   APPROVAL_TTL_HOURS: int(24, 1),
+  // Four-eyes rule: a human cannot decide an approval request they raised.
+  APPROVAL_FOUR_EYES: bool(false),
 
   WORLD_TIME_SCALE: int(60, 1),
 
@@ -114,6 +119,9 @@ const EnvSchema = z.object({
   AI_COST_OUTPUT_PER_1K: int(3, 0, 1_000_000),
   // AI spend charges to the company treasury only above this minor-unit cap.
   AI_CHARGE_THRESHOLD_MINOR: int(1_000_000, 0),
+  // Budget floor: refuse paid AI calls for a company whose treasury balance is
+  // below this many minor units. 0 = off.
+  AI_MIN_TREASURY_MINOR: int(0, 0),
   // Webhook deliveries.
   WEBHOOK_ENABLED: bool(true),
   WEBHOOK_MAX_ATTEMPTS: int(5, 1, 10),
@@ -147,7 +155,7 @@ export interface AppConfig {
     google: { enabled: boolean; baseUrl: string; apiKey: string };
   };
   agent: { maxToolIterations: number; requestTimeoutMs: number };
-  approvals: { enabled: boolean; spendThresholdMinor: number; ttlHours: number };
+  approvals: { enabled: boolean; spendThresholdMinor: number; ttlHours: number; fourEyes: boolean };
   world: { timeScale: number };
   execution: { defaultBackend: "local" | "mock" | "opencode"; openCodeCommand: string };
   exec: {
@@ -165,6 +173,7 @@ export interface AppConfig {
     costInputPer1k: number;
     costOutputPer1k: number;
     chargeThresholdMinor: number;
+    minTreasuryMinor: number;
   };
   webhooks: { enabled: boolean; maxAttempts: number; timeoutMs: number };
   factory: {
@@ -210,7 +219,7 @@ function load(): AppConfig {
     throw new Error("JWT_SECRET must be at least 32 characters in production.");
   }
 
-  if (raw.SEED_OWNER_PASSWORD === "KingWorld!2026" && isProduction) {
+  if (raw.SEED_OWNER_PASSWORD === DEV_SEED_OWNER_PASSWORD && isProduction) {
     throw new Error("SEED_OWNER_PASSWORD is still the development default. Refusing to start.");
   }
 
@@ -263,6 +272,7 @@ function load(): AppConfig {
       enabled: raw.APPROVAL_ENABLED,
       spendThresholdMinor: raw.APPROVAL_SPEND_THRESHOLD * 100,
       ttlHours: raw.APPROVAL_TTL_HOURS,
+      fourEyes: raw.APPROVAL_FOUR_EYES,
     },
     world: { timeScale: raw.WORLD_TIME_SCALE },
     execution: {
@@ -299,6 +309,7 @@ function load(): AppConfig {
       costInputPer1k: raw.AI_COST_INPUT_PER_1K,
       costOutputPer1k: raw.AI_COST_OUTPUT_PER_1K,
       chargeThresholdMinor: raw.AI_CHARGE_THRESHOLD_MINOR,
+      minTreasuryMinor: raw.AI_MIN_TREASURY_MINOR,
     },
     webhooks: {
       enabled: raw.WEBHOOK_ENABLED,
@@ -339,6 +350,7 @@ export function redactedConfig(config: AppConfig = getConfig()): Record<string, 
       enabled: config.approvals.enabled,
       spendThresholdMinor: config.approvals.spendThresholdMinor,
       ttlHours: config.approvals.ttlHours,
+      fourEyes: config.approvals.fourEyes,
     },
     agent: config.agent,
     world: config.world,

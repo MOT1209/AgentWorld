@@ -23,7 +23,7 @@
  *                    bounded message; raw provider responses never carry
  *                    credentials.
  */
-import { aiProviderError, logger, newCorrelationId, toJson, type ActorRef } from "../../shared/src/index.js";
+import { aiProviderError, forbidden, getConfig, logger, newCorrelationId, toJson, type ActorRef } from "../../shared/src/index.js";
 import type { DbClient } from "../../database/src/index.js";
 import { eventBus, EVENT_TYPES } from "../../events/src/index.js";
 import { estimateCostMinor, modelRegistry, type ModelEntry, type ModelQuery } from "./model-registry.js";
@@ -237,6 +237,21 @@ function capabilityList(capability: string): string[] {
 }
 
 /**
+ * Budget floor (AI_MIN_TREASURY_MINOR, off at 0): a company whose treasury
+ * holds less than the floor gets no paid AI calls. Spend is still charged
+ * after each call; this check stops a drained treasury from accruing more.
+ * Returns the refusal message when paid candidates must be skipped (the free
+ * `mock` provider may still serve), or null when nothing is restricted.
+ */
+async function budgetFloorRefusal(db: DbClient, request: GatewayRequest): Promise<string | null> {
+  const floor = getConfig().aiGateway.minTreasuryMinor;
+  if (floor <= 0 || request.companyId === undefined || request.companyId === null) return null;
+  const wallet = await db.wallet.findFirst({ where: { ownerType: "COMPANY", ownerId: request.companyId } });
+  const balance = wallet?.balanceMinor ?? 0;
+  return balance < floor ? `AI budget exhausted: company treasury holds ${balance}, the floor is ${floor} minor units` : null;
+}
+
+/**
  * One completion with bounded fallback. Throws AI_PROVIDER_ERROR only when
  * every candidate failed -- with the last bounded error message.
  */
@@ -252,6 +267,7 @@ export async function complete(
   );
 
   const candidates = candidatesFor(request, registry);
+  const budgetRefusal = await budgetFloorRefusal(db, request);
   const errors: string[] = [];
   const fallbackFrom: string[] = [];
 
@@ -259,6 +275,7 @@ export async function complete(
     const candidate = candidates[index] as { providerId?: string; model?: string };
     const routed = routeModel({ ...candidate }, registry);
     if (fallbackFrom.includes(routed.providerId)) continue;
+    if (budgetRefusal !== null && routed.providerId !== "mock") continue;
 
     try {
       const provider = registry.require(routed.providerId);
@@ -327,6 +344,9 @@ export async function complete(
     }
   }
 
+  if (budgetRefusal !== null && errors.length === 0) {
+    throw forbidden(budgetRefusal, { companyId: request.companyId ?? null });
+  }
   throw aiProviderError(
     `All provider candidates failed: ${errors.slice(-3).join(" | ")}`.slice(0, 500),
   );

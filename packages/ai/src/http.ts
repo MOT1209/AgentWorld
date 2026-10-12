@@ -6,9 +6,12 @@
  * Credentials live in closure-scoped headers and are never echoed into an
  * error message or a log record.
  */
-import { aiProviderError, logger } from "../../shared/src/index.js";
+import { aiProviderError, logger, readTextCapped } from "../../shared/src/index.js";
 
 const log = logger.child({ component: "ai.http" });
+
+/** A completion is kilobytes; anything near this is a broken or hostile endpoint. */
+const MAX_PROVIDER_RESPONSE_BYTES = 8 * 1024 * 1024;
 
 export interface HttpResult<T> {
   data: T;
@@ -39,8 +42,13 @@ export async function postJson<T>(options: HttpOptions): Promise<HttpResult<T>> 
       signal: controller.signal,
     });
 
-    const text = await response.text();
+    const { text, truncated } = await readTextCapped(response, MAX_PROVIDER_RESPONSE_BYTES);
     const latencyMs = Date.now() - started;
+    if (truncated) {
+      throw aiProviderError(
+        `Provider '${options.providerId}' response exceeded ${MAX_PROVIDER_RESPONSE_BYTES} bytes`,
+      );
+    }
 
     if (!response.ok) {
       // Provider error bodies can echo the request, which may contain the

@@ -183,6 +183,27 @@ async function findByIdempotencyKey(
   });
 }
 
+/**
+ * An idempotency key names ONE movement. A replay that asks for a different
+ * one (amount, direction, type or currency) is a caller bug or a collision,
+ * and reporting the old entry as its result would claim money moved that did
+ * not. Refuse it instead.
+ */
+function assertSameMovement(existing: Transaction, input: MovementInput): void {
+  const direction = input.amount.minor < 0 ? "DEBIT" : "CREDIT";
+  if (
+    existing.type !== input.type ||
+    existing.direction !== direction ||
+    existing.amountMinor !== Math.abs(input.amount.minor) ||
+    existing.currency !== input.amount.currency
+  ) {
+    throw conflict("Idempotency key was already used for a different movement", {
+      walletId: existing.walletId,
+      transactionId: existing.id,
+    });
+  }
+}
+
 export interface MovementResult {
   transaction: Transaction;
   balanceAfter: Money;
@@ -203,6 +224,7 @@ async function mutateSingle(
     input.idempotencyKey,
   );
   if (preExisting !== null) {
+    assertSameMovement(preExisting, input);
     return {
       transaction: preExisting,
       balanceAfter: Money.fromMinor(preExisting.balanceAfterMinor, preExisting.currency),
@@ -225,6 +247,7 @@ async function mutateSingle(
         input.idempotencyKey,
       );
       if (raced !== null) {
+        assertSameMovement(raced, input);
         return {
           transaction: raced,
           balanceAfter: Money.fromMinor(raced.balanceAfterMinor, raced.currency),
@@ -491,6 +514,20 @@ async function resolveTransferReplay(input: TransferInput): Promise<TransferResu
     where: { transferGroupId: debit.transferGroupId, direction: "CREDIT" },
   });
   if (credit === null) return null;
+
+  // Same rule as assertSameMovement: the key replays this exact transfer only.
+  if (
+    debit.direction !== "DEBIT" ||
+    debit.type !== (input.type ?? "TRANSFER") ||
+    debit.amountMinor !== input.amount.minor ||
+    debit.currency !== input.amount.currency ||
+    credit.walletId !== input.toWalletId
+  ) {
+    throw conflict("Idempotency key was already used for a different transfer", {
+      walletId: input.fromWalletId,
+      transferGroupId: debit.transferGroupId,
+    });
+  }
 
   return {
     transferGroupId: debit.transferGroupId,

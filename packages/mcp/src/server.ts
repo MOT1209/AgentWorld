@@ -762,13 +762,16 @@ export async function handleMcpRequest(ctx: McpAuthContext, raw: unknown): Promi
         // Expected business outcome (not found, conflict, invalid state):
         // reported to the model as a tool error, per MCP. Infrastructure
         // failures fall through to the generic -32603 below.
+        // An authorised call that failed may have done part of its work, so
+        // both kinds are audited, with the failure as the reason.
         if (isAppError(failure) && failure.operational && failure.httpStatus < 500) {
-          await gate.audit(method, name, true);
+          await gate.audit(method, name, true, `failed: ${failure.message.slice(0, 200)}`);
           return ok(rpcId, {
             content: [{ type: "text", text: failure.message.slice(0, 500) }],
             isError: true,
           });
         }
+        await gate.audit(method, name, true, `failed: internal error (correlation ${correlationId})`);
         throw failure;
       }
       await gate.audit(method, name, true);
