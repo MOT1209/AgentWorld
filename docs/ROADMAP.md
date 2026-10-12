@@ -5,7 +5,7 @@
 Historical snapshot at Phase 1 close; current totals in brackets.
 
 - Monorepo + strict toolchain (typecheck, lint, test, build)
-- SQLite schema (27 models) + ledger immutability triggers [now 50 models]
+- SQLite schema (27 models) + ledger immutability triggers [now 55 models]
 - Integer-minor-unit money, single-writer ledger, `verifyLedger`
 - Event bus + audit log, typed catalogue (~45 events) [now ~119 types]
 - Swappable AI providers + deterministic mock + `ModelRouter`
@@ -14,7 +14,7 @@ Historical snapshot at Phase 1 close; current totals in brackets.
 - Agent runtime (think-act-observe) + 4 role profiles + 19 tools
   [now 82 tools]
 - REST API (auth, RBAC, approvals replay, agent wakeup), seed, 25 tests
-  [now 447 tests in 43 files as of 2026-10-11: 445 passing + 2 skipped with Docker available,
+  [now 484 tests in 45 files as of 2026-10-12: 482 passing + 2 skipped with Docker available,
   13 environment-gated skips without Docker; see docs/audits/AGENTWORLD_TEST_REPORT.md],
   operator dashboard, docs
 
@@ -222,6 +222,36 @@ Remaining (genuine limitations, not roadmap debt):
   explicit enable paths, never faked.
 - Browser QA runs commands/probes but drives no real browser session yet;
   a Playwright-backed runner is the next QA step.
+
+### Security hardening + skill persistence (follow-up audit)
+
+Verified against the tree, fixed, and covered by tests
+(`tests/skills-persistence.test.ts`, `tests/security-hardening.test.ts`):
+
+- **Skills state was process memory only.** Catalog, assignments, usage and
+  skill requests vanished on restart. They now live in five tables (migration
+  `20261011120000_skills_persistence`, additive, nothing to backfill); the
+  database is the single source of truth.
+- **Skill approvals were reusable and unbound.** Any APPROVED `skill.assign`
+  approval unlocked any skill for any agent, repeatedly. Approvals are now
+  bound to their target and single-use.
+- **Every approval-gated skill operation returned 500.** `requestApproval`
+  stored the requesting *user's* id in the Agent foreign key; fixed at the
+  source (only an AGENT actor may stand in for the requesting agent).
+- **Rollback restored the wrong manifest** (the current one under an older
+  version number). Version history now keeps each version's manifest.
+- **Assigning a skill counted as a successful execution**, inflating usage and
+  reputation. Assignment no longer touches execution counters.
+- **MCP declared `inputSchema` but never enforced it**, leaked raw error text,
+  and `tasks.create` wrote the task with Prisma directly (no `TASK_CREATED`
+  event, no activity row, unvalidated priority). See `docs/SECURITY.md`.
+- **`EXEC_SANDBOX=local` in production only warned.** It now refuses to boot
+  without `EXEC_ALLOW_UNSANDBOXED_PRODUCTION=true`.
+- **REST 500s returned the raw driver/ORM message.** Now generic + correlation id.
+
+Remaining: MCP `tasks.create` and REST task creation have no idempotency key;
+the catalog row is last-writer-wins (no optimistic version check) for two
+concurrent edits of the same skill.
 
 ## Deferred beyond Phase 10
 

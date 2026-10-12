@@ -81,6 +81,24 @@ filesystem, read-only root, dropped capabilities, pid cap, timeout kill, live
 kill, output cap, fail-closed, root-owned refusal); 1 skipped (git inside the
 container — the base image has no git).
 
+## After merging `main` (PR #15) — 2026-10-12
+
+`main` gained an independent hardening PR (MOT1209/AgentWorld#15) that fixed
+the same issues as AW-08, AW-10 and AW-11 in a stronger way (persistent skill
+state, integrity-hash-bound approvals, schema-enforced MCP input). On merge
+its versions of `skill.routes.ts` and `packages/mcp/src/server.ts` were kept;
+this branch's `consumeApprovedAction` became unused and was removed; AW-16
+(failure reason in the MCP audit row) was re-applied on top of #15's server.
+The AW-08/AW-10/AW-11/AW-16 regression tests pass against #15's code (AW-16
+test input updated: #15 requires titles of at least 3 characters, and returns
+business failures as `isError` tool results).
+
+| Command | Exit | Result |
+|---|---|---|
+| `npm run typecheck` / `lint` / `check:docs` / `build` | 0 | Clean (55 models) |
+| `npm test` | 0 | 45 files; **484 tests: 471 passed, 13 skipped** (Docker daemon was down for this run) |
+| `tests/docker-sandbox.test.ts` (daemon restarted) | 0 | 11 passed, 1 skipped (git) |
+
 ## Skipped and blocked (first pass)
 
 | Suite | Tests | Why |

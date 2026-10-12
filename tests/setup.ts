@@ -104,6 +104,12 @@ try {
   for (const table of [
     // Phase 4 integrations: deliveries reference subscriptions; usages/runs
     // reference agents/sessions/tasks/companies/executions.
+    // External skills: assignments reference the catalog and agents.
+    "SkillAssignment",
+    "SkillCatalogEntry",
+    "SkillUsageAgent",
+    "SkillUsage",
+    "SkillRequest",
     "WebhookDelivery",
     "WebhookSubscription",
     "ApiKey",

@@ -29,7 +29,6 @@ export {
   markExecutionFailed,
   markExecutionUncertain,
   markExecutionSucceeded,
-  consumeApprovedAction,
   readApprovalPayload,
   listApprovals,
   getApproval,

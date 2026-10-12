@@ -88,6 +88,11 @@ const EnvSchema = z.object({
   EXEC_DOCKER_MEMORY: z.string().regex(/^[0-9]+[kmg]$/i, "e.g. 512m").default("512m"),
   EXEC_DOCKER_CPUS: z.string().regex(/^[0-9]+(\.[0-9]+)?$/, "e.g. 1 or 0.5").default("1"),
   EXEC_DOCKER_PIDS: int(256, 16, 4096),
+  // Explicit, auditable opt-in to run agent commands on the host in
+  // production. Without it EXEC_SANDBOX=local in production refuses to boot.
+  EXEC_ALLOW_UNSANDBOXED_PRODUCTION: bool(false),
+  // Cap on agent child processes alive at once (per API process).
+  EXEC_MAX_CONCURRENT: int(16, 1, 256),
 
   // Integration platform (Phase 4).
   // Master key for the credential vault: base64 32 bytes. REQUIRED whenever a
@@ -150,6 +155,10 @@ export interface AppConfig {
   execution: { defaultBackend: "local" | "mock" | "opencode"; openCodeCommand: string };
   exec: {
     sandbox: "local" | "docker";
+    /** Production may run unsandboxed only with this explicit opt-in. */
+    allowUnsandboxedInProduction: boolean;
+    /** Max agent child processes alive at once. */
+    maxConcurrent: number;
     docker: { image: string; user: string; memory: string; cpus: string; pids: number };
   };
   vault: { masterKey: string };
@@ -209,6 +218,14 @@ function load(): AppConfig {
     throw new Error("SEED_OWNER_PASSWORD is still the development default. Refusing to start.");
   }
 
+  const sandbox = raw.EXEC_SANDBOX ?? (isProduction ? "docker" : "local");
+  if (isProduction && sandbox === "local" && !raw.EXEC_ALLOW_UNSANDBOXED_PRODUCTION) {
+    throw new Error(
+      "EXEC_SANDBOX=local in production runs agent commands on the HOST with no isolation. Refusing to start. " +
+        "Use EXEC_SANDBOX=docker (see docs/SANDBOX.md), or set EXEC_ALLOW_UNSANDBOXED_PRODUCTION=true to accept the risk explicitly.",
+    );
+  }
+
   const defaultProviderId = raw.DEFAULT_PROVIDER;
 
   return {
@@ -257,7 +274,9 @@ function load(): AppConfig {
       openCodeCommand: raw.OPENCODE_COMMAND,
     },
     exec: {
-      sandbox: raw.EXEC_SANDBOX ?? (isProduction ? "docker" : "local"),
+      sandbox,
+      allowUnsandboxedInProduction: raw.EXEC_ALLOW_UNSANDBOXED_PRODUCTION,
+      maxConcurrent: raw.EXEC_MAX_CONCURRENT,
       docker: {
         image: raw.EXEC_DOCKER_IMAGE,
         user: raw.EXEC_DOCKER_USER,

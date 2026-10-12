@@ -16,6 +16,8 @@ import { randomBytes } from "node:crypto";
 import { statSync } from "node:fs";
 import { ProcessManager, type SpawnOptions, type SpawnResult } from "./process-manager.js";
 import type { CommandRunner } from "./command-runner.js";
+import { concurrencyRefusal, refusedResult } from "./runner-limits.js";
+import { stripSecretEnv } from "./command-policy.js";
 
 export interface DockerRunnerSettings {
   image: string;
@@ -123,7 +125,7 @@ export class DockerRunner implements CommandRunner {
       "-e", "GIT_CONFIG_KEY_0=safe.directory",
       "-e", "GIT_CONFIG_VALUE_0=/work",
     ];
-    for (const [key, value] of Object.entries(options.env)) {
+    for (const [key, value] of Object.entries(stripSecretEnv(options.env))) {
       if (HOST_ONLY_ENV.has(key.toUpperCase())) continue;
       args.push("-e", `${key}=${value}`);
     }
@@ -133,6 +135,8 @@ export class DockerRunner implements CommandRunner {
 
   async exec(options: SpawnOptions): Promise<SpawnResult> {
     const executionId = options.executionId ?? `tex_${randomBytes(8).toString("hex")}`;
+    const refusal = concurrencyRefusal(this.manager.liveCount);
+    if (refusal !== null) return refusedResult(executionId, refusal);
     const name = `kw-${executionId}`;
     const started = Date.now();
     let args: string[];

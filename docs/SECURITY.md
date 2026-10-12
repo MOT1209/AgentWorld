@@ -99,9 +99,18 @@ withheld pending a human.
   is not a sandbox. Use `EXEC_SANDBOX=docker` (the production default) for any
   agent you do not fully trust.
 - **Environment allow-list.** Child processes get a fixed allow-list; any key
-  that looks like a secret is dropped even if declared.
-- **Bounded.** Timeout, output cap, concurrency cap, bounded retries (TRANSIENT
-  only). Cancellation kills the whole process tree (`taskkill /T` on Windows,
+  that looks like a secret is dropped even if declared. Both command runners
+  (local and Docker) strip secret-named variables again right before spawning,
+  whoever built the environment.
+- **No unsandboxed production by accident.** `EXEC_SANDBOX` defaults to
+  `docker` in production. `EXEC_SANDBOX=local` with `NODE_ENV=production`
+  refuses to boot unless `EXEC_ALLOW_UNSANDBOXED_PRODUCTION=true` is set, and
+  the runner re-checks it, so no code path obtains the host runner silently.
+  Docker problems are error results, never a fallback to the host. See
+  `docs/SANDBOX.md`.
+- **Bounded.** Timeout, output cap, concurrency cap (queue worker, plus
+  `EXEC_MAX_CONCURRENT` live agent processes per API process across
+  `terminal.*`, `git.*` and jobs), bounded retries (TRANSIENT only). Cancellation kills the whole process tree (`taskkill /T` on Windows,
   process group on POSIX).
 - **Isolation.** `terminal.*` and `execution.*` answer "not found" for another
   workspace's processes and jobs, so ids cannot be probed. Artifacts store
@@ -115,6 +124,44 @@ withheld pending a human.
 
 Tests: `tests/security-m4.test.ts`, `tests/execution-tools-m1.test.ts`,
 `tests/execution-m2.test.ts`, `tests/execution-tools.test.ts`.
+
+## MCP server (`packages/mcp/src/server.ts`)
+
+- **Order of checks per `tools/call`:** API key -> tool lookup -> key scope ->
+  argument validation -> `run`. Nothing reaches the database before all four
+  pass; scope is checked first, so arguments can never widen authority.
+- **One schema per tool.** Each tool declares a strict zod schema; the
+  `inputSchema` returned by `tools/list` is generated from it, and the same
+  schema validates `arguments`. Unknown fields, wrong types, out-of-enum values
+  and over-long strings are rejected with JSON-RPC `-32602` (issues listed by
+  path, submitted values never echoed). Serialized arguments are capped at
+  64 KB; the HTTP body is capped at 256 KB.
+- **Same services as REST.** State-changing tools call Core services
+  (`tasks.create` -> `createTask`, `testing.run` -> `runTestSuite`), so
+  business rules, `TASK_CREATED` events and `task.create` activity rows are
+  identical on both paths. Read tools select explicit public fields only.
+- **Errors.** Expected business failures (not found, invalid state) return an
+  MCP tool result with `isError: true`. Anything unexpected is logged with a
+  correlation id and answered with `-32603 "Internal error"` carrying only that
+  id: no stack traces, SQL, file paths or secrets. Scope denials, unknown tools
+  and invalid arguments are audited as `MCP_DENIED`.
+- **Residual:** `tasks.create` has no idempotency key (neither does REST), so a
+  client that retries after a lost response can create a duplicate task.
+
+## External skills (`/api/v1/skills`)
+
+- Catalog, assignments, usage counters and agent skill requests are stored in
+  the database (`SkillCatalogEntry`, `SkillAssignment`, `SkillUsage`,
+  `SkillUsageAgent`, `SkillRequest`); nothing is lost on restart. Assignments
+  are unique per (skill, agent); counters move by atomic increments; a skill
+  request can be decided once (compare-and-set). A corrupt catalog row fails
+  loudly and is never overwritten.
+- Skill approvals (`skill.install`, `skill.update`, `skill.assign`) are bound
+  to their exact target (external id + manifest key/version, skill key +
+  versions, skill key + agent) and are single-use: an approval granted for one
+  agent or version cannot unlock another, and cannot be replayed.
+- Rows hold the normalized manifest (secret requirement *names* only) and
+  integrity hashes, never skill file contents or secret values.
 
 ## Approval policy
 
@@ -164,6 +211,12 @@ an error), so a hostile endpoint cannot make the server buffer without bound.
 Production refuses to start when `JWT_SECRET` is missing, short or the
 placeholder, when `SEED_OWNER_PASSWORD` is the development default, or when
 an active seed account in the database still accepts that default password.
+
+## Error responses
+
+REST: 4xx carry the operational message; an unexpected 500 returns only
+`{ code: "INTERNAL_ERROR", message: "Internal server error", correlationId }`
+-- the driver/ORM text stays in the server log. MCP: see above.
 
 ## Operational notes
 

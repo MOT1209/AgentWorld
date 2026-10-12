@@ -2,9 +2,10 @@
  * Local external-skill catalog.
  *
  * In-memory store with explicit search filters (search/category/author/
- * repository/keyword/compatibility). Persistence is the caller's choice;
- * the API layer keeps one process-wide instance and emits EventLog rows
- * for every mutation so state changes stay auditable.
+ * repository/keyword/compatibility). Persistence is the caller's choice:
+ * the API layer persists records in the database (apps/api skill-store)
+ * and uses `searchCatalogRecords` over the stored rows, so this class is a
+ * library/test convenience, not the server's source of truth.
  */
 import type {
   SkillCatalogRecord,
@@ -51,31 +52,40 @@ export class SkillCatalog {
   }
 
   search(filter: CatalogFilter = {}): SkillCatalogRecord[] {
-    const limit = Math.min(Math.max(filter.limit ?? 25, 1), 100);
-    const q = `${filter.search ?? ""} ${filter.keyword ?? ""}`.trim().toLowerCase();
-    return this.list()
-      .filter((r) => {
-        if (filter.category !== undefined && (r.category ?? "").toLowerCase() !== filter.category.toLowerCase()) return false;
-        if (filter.author !== undefined && (r.author ?? "").toLowerCase() !== filter.author.toLowerCase()) return false;
-        if (filter.repository !== undefined && (r.repository ?? "").toLowerCase() !== filter.repository.toLowerCase()) return false;
-        if (filter.trust !== undefined && r.trust !== filter.trust) return false;
-        if (filter.status !== undefined && r.status !== filter.status) return false;
-        if (filter.installedOnly === true && !r.installed) return false;
-        if (filter.compatibility !== undefined && r.compatibility !== (filter.compatibility as SkillCompatibility)) return false;
-        if (q !== "") {
-          const hay = `${r.key} ${r.name} ${r.description} ${r.category ?? ""}`.toLowerCase();
-          const firstToken = q.split(/\s+/)[0] ?? "";
-          if (firstToken !== "" && !hay.includes(firstToken)) return false;
-        }
-        return true;
-      })
-      .slice(0, limit);
+    return searchCatalogRecords(this.list(), filter);
   }
 
   markChecked(key: string, at = new Date().toISOString()): void {
     const record = this.records.get(key);
     if (record !== undefined) record.lastChecked = at;
   }
+}
+
+/**
+ * Filters + limits catalog records. Pure, so a durable store can apply the
+ * exact same search semantics to rows it loaded instead of the in-memory map.
+ */
+export function searchCatalogRecords(records: readonly SkillCatalogRecord[], filter: CatalogFilter = {}): SkillCatalogRecord[] {
+  const limit = Math.min(Math.max(filter.limit ?? 25, 1), 100);
+  const q = `${filter.search ?? ""} ${filter.keyword ?? ""}`.trim().toLowerCase();
+  return [...records]
+    .sort((a, b) => (a.key < b.key ? -1 : 1))
+    .filter((r) => {
+      if (filter.category !== undefined && (r.category ?? "").toLowerCase() !== filter.category.toLowerCase()) return false;
+      if (filter.author !== undefined && (r.author ?? "").toLowerCase() !== filter.author.toLowerCase()) return false;
+      if (filter.repository !== undefined && (r.repository ?? "").toLowerCase() !== filter.repository.toLowerCase()) return false;
+      if (filter.trust !== undefined && r.trust !== filter.trust) return false;
+      if (filter.status !== undefined && r.status !== filter.status) return false;
+      if (filter.installedOnly === true && !r.installed) return false;
+      if (filter.compatibility !== undefined && r.compatibility !== (filter.compatibility as SkillCompatibility)) return false;
+      if (q !== "") {
+        const hay = `${r.key} ${r.name} ${r.description} ${r.category ?? ""}`.toLowerCase();
+        const firstToken = q.split(/\s+/)[0] ?? "";
+        if (firstToken !== "" && !hay.includes(firstToken)) return false;
+      }
+      return true;
+    })
+    .slice(0, limit);
 }
 
 export function blankRecord(partial: {

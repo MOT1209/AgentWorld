@@ -427,9 +427,10 @@ describe("AW-16: a failing MCP tool call is audited", () => {
     const client = unique("audit-client");
     const res = await handleMcpRequest(
       { db: prisma, apiKey: secret, clientName: client },
-      { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "tasks.create", arguments: { companyId: "missing-company", title: "x" } } },
+      { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "tasks.create", arguments: { companyId: "missing-company", title: "audit failure" } } },
     );
-    expect(res.error).toBeDefined();
+    // A business failure (unknown company) is an MCP tool error result.
+    expect((res.result as { isError?: boolean } | undefined)?.isError).toBe(true);
     const rows = await prisma.eventLog.findMany({ where: { type: "MCP_REQUEST" }, orderBy: { id: "desc" }, take: 20 });
     const row = rows.find((r) => r.payload.includes(client));
     expect(row?.payload).toContain("failed:");

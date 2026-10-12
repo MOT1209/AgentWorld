@@ -268,36 +268,6 @@ export async function markExecutionSucceeded(db: DbClient, requestId: string): P
   });
 }
 
-/**
- * For flows that resume on their own route (skill install/update/assign)
- * instead of through tool replay: the caller presents the approval id again.
- * The approval must be APPROVED for this action, its frozen payload must match
- * `binding` field by field (so approving skill A cannot unlock skill B), and
- * it is consumed: a second use throws, exactly like a replayed tool call.
- */
-export async function consumeApprovedAction(
-  db: DbClient,
-  requestId: string | undefined,
-  action: string,
-  binding: Record<string, unknown>,
-): Promise<ApprovalRequest> {
-  if (requestId === undefined) throw forbidden("An approved approval request is required", { action });
-  const request = await db.approvalRequest.findUnique({ where: { id: requestId } });
-  if (request === null || request.action !== action || request.status !== "APPROVED") {
-    throw forbidden("A valid APPROVED approval request for this action is required", { action, requestId });
-  }
-  const frozen = readApprovalPayload(request).arguments;
-  for (const [key, expected] of Object.entries(binding)) {
-    if (JSON.stringify(frozen[key]) !== JSON.stringify(expected)) {
-      throw forbidden(`Approval request ${requestId} was granted for a different '${key}'`, { action, requestId });
-    }
-  }
-  const claimed = await claimForExecution(db, requestId);
-  if (claimed === null) throw conflict("Approval request was already used", { requestId });
-  await markExecutionSucceeded(db, requestId);
-  return claimed;
-}
-
 export interface StoredApprovalPayload {
   toolName: string;
   agentId: string | null;
