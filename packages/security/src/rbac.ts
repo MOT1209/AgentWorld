@@ -35,9 +35,11 @@ const OBSERVER_PERMISSIONS: Permission[] = [
   PERMISSIONS.WEBHOOK_READ,
   PERMISSIONS.MCP_READ,
   PERMISSIONS.TESTING_READ,
-  PERMISSIONS.TESTING_RUN,
   PERMISSIONS.FACTORY_READ,
-  PERMISSIONS.FACTORY_RUN,
+  // TESTING_RUN and FACTORY_RUN are deliberately NOT here: both can execute
+  // commands in a workspace (testing.run) or create branches, open PRs and
+  // merge to a real external GitHub repository (factory approve/merge).
+  // That is well beyond "read-only", so they are ADMIN-and-up only below.
 ];
 
 const ADMIN_PERMISSIONS: Permission[] = [

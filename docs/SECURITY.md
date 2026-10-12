@@ -36,6 +36,7 @@
 | Assign/complete/cancel tasks, decide approvals | no | yes | yes |
 | Modify company structure, delete agents | no | no | yes |
 | Transfer/withdraw money, read audit | no | no | yes |
+| Run test suites, start/approve Software Factory runs (opens branches, commits, PRs, and **merges to the real GitHub repo**) | no | yes | yes |
 
 ### Company scope (visibility)
 
@@ -90,6 +91,14 @@ withheld pending a human.
   cleared it, so the REST API cannot clear approvals. The runner re-checks DENY
   and the working directory right before spawning, so a row written around the
   gate still cannot run.
+- **Caller-to-workspace ACL is the call site's job, not `enqueueExecution`'s.**
+  `assertExecutionAllowed`/`enqueueExecution` check the command and the path,
+  never who is calling. Every creation path must call `canWriteWorkspace`
+  itself before enqueuing: `terminal.exec`, `fs.write`, `git.commit`,
+  `testing.run` and `POST /executions`/`POST /testing/run` all do. A new
+  caller that forgets this check can queue a command in a workspace it does
+  not own (fixed once already: `testing.run` was missing it — see
+  `docs/audits/AGENTWORLD_AUDIT_2026-10-12.md`, AW-21).
 - **No shell.** Commands are argv arrays spawned with `shell: false`; shell
   metacharacters are inert data. Unknown commands, inline-code interpreters
   (including `--import=`/`--loader=` forms) and arguments pointing outside the

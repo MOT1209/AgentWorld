@@ -103,18 +103,29 @@ export function resolveInRoot(root: string, ...segments: string[]): string {
   }
 
   let realBase = base;
+  let baseExists = true;
   try {
     realBase = realpathSync(base);
   } catch {
     // Root not created yet (createWorkspace resolves before mkdir).
+    baseExists = false;
   }
 
   let probe = candidate;
-  while (!existsSync(probe)) {
+  // Never walk past the root itself looking for an existing ancestor: when
+  // root does not exist yet, nothing under it can have been swapped for a
+  // symlink before this call (there is nothing there yet for an attacker to
+  // have touched), so there is nothing to realpath-check. Walking past root
+  // would compare realBase (the un-resolved root string, since it has no
+  // realpath yet) against the realpath of some ancestor ABOVE root -- two
+  // values that can never match or prefix-match each other by construction,
+  // which made every first-ever call against a fresh root throw here.
+  while (probe !== base && !existsSync(probe)) {
     const parent = dirname(probe);
     if (parent === probe) return candidate;
     probe = parent;
   }
+  if (!baseExists && probe === base) return candidate;
   const real = realpathSync(probe);
   if (real !== realBase && !real.startsWith(realBase + sep)) {
     throw validationError("Path resolves outside the workspace root");

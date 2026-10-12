@@ -12,6 +12,12 @@ Related: [Implementation plan](AGENTWORLD_IMPLEMENTATION_PLAN.md) ·
 [Security review](AGENTWORLD_SECURITY_REVIEW.md). Historical audits
 (`docs/PHASE3-AUDIT.md`, `docs/phase2-review.html`) are left unchanged.
 
+**Continued by** [AGENTWORLD_AUDIT_2026-10-12.md](AGENTWORLD_AUDIT_2026-10-12.md)
+(findings AW-20…AW-23: OBSERVER could run/merge Software Factory PRs;
+`testing.run` and `workspace.create` could act on a workspace the caller
+does not own; the workspace path guard rejected every first-ever workspace
+in a fresh environment).
+
 ## 1. Inventory (verified)
 
 | Area | What exists |

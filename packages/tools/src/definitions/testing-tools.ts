@@ -4,10 +4,35 @@
  * execution queue); nothing here executes a process directly.
  */
 import { z } from "zod";
-import { PERMISSIONS } from "../../../security/src/permissions.js";
-import type { ToolDefinition } from "../types.js";
+import { PERMISSIONS, type Permission } from "../../../security/src/permissions.js";
+import type { ToolDefinition, ToolExecutionContext } from "../types.js";
 import { runTestSuite, listTestRuns, settleTestRunFromExecution } from "../../../factory/src/index.js";
-import { validationError } from "../../../shared/src/index.js";
+import { forbidden, validationError } from "../../../shared/src/index.js";
+import type { DbClient } from "../../../database/src/index.js";
+import { canWriteWorkspace, requireWorkspace, type WorkspaceActorContext } from "../../../workspace/src/index.js";
+
+function actorCtx(context: ToolExecutionContext): WorkspaceActorContext {
+  return {
+    actor: context.actor,
+    correlationId: context.correlationId,
+    permissions: context.permissions as ReadonlySet<Permission>,
+    ...(context.agentId !== undefined ? { agentId: context.agentId } : {}),
+  };
+}
+
+/**
+ * The command adapter runs real argv inside the workspace (via the execution
+ * queue), exactly like terminal.exec -- so it needs the same write/execute
+ * ACL check terminal.exec, fs.write and git.commit all apply. Without this,
+ * any caller holding testing.run could run a command in a workspace it does
+ * not own.
+ */
+async function assertCanRunIn(db: DbClient, context: ToolExecutionContext, workspaceId: string): Promise<void> {
+  const workspace = await requireWorkspace(db, workspaceId);
+  if (!(await canWriteWorkspace(db, workspace, actorCtx(context)))) {
+    throw forbidden("No execute access to this workspace", { workspaceId });
+  }
+}
 
 const SELF_CONTAINED_TOOL_SUITES = ["BROWSER", "MOBILE", "SECURITY", "PERFORMANCE"] as const;
 type QaSuite = (typeof SELF_CONTAINED_TOOL_SUITES)[number] | "UNIT" | "INTEGRATION" | "E2E";
@@ -55,6 +80,12 @@ export const testingRunTool: ToolDefinition<{
     }
     if (input.command !== undefined && input.workspaceId === undefined) {
       throw validationError("A command run needs a workspaceId");
+    }
+    // Any suite that names a workspace can end up running the command
+    // adapter in it (see toolAdapterFor); require write access up front
+    // regardless of which suite was requested.
+    if (input.workspaceId !== undefined) {
+      await assertCanRunIn(context.db, context, input.workspaceId);
     }
     const run = await runTestSuite(context.db, {
       ...(input.workspaceId !== undefined ? { workspaceId: input.workspaceId } : {}),

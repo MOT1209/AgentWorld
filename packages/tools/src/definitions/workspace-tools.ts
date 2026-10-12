@@ -54,11 +54,16 @@ export const workspaceCreateTool: ToolDefinition<{
   requiredPermission: PERMISSIONS.WORKSPACE_WRITE,
   risk: "MEDIUM",
   async execute(context, input) {
+    // An agent caller may only create a workspace for itself: input.agentId
+    // is honoured only for a human/system caller provisioning on an agent's
+    // behalf. Without this, any agent holding workspace.write could name a
+    // different agent (in any company) as the new workspace's owner.
+    const resolvedAgentId = context.agentId !== undefined ? context.agentId : input.agentId ?? null;
     const workspace = await createWorkspace(
       context.db,
       {
         name: input.name,
-        agentId: input.agentId ?? context.agentId ?? null,
+        agentId: resolvedAgentId,
         ...(input.projectId !== undefined ? { projectId: input.projectId } : {}),
         type: input.type,
         ...(input.dir !== undefined ? { dir: input.dir } : {}),
