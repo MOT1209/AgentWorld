@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="ar">
+<head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /></head>
+<body>
+<title>AgentWorld 3D Icons</title>
+<style>
+  :root { --bg:#f3f5f2; --card:#ffffff; --text:#142030; --muted:#5b6675; --line:#dbe1da; --accent:#127c6e; --on-accent:#ffffff; --tile-light:#e6ebee; --tile-dark:#2b2f36; --tab-bg:#ffffff; --tab-fg:#222222; --tile-a:#23b39e; --tile-b:#0c5e53; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#0e1620; --card:#17212e; --text:#eef2ee; --muted:#9aa7b6; --line:#2a3646; --accent:#2fa896; --on-accent:#08201c; color-scheme:dark } }
+  :root[data-theme="dark"] { --bg:#0e1620; --card:#17212e; --text:#eef2ee; --muted:#9aa7b6; --line:#2a3646; --accent:#2fa896; --on-accent:#08201c; color-scheme:dark }
+  * { box-sizing:border-box }
+  body { margin:0; padding-inline:16px; padding-block:24px 104px; background:var(--bg); color:var(--text); font-family:system-ui,"Segoe UI",Tahoma,sans-serif; }
+  .wrap { max-width:1040px; margin:0 auto }
+  h1 { font-size:22px; margin:0 0 4px; text-wrap:balance } p.sub { color:var(--muted); margin:0 0 16px; font-size:14px; max-width:70ch }
+  .bgs { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:18px; font-size:13px; color:var(--muted) }
+  .bgs button { font:inherit; padding:5px 12px; border-radius:999px; border:1px solid var(--line); background:var(--card); color:var(--text); cursor:pointer }
+  .bgs button[aria-pressed=true] { border-color:var(--accent); background:var(--accent); color:var(--on-accent) }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(290px,1fr)); gap:14px }
+  .card { background:var(--card); border:2px solid var(--line); border-radius:14px; padding:14px; cursor:pointer; text-align:start; font:inherit; color:inherit; min-width:0 }
+  .card:hover { border-color:var(--accent) } .card[aria-pressed=true] { border-color:var(--accent); box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 25%,transparent) }
+  .num { font-weight:700; font-size:13px; color:var(--accent) } .name { font-weight:600; margin:2px 0 2px } .desc { font-size:12.5px; color:var(--muted); margin-bottom:10px; min-height:36px }
+  .tile { position:relative; overflow:hidden; background:linear-gradient(150deg,var(--tile-a),var(--tile-b)); box-shadow:inset 0 1px 0 rgba(255,255,255,.35), inset 0 -2px 6px rgba(0,0,0,.25) }
+  .tile canvas { position:absolute; inset:0; width:100%; height:100% }
+  .tile.big { width:200px; height:200px; border-radius:46px; margin:6px auto 12px; box-shadow:0 10px 24px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.35), inset 0 -3px 8px rgba(0,0,0,.25) }
+  .sizes { display:flex; align-items:flex-end; justify-content:center; gap:14px; padding:10px; border-radius:10px; background:var(--tile-light) }
+  .sizes.dark { background:var(--tile-dark); margin-top:6px }
+  .sizes .tile { border-radius:26% }
+  .tab { display:flex; align-items:center; gap:6px; margin-top:6px; padding:6px 10px; border-radius:8px 8px 0 0; background:var(--tab-bg); color:var(--tab-fg); font-size:12px; direction:ltr; width:fit-content; max-width:100% }
+  .bar { position:fixed; inset-inline:0; bottom:0; padding:12px 16px calc(12px + env(safe-area-inset-bottom, 0px)); background:var(--card); border-top:1px solid var(--line); text-align:center; font-size:14px }
+  .err { padding:14px; border:1px solid #c0392b; border-radius:10px; color:#c0392b }
+</style>
+<div dir="rtl" lang="ar">
+<div class="wrap">
+  <h1>أيقونات AgentWorld ثلاثية الأبعاد</h1>
+  <p class="sub">مجسمات ثلاثية الأبعاد حقيقية بإضاءة وانعكاسات وظلال، تدور باستمرار. اضغط على التصميم الذي يعجبك، وجرّب خلفيات مختلفة. المعاينات الصغيرة (16 / 32 / 64) تُظهر شكل الأيقونة الفعلي في تبويب المتصفح.</p>
+  <div class="bgs" id="bgs"><span>الخلفية:</span></div>
+  <div class="grid" id="grid"></div>
+</div>
+<div class="bar" id="bar">لم تختر بعد. اضغط على تصميم، ثم أخبرني برقمه.</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function () {
+  const grid = document.getElementById("grid");
+  if (!window.THREE) { grid.innerHTML = '<div class="err">تعذّر تحميل مكتبة three.js.</div>'; return; }
+  let renderer;
+  try { renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true }); }
+  catch (e) { grid.innerHTML = '<div class="err">المتصفح لا يدعم WebGL، لا يمكن عرض المجسمات.</div>'; return; }
+  const RES = 360;
+  renderer.setPixelRatio(1); renderer.setSize(RES, RES, false);
+  renderer.outputEncoding = THREE.sRGBEncoding;
+  renderer.setClearColor(0x000000, 0);
+
+  const P = { white: 0xf6f8f4, amber: 0xf5b73c, teal: 0x2fc4ad, tealD: 0x0f6b5f, ink: 0x1b2b44, inkL: 0x344a6b };
+  const mat = (c, o) => new THREE.MeshPhysicalMaterial(Object.assign({
+    color: new THREE.Color(c).convertSRGBToLinear(), roughness: 0.32, metalness: 0.0, clearcoat: 0.8, clearcoatRoughness: 0.2
+  }, o || {}));
+  const mesh = (g, m) => { const x = new THREE.Mesh(g, m); return x; };
+
+  function rbox(w, h, d, r, m, b) {
+    b = b === undefined ? Math.min(0.07, Math.min(w, h, d) / 4) : b;
+    const W = w - 2 * b, D = d - 2 * b, R = Math.max(0.001, Math.min(r, Math.min(W, D) / 2 - 0.001));
+    const s = new THREE.Shape(), x = -W / 2, y = -D / 2;
+    s.moveTo(x + R, y); s.lineTo(x + W - R, y); s.quadraticCurveTo(x + W, y, x + W, y + R);
+    s.lineTo(x + W, y + D - R); s.quadraticCurveTo(x + W, y + D, x + W - R, y + D);
+    s.lineTo(x + R, y + D); s.quadraticCurveTo(x, y + D, x, y + D - R);
+    s.lineTo(x, y + R); s.quadraticCurveTo(x, y, x + R, y);
+    const g = new THREE.ExtrudeGeometry(s, { depth: h - 2 * b, bevelEnabled: true, bevelThickness: b, bevelSize: b, bevelSegments: 4, curveSegments: 10 });
+    g.rotateX(-Math.PI / 2); g.center();
+    return mesh(g, m);
+  }
+  const sphere = (r, m) => mesh(new THREE.SphereGeometry(r, 48, 32), m);
+  function link(a, b, r, m) {
+    const d = b.clone().sub(a), len = d.length();
+    const c = mesh(new THREE.CylinderGeometry(r, r, len, 20), m);
+    c.position.copy(a).add(b).multiplyScalar(0.5);
+    c.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize());
+    return c;
+  }
+
+  const designs = [
+    { name: "مدينة متعددة الأبراج", desc: "أبراج ببلاستيك لامع على قاعدة، بألوان الهوية: أبيض وكهرماني وأزرق داكن.", build() {
+      const g = new THREE.Group();
+      const base = rbox(2.7, 0.2, 2.7, 0.35, mat(P.white)); base.position.y = -0.1; g.add(base);
+      const T = [[-0.7, -0.65, 0.85, 1.1, P.teal], [0.55, -0.5, 0.75, 1.9, P.amber], [-0.55, 0.55, 0.8, 0.75, P.white], [0.65, 0.65, 0.65, 1.3, P.inkL]];
+      T.forEach(([x, z, w, h, c]) => { const t = rbox(w, h, w, 0.12, mat(c, c === P.white ? {} : {})); t.position.set(x, 0.2 + h / 2 - 0.1, z); g.add(t); });
+      const win = mat(P.ink, { clearcoat: 0 });
+      for (let i = 0; i < 4; i++) { const w = rbox(0.5, 0.1, 0.03, 0.02, win, 0.01); w.position.set(0.55, 0.65 + i * 0.35, -0.5 + 0.375 + 0.005); g.add(w); }
+      return { group: g };
+    } },
+    { name: "كرة العالم والوكلاء", desc: "كرة لامعة بخطوط الطول والعرض، تدور حولها حلقة يحملها وكيل كهرماني.", build() {
+      const g = new THREE.Group();
+      g.add(sphere(1, mat(P.tealD, { roughness: 0.2, clearcoat: 1 })));
+      const grid = mesh(new THREE.SphereGeometry(1.012, 24, 16), new THREE.MeshBasicMaterial({ color: new THREE.Color(P.white).convertSRGBToLinear(), wireframe: true, transparent: true, opacity: 0.28 }));
+      g.add(grid);
+      const tilt = new THREE.Group(); tilt.rotation.set(1.1, 0, 0.35); g.add(tilt);
+      tilt.add(mesh(new THREE.TorusGeometry(1.6, 0.045, 16, 120), mat(P.white)));
+      const agent = sphere(0.2, mat(P.amber, { clearcoat: 1 })); tilt.add(agent);
+      const agent2 = sphere(0.12, mat(P.white)); tilt.add(agent2);
+      return { group: g, tick(t) { agent.position.set(Math.cos(t * 0.9) * 1.6, Math.sin(t * 0.9) * 1.6, 0); agent2.position.set(Math.cos(t * 0.9 + 3.3) * 1.6, Math.sin(t * 0.9 + 3.3) * 1.6, 0); } };
+    } },
+    { name: "شبكة الوكلاء", desc: "عقدة مركزية كهرماني متصلة بخمسة وكلاء في الفضاء ثلاثي الأبعاد.", build() {
+      const g = new THREE.Group();
+      g.add(sphere(0.42, mat(P.amber, { clearcoat: 1 })));
+      const pts = [[1.3, 0.5, 0.2], [-1.2, 0.7, 0.5], [0.2, 1.3, -0.9], [-0.3, -1.2, 0.9], [0.9, -0.7, -1.0]].map(p => new THREE.Vector3(...p));
+      const lm = mat(P.white);
+      pts.forEach((p, i) => { g.add(link(new THREE.Vector3(), p, 0.07, lm)); const n = sphere(i % 2 ? 0.26 : 0.22, mat(i % 2 ? P.white : P.teal)); n.position.copy(p); g.add(n); });
+      g.add(link(pts[0], pts[2], 0.035, mat(P.white, { transparent: true, opacity: 0.6 })));
+      g.add(link(pts[1], pts[3], 0.035, mat(P.white, { transparent: true, opacity: 0.6 })));
+      return { group: g };
+    } },
+    { name: "حرف A مجسّم", desc: "حرف A سميك بحواف مشطوفة مع لؤلؤة كهرمانية في فراغه، رمز للوكيل.", build() {
+      const g = new THREE.Group();
+      const s = new THREE.Shape();
+      [[-1, -1], [-0.58, -1], [-0.42, -0.55], [0.42, -0.55], [0.58, -1], [1, -1], [0.3, 1], [-0.3, 1]].forEach(([x, y], i) => i ? s.lineTo(x, y) : s.moveTo(x, y));
+      const h = new THREE.Path();
+      [[-0.27, -0.2], [0.27, -0.2], [0, 0.5]].forEach(([x, y], i) => i ? h.lineTo(x, y) : h.moveTo(x, y));
+      s.holes.push(h);
+      const geo = new THREE.ExtrudeGeometry(s, { depth: 0.45, bevelEnabled: true, bevelThickness: 0.1, bevelSize: 0.08, bevelSegments: 5 });
+      geo.center();
+      g.add(mesh(geo, mat(P.white, { roughness: 0.25 })));
+      const pearl = sphere(0.17, mat(P.amber, { clearcoat: 1 })); pearl.position.set(0, 0.02, 0); g.add(pearl);
+      return { group: g };
+    } },
+    { name: "روبوت", desc: "رأس روبوت بشاشة داكنة وعينين مضيئتين وهوائي. الأوضح كذكاء اصطناعي.", build() {
+      const g = new THREE.Group();
+      const head = rbox(1.9, 1.4, 1.4, 0.4, mat(P.white), 0.1); g.add(head);
+      const f2 = rbox(1.5, 0.06, 0.9, 0.25, mat(P.ink, { clearcoat: 1, roughness: 0.15 }), 0.02); f2.rotation.x = Math.PI / 2; f2.position.set(0, 0.02, 0.72); g.add(f2);
+      const eyeM = new THREE.MeshStandardMaterial({ color: new THREE.Color(P.amber).convertSRGBToLinear(), emissive: new THREE.Color(P.amber).convertSRGBToLinear(), emissiveIntensity: 0.9 });
+      [-0.38, 0.38].forEach(x => { const e = rbox(0.26, 0.05, 0.36, 0.12, eyeM, 0.015); e.rotation.x = Math.PI / 2; e.position.set(x, 0.06, 0.77); g.add(e); });
+      [-1, 1].forEach(s => { const ear = mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.22, 32), mat(P.teal)); ear.rotation.z = Math.PI / 2; ear.position.set(s * 1.05, 0, 0); g.add(ear); });
+      const stem = mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.4, 16), mat(P.white)); stem.position.set(0, 0.88, 0); g.add(stem);
+      const tip = sphere(0.13, mat(P.amber, { clearcoat: 1 })); tip.position.set(0, 1.12, 0); g.add(tip);
+      return { group: g };
+    } },
+    { name: "مكعب المدينة", desc: "مكعب من 26 وحدة بحواف دائرية، بعضها كهرماني، وركن مفتوح كأنه موقع قيد البناء.", build() {
+      const g = new THREE.Group();
+      const amber = new Set(["1,1,0", "0,1,1", "1,0,1", "-1,1,-1"]);
+      for (let x = -1; x <= 1; x++) for (let y = -1; y <= 1; y++) for (let z = -1; z <= 1; z++) {
+        if (x === 1 && y === 1 && z === 1) continue;
+        const k = [x, y, z].join(",");
+        const c = amber.has(k) ? P.amber : (y === -1 ? P.inkL : (x + z) % 2 === 0 ? P.white : P.teal);
+        const b = rbox(0.66, 0.66, 0.66, 0.16, mat(c), 0.09); b.position.set(x * 0.72, y * 0.72, z * 0.72); g.add(b);
+      }
+      return { group: g };
+    } }
+  ];
+
+  // contact shadow texture
+  const sc = document.createElement("canvas"); sc.width = sc.height = 128;
+  const sx = sc.getContext("2d"); const gr = sx.createRadialGradient(64, 64, 0, 64, 64, 64);
+  gr.addColorStop(0, "rgba(0,0,0,.55)"); gr.addColorStop(1, "rgba(0,0,0,0)"); sx.fillStyle = gr; sx.fillRect(0, 0, 128, 128);
+  const shadowTex = new THREE.CanvasTexture(sc);
+
+  const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 50);
+  camera.position.set(0, 1.5, 4.1); camera.lookAt(0, -0.02, 0);
+
+  const mkTile = (px, big) => {
+    const t = document.createElement("div"); t.className = "tile" + (big ? " big" : "");
+    if (!big) { t.style.width = t.style.height = px + "px"; }
+    const c = document.createElement("canvas"); const r = big ? 2 : 2; c.width = c.height = (big ? 400 : px * r); t.appendChild(c);
+    return { el: t, ctx: c.getContext("2d"), size: c.width };
+  };
+
+  const items = designs.map((d, i) => {
+    const built = d.build();
+    const pivot = new THREE.Group(); pivot.add(built.group);
+    const box = new THREE.Box3().setFromObject(built.group);
+    const c = box.getCenter(new THREE.Vector3()); built.group.position.sub(c);
+    const sph = box.getBoundingSphere(new THREE.Sphere());
+    const k = 1 / sph.radius; pivot.scale.setScalar(k);
+    const scene = new THREE.Scene();
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x5a7a88, 0.85));
+    const key = new THREE.DirectionalLight(0xffffff, 1.25); key.position.set(3, 5, 4); scene.add(key);
+    const fill = new THREE.DirectionalLight(0xbfe8ff, 0.45); fill.position.set(-4, 2, -1); scene.add(fill);
+    const rim = new THREE.DirectionalLight(0xffe9c0, 0.5); rim.position.set(-1, 3, -5); scene.add(rim);
+    scene.add(pivot);
+    const sh = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 2.6), new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false, opacity: 0.55 }));
+    sh.rotation.x = -Math.PI / 2; sh.position.y = (box.min.y - c.y) * k - 0.02; scene.add(sh);
+
+    const card = document.createElement("button"); card.className = "card"; card.setAttribute("aria-pressed", "false");
+    const big = mkTile(0, true);
+    const smalls = [64, 32, 16].map(p => mkTile(p));
+    const lightRow = document.createElement("div"); lightRow.className = "sizes";
+    const darkRow = document.createElement("div"); darkRow.className = "sizes dark";
+    const darkSmalls = [64, 32, 16].map(p => mkTile(p));
+    smalls.forEach(s => lightRow.appendChild(s.el)); darkSmalls.forEach(s => darkRow.appendChild(s.el));
+    const head = document.createElement("div");
+    head.innerHTML = '<div class="num">خيار ' + (i + 1) + '</div><div class="name">' + d.name + '</div><div class="desc">' + d.desc + '</div>';
+    const tab = document.createElement("div"); tab.className = "tab";
+    const tabTile = mkTile(16); tabTile.el.style.borderRadius = "4px"; tab.appendChild(tabTile.el);
+    const tl = document.createElement("span"); tl.textContent = "AgentWorld — Operator Console"; tab.appendChild(tl);
+    [head, big.el, lightRow, darkRow, tab].forEach(n => card.appendChild(n));
+    card.onclick = () => {
+      [...grid.children].forEach(x => x.setAttribute("aria-pressed", "false")); card.setAttribute("aria-pressed", "true");
+      document.getElementById("bar").textContent = "اخترت: خيار " + (i + 1) + " — " + d.name + ". أخبرني بالرقم وأطبّقه على التطبيق.";
+    };
+    grid.appendChild(card);
+    return { built, pivot, scene, targets: [big, ...smalls, ...darkSmalls, tabTile], phase: i * 0.7 };
+  });
+
+  const bgs = document.getElementById("bgs");
+  [["أخضر", "#23b39e", "#0c5e53"], ["كحلي", "#3a5378", "#142030"], ["أبيض", "#ffffff", "#dfe5e8"], ["كهرماني", "#f7c867", "#d98d1c"]].forEach(([n, a, b], i) => {
+    const bt = document.createElement("button"); bt.textContent = n; bt.setAttribute("aria-pressed", i === 0 ? "true" : "false");
+    bt.onclick = () => { [...bgs.querySelectorAll("button")].forEach(x => x.setAttribute("aria-pressed", "false")); bt.setAttribute("aria-pressed", "true");
+      document.documentElement.style.setProperty("--tile-a", a); document.documentElement.style.setProperty("--tile-b", b); };
+    bgs.appendChild(bt);
+  });
+
+  const still = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+  function frame(ms) {
+    const t = still ? 0 : ms / 1000;
+    items.forEach(it => {
+      it.pivot.rotation.y = -0.6 + t * 0.55 + it.phase;
+      if (it.built.tick) it.built.tick(t);
+      renderer.render(it.scene, camera);
+      it.targets.forEach(tg => { tg.ctx.clearRect(0, 0, tg.size, tg.size); tg.ctx.imageSmoothingQuality = "high"; tg.ctx.drawImage(renderer.domElement, 0, 0, tg.size, tg.size); });
+    });
+    if (!still) requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
