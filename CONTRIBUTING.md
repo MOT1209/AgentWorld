@@ -8,6 +8,12 @@ npm run verify   # typecheck -> lint -> test -> build
 
 Every change must keep it green. No exceptions, no "it works on my machine".
 
+## License
+
+The project is licensed under the Apache License 2.0 (see `LICENSE`). By contributing you agree that your
+contribution is licensed under the same terms (section 5 of the license). Do not add code you cannot license
+this way, and add third-party material to `THIRD_PARTY_NOTICES.md`.
+
 ## Naming
 
 The product is **AgentWorld**. The older codename "King World" remains only where changing it would

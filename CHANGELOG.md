@@ -5,6 +5,7 @@ All notable changes. Format follows [Keep a Changelog](https://keepachangelog.co
 ## [Unreleased]
 
 ### Added
+- License: Apache-2.0 (`LICENSE`, `NOTICE`, `THIRD_PARTY_NOTICES.md`, `license` field in `package.json`).
 - Stylized cartoon 3D city: characters, buildings and street decor built by headless Blender scripts
   (`tools/blender`), exported as small GLB files, with procedural fallbacks.
 - Operator console redesign: grouped sidebar, bundled fonts, design tokens, hero city view, overview

@@ -2,6 +2,7 @@
   "name": "king-world",
   "version": "1.0.0",
   "private": true,
+  "license": "Apache-2.0",
   "description": "AgentWorld -- a simulated company of AI agents, an AI platform and a Software Factory.",
   "type": "module",
   "engines": {

@@ -11,6 +11,7 @@ It is also a real AI platform and a Software Factory that tracks a change from a
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
 ![SQLite](https://img.shields.io/badge/storage-SQLite-003B57?logo=sqlite&logoColor=white)
 ![API keys](https://img.shields.io/badge/API_keys-none_required-111111)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
 [Quick start](#quick-start) ·
 [Architecture](#architecture) ·
@@ -404,6 +405,13 @@ Details: [`docs/ROADMAP.md`](docs/ROADMAP.md).
 | [DEPLOYMENT](docs/DEPLOYMENT.md) | Docker Compose, backups, HTTPS, limits |
 | [SANDBOX](docs/SANDBOX.md) | Execution sandbox |
 | [CONTRIBUTING](CONTRIBUTING.md) | How to contribute |
+
+## License
+
+AgentWorld is licensed under the [Apache License 2.0](LICENSE). You may use, modify and redistribute it,
+including commercially, as long as you keep the license and notice files. The license grants no rights to
+the AgentWorld name. Bundled third-party components keep their own licenses: see
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 <div align="center">
 <sub>Internal codename: <b>King World</b>, which you will still see in package names and the seeded demo world.</sub>
