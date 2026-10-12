@@ -2,7 +2,7 @@
   "name": "king-world",
   "version": "1.0.0",
   "private": true,
-  "description": "King World -- AI Agent Company simulation. Phase 1: core engine foundation.",
+  "description": "AgentWorld -- a simulated company of AI agents, an AI platform and a Software Factory.",
   "type": "module",
   "engines": {
     "node": ">=20.11.0"
@@ -31,6 +31,7 @@
     "db:migrate:deploy": "prisma migrate deploy",
     "db:reset": "prisma migrate reset --force",
     "db:seed": "tsx database/seed.ts",
+    "db:backup": "tsx scripts/backup.ts",
     "db:clean:test": "tsx scripts/clean-test-dbs.ts",
     "db:studio": "prisma studio",
     "setup": "npm install && npm run db:generate && npm run db:migrate && npm run db:seed",

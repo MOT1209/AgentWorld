@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "King World REST API",
+  "description": "AgentWorld REST API",
   "main": "src/main.ts",
   "scripts": {
     "dev": "tsx watch src/main.ts",

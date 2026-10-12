@@ -103,6 +103,17 @@ Sign in with the seeded owner:
 > Change `SEED_OWNER_*` and `JWT_SECRET` before any shared or production use.
 > In production the server refuses to start with the defaults.
 
+**Prefer Docker?** One container serves the API and the dashboard on <http://localhost:4000>:
+
+```bash
+export JWT_SECRET=$(openssl rand -hex 48) VAULT_MASTER_KEY=$(openssl rand -base64 32)
+export SEED_OWNER_PASSWORD='choose-a-long-password'
+export EXEC_ALLOW_UNSANDBOXED_PRODUCTION=true   # agent commands run inside the container; see DEPLOYMENT
+docker compose up --build       # sign in as owner@agentworld.local
+```
+
+Backups, HTTPS and limits are in [DEPLOYMENT](docs/DEPLOYMENT.md).
+
 <details>
 <summary><b>If the Prisma CLI hangs on your machine</b> (seen on some Windows setups)</summary>
 
@@ -387,6 +398,7 @@ Details: [`docs/ROADMAP.md`](docs/ROADMAP.md).
 | [SECURITY](docs/SECURITY.md) | Threat model, permissions, company scope, residual risks |
 | [API](docs/API.md) | REST reference |
 | [FACTORY](docs/FACTORY.md) | Software Factory operator contract |
+| [DEPLOYMENT](docs/DEPLOYMENT.md) | Docker Compose, backups, HTTPS, limits |
 | [SANDBOX](docs/SANDBOX.md) | Execution sandbox |
 | [CONTRIBUTING](CONTRIBUTING.md) | How to contribute |
 

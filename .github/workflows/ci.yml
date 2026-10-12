@@ -1,4 +1,4 @@
-# King World CI — mirrors `npm run verify` (typecheck -> lint -> test -> build).
+# AgentWorld CI — mirrors `npm run verify` (typecheck -> lint -> test -> build).
 #
 # Test isolation: every job gets its own database file via TEST_DATABASE_URL
 # (see tests/setup.ts), so matrix jobs and concurrent runs never share state.
@@ -8,6 +8,15 @@ on:
   push:
     branches: [main]
   pull_request:
+
+# Least privilege: CI only reads the repository.
+permissions:
+  contents: read
+
+# A newer push to the same branch or PR supersedes the older run.
+concurrency:
+  group: verify-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   verify:
@@ -35,7 +44,46 @@ jobs:
           docker build -t kingworld-sandbox:1 docker/sandbox
           echo "TEST_DOCKER_IMAGE=kingworld-sandbox:1" >> "$GITHUB_ENV"
       - run: npm run check:docs
+      # Production dependencies only; fails on high or critical advisories.
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
       - run: npm run typecheck
       - run: npm run lint
       - run: npm run test
       - run: npm run build
+
+  # Builds the production image and proves it boots, migrates, seeds, serves the dashboard and accepts a
+  # login. Separate from the test matrix so a Docker problem never hides a test result.
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t agentworld:ci .
+      - name: Smoke test
+        run: |
+          set -eu
+          docker run -d --name agentworld -p 4000:4000 \
+            -e JWT_SECRET="$(openssl rand -hex 48)" \
+            -e VAULT_MASTER_KEY="$(openssl rand -base64 32)" \
+            -e SEED_OWNER_EMAIL=ci@agentworld.local \
+            -e SEED_OWNER_PASSWORD=ci-Password-2026 \
+            -e EXEC_SANDBOX=local \
+            -e EXEC_ALLOW_UNSANDBOXED_PRODUCTION=true \
+            agentworld:ci
+          ready=0
+          for _ in $(seq 1 60); do
+            if curl -fs http://localhost:4000/ready >/dev/null; then ready=1; break; fi
+            sleep 2
+          done
+          test "$ready" = 1
+          curl -fs http://localhost:4000/health
+          curl -fs http://localhost:4000/ | grep -q "<title>AgentWorld"
+          token=$(curl -fs -X POST http://localhost:4000/api/v1/auth/login \
+            -H 'content-type: application/json' \
+            -d '{"email":"ci@agentworld.local","password":"ci-Password-2026"}' | jq -r .token)
+          test -n "$token" && test "$token" != null
+          curl -fs -H "authorization: Bearer $token" http://localhost:4000/api/v1/agents >/dev/null
+      - name: Container logs
+        if: failure()
+        run: docker logs agentworld

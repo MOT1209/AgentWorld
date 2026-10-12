@@ -86,6 +86,21 @@ if (!readme.includes(`${mcpResources} resources`)) {
   problems.push(`README does not state "${mcpResources} resources" for MCP (actual MCP resource count).`);
 }
 
+// The product name is AgentWorld. "King World" survives only as the seeded demo world's name, so it
+// must not come back as a heading or page title.
+const titles: Array<[string, RegExp]> = [
+  ["README.md", /^# .*King World/m],
+  ["apps/web/index.html", /<title>[^<]*King World/],
+  ...["API", "ARCHITECTURE", "ROADMAP", "SECURITY", "SIMULATION_ENGINE"].map(
+    (name): [string, RegExp] => [`docs/${name}.md`, /^# .*King World/m],
+  ),
+];
+for (const [file, pattern] of titles) {
+  if (pattern.test(readFileSync(join(root, file), "utf8"))) {
+    problems.push(`${file} still titles the product "King World"; the name is AgentWorld.`);
+  }
+}
+
 if (problems.length > 0) {
   console.error("Documentation drift detected:\n" + problems.map((p) => `  - ${p}`).join("\n"));
   console.error(

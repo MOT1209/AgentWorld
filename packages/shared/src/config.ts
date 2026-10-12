@@ -49,6 +49,10 @@ const EnvSchema = z.object({
   CORS_ORIGINS: csv,
   // Number of reverse proxies in front of the API (req.ip / rate limits). 0 = none.
   TRUST_PROXY: int(0, 0, 10),
+  // Serve the built dashboard (apps/web/dist) from the API process, same origin.
+  SERVE_WEB: bool(false),
+  // Directory holding the dashboard build. Relative paths resolve from the working directory.
+  WEB_DIST_DIR: z.string().default("apps/web/dist"),
 
   SEED_OWNER_EMAIL: z.string().email().default("king@kingworld.local"),
   SEED_OWNER_PASSWORD: z.string().min(10).default(DEV_SEED_OWNER_PASSWORD),
@@ -142,6 +146,7 @@ export interface AppConfig {
   bcryptRounds: number;
   corsOrigins: string[];
   trustProxy: number;
+  web: { serve: boolean; distDir: string };
   seed: { ownerEmail: string; ownerPassword: string };
   providers: {
     defaultProviderId: string;
@@ -238,6 +243,7 @@ function load(): AppConfig {
     bcryptRounds: raw.BCRYPT_ROUNDS,
     corsOrigins: raw.CORS_ORIGINS,
     trustProxy: raw.TRUST_PROXY,
+    web: { serve: raw.SERVE_WEB, distDir: raw.WEB_DIST_DIR },
     seed: { ownerEmail: raw.SEED_OWNER_EMAIL, ownerPassword: raw.SEED_OWNER_PASSWORD },
     providers: {
       defaultProviderId,
@@ -339,6 +345,7 @@ export function redactedConfig(config: AppConfig = getConfig()): Record<string, 
     port: config.port,
     logLevel: config.logLevel,
     corsOrigins: config.corsOrigins,
+    web: config.web,
     approvals: {
       enabled: config.approvals.enabled,
       spendThresholdMinor: config.approvals.spendThresholdMinor,

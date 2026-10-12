@@ -18,6 +18,8 @@ database/*.bak-*
 shadow-*.db
 # Phase 3 workspace roots (real directories, never committed)
 workspaces/
+# database backups (npm run db:backup)
+backups/
 *.log
 logs/
 

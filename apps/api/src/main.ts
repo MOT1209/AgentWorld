@@ -13,7 +13,7 @@ const log = logger.child({ component: "api.main" });
 
 async function main(): Promise<void> {
   const config = getConfig();
-  log.info("Starting King World API", { action: "api.start", ...redactedConfig(config) });
+  log.info("Starting AgentWorld API", { action: "api.start", ...redactedConfig(config) });
 
   await verifyCommandRunner();
   await connectDatabase();

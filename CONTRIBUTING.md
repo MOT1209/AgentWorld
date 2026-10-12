@@ -8,6 +8,12 @@ npm run verify   # typecheck -> lint -> test -> build
 
 Every change must keep it green. No exceptions, no "it works on my machine".
 
+## Naming
+
+The product is **AgentWorld**. The older codename "King World" remains only where changing it would
+break existing data or imports: the `@kingworld/*` package scope, the seeded demo world and city,
+and the default owner account. `npm run check:docs` fails if it returns in a title.
+
 ## Environment quirks (read before debugging tooling)
 
 - **Prisma CLI hangs here** (`prisma --version` never returns). Never call it
