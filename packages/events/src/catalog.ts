@@ -445,7 +445,7 @@ export interface EventPayloadMap {
   WEBHOOK_DEAD_LETTERED: { deliveryId: string; subscriptionId: string; attempts: number };
   APIKEY_CREATED: { apiKeyId: string; name: string; prefix: string; userId: string };
   APIKEY_REVOKED: { apiKeyId: string; name: string };
-  MCP_REQUEST: { method: string; toolName: string | null; client: string | null; authorized: boolean };
+  MCP_REQUEST: { method: string; toolName: string | null; client: string | null; authorized: boolean; reason?: string };
   MCP_DENIED: { method: string; toolName: string | null; client: string | null; reason: string };
   TEST_RUN_RECORDED: { testRunId: string; suite: string; adapter: string; status: string; taskId: string | null };
   FACTORY_RUN_STARTED: { factoryRunId: string; repoUrl: string; companyId: string };

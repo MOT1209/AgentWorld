@@ -41,12 +41,20 @@ function isUniqueViolation(error: unknown): boolean {
   return typeof error === "object" && error !== null && (error as { code?: unknown }).code === "P2002";
 }
 
-/** A key may only replay the same request shape; anything else is a caller bug. */
+/**
+ * A key may only replay the same request shape; anything else is a caller bug.
+ * Keys are global, so the links are part of the shape: a colliding key from a
+ * caller linking a different agent/task/session gets a conflict, never the
+ * other caller's row (the links are what company scope checks).
+ */
 function replayOf(existing: ExecutionJob, input: EnqueueExecutionInput): ExecutionJob {
   if (
     existing.workspaceId !== (input.workspaceId ?? null) ||
     existing.command !== input.command ||
-    existing.kind !== input.kind
+    existing.kind !== input.kind ||
+    existing.agentId !== (input.agentId ?? null) ||
+    existing.taskId !== (input.taskId ?? null) ||
+    existing.sessionId !== (input.sessionId ?? null)
   ) {
     throw conflict("Idempotency key was already used for a different execution");
   }

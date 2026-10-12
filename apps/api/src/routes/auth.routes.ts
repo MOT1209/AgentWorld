@@ -1,7 +1,7 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
 import { z } from "zod";
 import { prisma } from "../../../../packages/database/src/index.js";
-import { verifyPassword } from "../../../../packages/security/src/password.js";
+import { verifyPassword, verifyPasswordAgainstDummy } from "../../../../packages/security/src/password.js";
 import { signAccessToken } from "../../../../packages/security/src/tokens.js";
 import { buildPrincipal, principalToActor } from "../../../../packages/security/src/rbac.js";
 import { eventBus } from "../../../../packages/events/src/index.js";
@@ -33,6 +33,7 @@ authRouter.post(
 
       const user = await prisma.user.findUnique({ where: { email } });
       if (user === null || user.isActive !== true) {
+        verifyPasswordAgainstDummy(body.password);
         await eventBus.publishAndDispatch(prisma, {
           type: EVENT_TYPES.LOGIN_FAILED,
           actor: { actorType: "SYSTEM", actorName: "auth" },

@@ -21,7 +21,7 @@ import { createHmac, randomUUID } from "node:crypto";
 import type { DbClient } from "../../database/src/index.js";
 import type { WebhookDelivery, WebhookSubscription } from "../../database/src/types.js";
 import { eventBus, EVENT_TYPES, type PersistedEvent } from "../../events/src/index.js";
-import { assertPublicUrl, getConfig, logger, newCorrelationId, SYSTEM_ACTOR, toJson, validationError } from "../../shared/src/index.js";
+import { assertPublicUrl, getConfig, logger, newCorrelationId, readTextCapped, SYSTEM_ACTOR, toJson, validationError } from "../../shared/src/index.js";
 import { open as vaultOpen, seal } from "../../vault/src/index.js";
 
 const log = logger.child({ component: "webhooks" });
@@ -229,7 +229,8 @@ async function postWebhook(
       signal: controller.signal,
       redirect: "manual",
     });
-    const text = await response.text().catch(() => "");
+    // Only a 200-character snippet is kept; never buffer more than a little.
+    const { text } = await readTextCapped(response, 4_096).catch(() => ({ text: "" }));
     return {
       status: response.status,
       snippet: text.slice(0, 200) || null,

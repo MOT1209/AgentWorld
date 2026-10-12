@@ -25,7 +25,7 @@ import {
   type ApprovalStatus,
   type RiskLevel,
 } from "../../shared/src/index.js";
-import { conflict, forbidden, notFound } from "../../shared/src/index.js";
+import { conflict, forbidden, getConfig, notFound } from "../../shared/src/index.js";
 import type { DbClient } from "../../database/src/index.js";
 import type { ApprovalRequest } from "../../database/src/types.js";
 import { eventBus } from "../../events/src/index.js";
@@ -69,19 +69,20 @@ export async function requestApproval(
   const policy = loadApprovalPolicy();
   const ttlHours = input.ttlHours ?? policy.ttlHours;
 
+  // Only an AGENT requester's actor id is an agent id. A human requester's id
+  // is a user id: putting it in requesterAgentId violates the Agent foreign
+  // key, and putting it in the payload's agentId would make replay treat the
+  // human as an agent.
+  const requesterAgentFallback = input.requester.actorType === "AGENT" ? (input.requester.actorId ?? null) : null;
   const request = await db.approvalRequest.create({
     data: {
       requesterType: input.requester.actorType,
-      // Only an AGENT actor's id may stand in for the requesting agent: a
-      // USER id falling through here violated the Agent foreign key, so every
-      // user-filed approval without an agent failed to insert.
-      requesterAgentId:
-        input.requesterAgentId ?? (input.requester.actorType === "AGENT" ? (input.requester.actorId ?? null) : null),
+      requesterAgentId: input.requesterAgentId ?? requesterAgentFallback,
       requesterUserId: input.requester.actorType === "USER" ? (input.requester.actorId ?? null) : null,
       action: input.action,
       actionPayload: toJson({
         toolName: input.toolName ?? input.action,
-        agentId: input.agentId ?? input.requester.actorId ?? null,
+        agentId: input.agentId ?? requesterAgentFallback,
         arguments: input.actionPayload,
       }),
       reason: input.reason,
@@ -152,9 +153,17 @@ export async function decideApproval(
     await expireRequest(db, request, correlationId);
     throw conflict("Approval request has expired", { requestId: request.id });
   }
+  if (getConfig().approvals.fourEyes && request.requesterUserId !== null && request.requesterUserId === input.decidedByUserId) {
+    throw forbidden("Four-eyes rule: a request must be decided by someone other than its requester", {
+      requestId: request.id,
+    });
+  }
 
-  const updated = await db.approvalRequest.update({
-    where: { id: request.id },
+  // Compare-and-set on PENDING: two concurrent decisions both pass the read
+  // above, and a plain update would let the later one overwrite the earlier
+  // (a REJECTED request silently becoming APPROVED and replayable).
+  const claimed = await db.approvalRequest.updateMany({
+    where: { id: request.id, status: "PENDING" },
     data: {
       status: input.decision,
       decidedByUserId: input.decidedByUserId,
@@ -162,6 +171,14 @@ export async function decideApproval(
       decisionNote: input.note ?? null,
     },
   });
+  if (claimed.count === 0) {
+    const current = await db.approvalRequest.findUnique({ where: { id: request.id }, select: { status: true } });
+    throw conflict(`Approval request is already ${current?.status ?? "decided"}`, {
+      requestId: request.id,
+      status: current?.status ?? null,
+    });
+  }
+  const updated = await db.approvalRequest.findUniqueOrThrow({ where: { id: request.id } });
 
   await eventBus.publishAndDispatch(db, {
     type:

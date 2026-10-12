@@ -179,7 +179,7 @@ describe("OAuth state integrity", () => {
       const begun = await beginAuthorization(SLUG, ctx);
       const [rawState, signature] = begun.state.split(".") as [string, string];
       // A same-length forgery exercises the constant-time compare...
-      const tampered = `${rawState}.${signature.endsWith("A") ? "B" : "A"}${signature.slice(1)}`;
+      const tampered = `${rawState}.${signature.startsWith("A") ? "B" : "A"}${signature.slice(1)}`;
       await expect(completeAuthorization({ code: "c", state: tampered }, ctx)).rejects.toThrow(/signature mismatch/);
       // ...and a shorter one exercises the length guard.
       await expect(
