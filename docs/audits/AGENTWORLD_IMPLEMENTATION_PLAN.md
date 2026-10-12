@@ -26,7 +26,7 @@ that failed before the fix and passes after (AW-12/13 are doc and test fixes); f
 
 | Item | Acceptance criteria |
 |---|---|
-| Turn on four-eyes / budget floor in production | Product decision; then set the env values in deployment config |
+| Turn on four-eyes / budget floor in production | Decided 2026-10-12: **both stay off by default**. Four-eyes would lock a single-owner deployment out of approving its own skill changes; a budget floor would stop agents of any company with an unfunded treasury. Turn on per deployment via `APPROVAL_FOUR_EYES=true` (needs ≥2 humans with `approval.decide`) and `AI_MIN_TREASURY_MINOR=<floor>` once treasuries are funded. |
 | Cost-estimating budget (not just a floor) | Refuse when estimated cost of the call exceeds remaining budget; needs a token estimator |
 | Path-guard TOCTOU | Open files with `O_NOFOLLOW` per path segment, or rely on Docker mode only; test with a racing symlink swap |
 | `toUserId` / wallet ids in `scopeRefs` | Decide visibility rules for users; add loaders + isolation tests |
