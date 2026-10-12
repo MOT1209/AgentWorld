@@ -28,6 +28,13 @@ export function errorHandler(error: unknown, req: Request, res: Response, _next:
     });
   }
 
+  // Unexpected (non-operational) failures carry raw driver/ORM text -- query
+  // fragments, file paths, constraint names. That stays in the log above;
+  // the client gets a generic message plus the correlation id to report.
+  if (!appError.operational) {
+    res.status(appError.httpStatus).json({ code: appError.code, message: "Internal server error", correlationId });
+    return;
+  }
   const body = appError.toJSON() as { error: Record<string, unknown> };
   res.status(appError.httpStatus).json({ ...body.error, correlationId });
 }

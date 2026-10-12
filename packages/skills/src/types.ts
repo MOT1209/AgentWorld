@@ -151,7 +151,10 @@ export interface SkillCatalogRecord {
   integrityHash: string | null;
   grantedPermissions: string[];
   deniedPermissions: string[];
-  versionHistory: Array<{ version: string; integrityHash: string; installedAt: string }>;
+  /** Last few installed versions. `manifest` is kept so a rollback restores
+   *  that version's real manifest (entries written before it was recorded
+   *  have none and are not rollback targets). */
+  versionHistory: Array<{ version: string; integrityHash: string; installedAt: string; manifest?: SkillManifest }>;
   lastChecked: string | null;
   lastUpdated: string | null;
 }
