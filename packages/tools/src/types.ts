@@ -76,6 +76,14 @@ export interface ToolDefinition<TInput = unknown> {
     input: TInput,
     context: ToolExecutionContext,
   ) => ApprovalTrigger | null | Promise<ApprovalTrigger | null>;
+  /**
+   * Agent-id arguments (`toAgentId`, `targetAgentId`...) may name agents of other
+   * companies. By default the executor refuses any id outside the calling agent's
+   * company; a tool sets this only when it enforces its own rule for agents (a
+   * cross-company wallet transfer is held for approval) or the interaction is
+   * cross-company by design (the social graph of the shared world).
+   */
+  crossCompanyAgentRefs?: boolean;
   /** Human callers are refused. Agent-only tools (e.g. internal state writes). */
   agentOnly?: boolean;
   /** Agent callers are refused. Human-only tools (e.g. approving requests). */

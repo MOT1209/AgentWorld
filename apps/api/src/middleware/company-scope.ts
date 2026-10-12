@@ -9,53 +9,21 @@
  */
 import type { NextFunction, Request, Response, Router } from "express";
 import { prisma } from "../../../../packages/database/src/index.js";
-import { companyScope, scopeAllows, type CompanyScope } from "../../../../packages/security/src/company-access.js";
+import { companyScope, type CompanyScope } from "../../../../packages/security/src/company-access.js";
+import {
+  collectRefs,
+  filterByScope as filterByScopeIn,
+  firstInvisibleRef,
+  type OwnerRef,
+} from "../../../../packages/security/src/company-refs.js";
 import { notFound } from "../../../../packages/shared/src/index.js";
 import { getPrincipal } from "./authenticate.js";
 
-export interface OwnerRef {
-  companyId?: string | null;
-  agentId?: string | null;
-  taskId?: string | null;
-  planId?: string | null;
-  workspaceId?: string | null;
-}
-
-const uniq = (values: Array<string | null | undefined>): string[] =>
-  [...new Set(values.filter((v): v is string => typeof v === "string" && v.length > 0))];
+export type { OwnerRef };
 
 /** Keeps the items whose every linked company is visible. Batched: one query per link type. */
 export async function filterByScope<T>(scope: CompanyScope, items: T[], pick: (item: T) => OwnerRef): Promise<T[]> {
-  if (scope.all || items.length === 0) return items;
-  const owners = items.map(pick);
-  const workspaceIds = uniq(owners.map((o) => o.workspaceId));
-  const workspaces = workspaceIds.length
-    ? await prisma.workspace.findMany({ where: { id: { in: workspaceIds } }, select: { id: true, agentId: true } })
-    : [];
-  const workspaceAgent = new Map(workspaces.map((w) => [w.id, w.agentId]));
-  const agentIds = uniq([...owners.map((o) => o.agentId), ...workspaces.map((w) => w.agentId)]);
-  const taskIds = uniq(owners.map((o) => o.taskId));
-  const planIds = uniq(owners.map((o) => o.planId));
-  const [agents, tasks, plans] = await Promise.all([
-    agentIds.length ? prisma.agent.findMany({ where: { id: { in: agentIds } }, select: { id: true, currentCompanyId: true } }) : [],
-    taskIds.length ? prisma.task.findMany({ where: { id: { in: taskIds } }, select: { id: true, companyId: true } }) : [],
-    planIds.length ? prisma.plan.findMany({ where: { id: { in: planIds } }, select: { id: true, companyId: true } }) : [],
-  ]);
-  const agentCompany = new Map(agents.map((a) => [a.id, a.currentCompanyId]));
-  const taskCompany = new Map(tasks.map((t) => [t.id, t.companyId]));
-  const planCompany = new Map(plans.map((p) => [p.id, p.companyId]));
-  return items.filter((_item, index) => {
-    const o = owners[index] ?? {};
-    const viaWorkspace = o.workspaceId ? workspaceAgent.get(o.workspaceId) : undefined;
-    const links = [
-      o.companyId,
-      o.agentId ? agentCompany.get(o.agentId) : null,
-      viaWorkspace ? agentCompany.get(viaWorkspace) : null,
-      o.taskId ? taskCompany.get(o.taskId) : null,
-      o.planId ? planCompany.get(o.planId) : null,
-    ];
-    return links.every((companyId) => scopeAllows(scope, companyId));
-  });
+  return filterByScopeIn(prisma, scope, items, pick);
 }
 
 export async function requestScope(req: Request): Promise<CompanyScope> {
@@ -99,92 +67,16 @@ export async function scopedLogs<T extends Parameters<typeof logOwnerRef>[0]>(sc
 }
 
 /**
- * Maps a body/query key to the link it names, or null when it names none.
- * Prefixed (`currentCompanyId`, `parentTaskId`, `assigneeAgentId`) and plural
- * (`participantAgentIds`) spellings name the same link: a key the scope check
- * does not recognise is a key that can smuggle another company's id.
- */
-function linkForKey(key: string): keyof OwnerRef | null {
-  const singular = key.endsWith("Ids") ? key.slice(0, -1) : key;
-  if (singular === "companyId" || singular.endsWith("CompanyId")) return "companyId";
-  if (singular === "taskId" || singular.endsWith("TaskId")) return "taskId";
-  if (singular === "planId" || singular.endsWith("PlanId")) return "planId";
-  if (singular === "workspaceId" || singular.endsWith("WorkspaceId")) return "workspaceId";
-  if (singular === "agentId" || singular.endsWith("AgentId")) return "agentId";
-  return null;
-}
-
-/**
- * Ids of rows that are not links themselves but belong to one: the loader
- * returns the row's links (null when it does not exist, leaving the 404 to
- * the handler). Matched like linkForKey: exact, prefixed or plural.
- */
-const INDIRECT_LINKS: Array<{ suffix: string; load: (id: string) => Promise<OwnerRef | null> }> = [
-  {
-    // Messages of a conversation are fed into an agent's prompt and its reply
-    // is posted back, so a foreign conversation id is a read and a write.
-    suffix: "conversationId",
-    load: async (id) => {
-      const row = await prisma.conversation.findUnique({ where: { id }, select: { companyId: true } });
-      return row && { companyId: row.companyId };
-    },
-  },
-  {
-    suffix: "sessionId",
-    load: async (id) =>
-      prisma.agentSession.findUnique({ where: { id }, select: { agentId: true, taskId: true, workspaceId: true } }),
-  },
-  {
-    suffix: "jobId",
-    load: async (id) =>
-      prisma.executionJob.findUnique({ where: { id }, select: { agentId: true, taskId: true, workspaceId: true } }),
-  },
-  {
-    suffix: "approvalRequestId",
-    load: async (id) => {
-      const row = await prisma.approvalRequest.findUnique({ where: { id }, select: { companyId: true, taskId: true, requesterAgentId: true } });
-      return row && { companyId: row.companyId, taskId: row.taskId, agentId: row.requesterAgentId };
-    },
-  },
-  {
-    suffix: "projectId",
-    load: async (id) => prisma.project.findUnique({ where: { id }, select: { companyId: true } }),
-  },
-  {
-    suffix: "departmentId",
-    load: async (id) => prisma.department.findUnique({ where: { id }, select: { companyId: true } }),
-  },
-];
-
-function indirectLinkForKey(key: string): ((id: string) => Promise<OwnerRef | null>) | null {
-  const singular = key.endsWith("Ids") ? key.slice(0, -1) : key;
-  const capitalised = (suffix: string): string => suffix.charAt(0).toUpperCase() + suffix.slice(1);
-  const match = INDIRECT_LINKS.find((link) => singular === link.suffix || singular.endsWith(capitalised(link.suffix)));
-  return match?.load ?? null;
-}
-
-/**
  * Router middleware: every company/agent/task/plan/workspace id that arrives
  * in the body or query string must be visible, so a caller can neither file
  * work into another company nor filter a list by another company's ids.
  * Arrays of ids (`participantAgentIds`, repeated query keys) are checked
  * element by element; ids in INDIRECT_LINKS are checked through the row
- * they name.
+ * they name. The key rules live in packages/security/src/company-refs.ts,
+ * shared with the tool executor.
  */
 export function scopeRefs(req: Request, _res: Response, next: NextFunction): void {
-  const refs: Array<{ owner: OwnerRef | (() => Promise<OwnerRef | null>); key: string; id: string }> = [];
-  for (const source of [req.body, req.query] as unknown[]) {
-    if (source === null || typeof source !== "object" || Array.isArray(source)) continue;
-    for (const [key, value] of Object.entries(source as Record<string, unknown>)) {
-      const link = linkForKey(key);
-      const load = link === null ? indirectLinkForKey(key) : null;
-      if (link === null && load === null) continue;
-      for (const id of Array.isArray(value) ? value : [value]) {
-        if (typeof id !== "string" || id.length === 0) continue;
-        refs.push({ owner: link !== null ? { [link]: id } : () => (load as (id: string) => Promise<OwnerRef | null>)(id), key, id });
-      }
-    }
-  }
+  const refs = collectRefs(prisma, req.body, req.query);
   if (refs.length === 0) {
     next();
     return;
@@ -192,12 +84,8 @@ export function scopeRefs(req: Request, _res: Response, next: NextFunction): voi
   void (async () => {
     const scope = await requestScope(req);
     if (scope.all) return;
-    for (const ref of refs) {
-      const owner = typeof ref.owner === "function" ? await ref.owner() : ref.owner;
-      if (owner === null) continue;
-      const visible = await filterByScope(scope, [owner], (o) => o);
-      if (visible.length === 0) throw notFound(ref.key.replace(/Ids?$/, ""), ref.id);
-    }
+    const hidden = await firstInvisibleRef(prisma, scope, refs);
+    if (hidden !== null) throw notFound(hidden.key.replace(/Ids?$/, ""), hidden.id);
   })().then(() => next(), next);
 }
 

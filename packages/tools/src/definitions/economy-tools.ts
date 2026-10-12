@@ -89,6 +89,9 @@ export const walletTransferTool: ToolDefinition<{
   }),
   requiredPermission: PERMISSIONS.WALLET_TRANSFER,
   risk: "MEDIUM",
+  // Paying another company's agent is allowed only through human approval
+  // (approvalPolicy below), not refused outright by the executor's company check.
+  crossCompanyAgentRefs: true,
   approvalPolicy: async (input, context) => {
     if (context.isApprovalReplay === true) return null;
     // Paying an agent of another company is never routine: a prompt-injected

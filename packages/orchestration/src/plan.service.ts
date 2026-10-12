@@ -335,6 +335,8 @@ export interface ListPlansQuery {
   companyId?: string;
   createdByAgentId?: string;
   priority?: string;
+  /** Restrict to these companies plus company-less plans (company scope). */
+  companyIdIn?: string[];
   skip?: number;
   take?: number;
 }
@@ -353,6 +355,7 @@ export async function listPlans(db: DbClient, query: ListPlansQuery = {}) {
       ...(query.companyId !== undefined ? { companyId: query.companyId } : {}),
       ...(query.createdByAgentId !== undefined ? { createdByAgentId: query.createdByAgentId } : {}),
       ...(query.priority !== undefined ? { priority: query.priority } : {}),
+      ...(query.companyIdIn !== undefined ? { OR: [{ companyId: { in: query.companyIdIn } }, { companyId: null }] } : {}),
     },
     orderBy: [{ priority: "desc" }, { createdAt: "desc" }],
     skip: query.skip ?? 0,
