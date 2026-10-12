@@ -27,4 +27,8 @@ All notable changes. Format follows [Keep a Changelog](https://keepachangelog.co
 - `npm run doctor` now loads `.env`, so its checks see your configuration.
 
 ### Fixed
+- Agent tool calls now respect company isolation (AW-24..AW-27): role messages and escalation routing stay
+  in the sender's company, `wallet.transfer` validates its recipient and holds cross-company payments for
+  approval, the `testing.run` URL probe uses the outbound guard in production, and task/plan/conversation
+  ids and lists are scoped for agents. See `docs/audits/AGENTWORLD_AUDIT_2026-10-12_PASS3.md`.
 - SSRF guard: IPv6 literals, private ranges and redirects are now checked.

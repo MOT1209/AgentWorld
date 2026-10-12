@@ -75,6 +75,33 @@ Platform-level by design (no company): world/city/locations and the
 simulation clock, skills, tool catalogue, providers/models, credentials and
 API-key metadata. Visibility follows an agent's *current* company.
 
+### Company scope for agent tool calls
+
+Agents are held to the same boundary as REST callers
+(`packages/tools/src/agent-scope.ts`, executor step 4b, after validation and
+before approval). The agent's company is read from the database
+(`Agent.currentCompanyId`), never from the call context, so a missing or
+forged context company does not widen access. Every company, agent, task, plan,
+workspace, conversation, session, job, approval, project or department id in the
+tool arguments must belong to that company or to the shared world; otherwise the
+call fails with `<kind> '<id>' not found`, with no hint that the row exists.
+Lists (`task.list`, `plan.list`) are filtered the same way.
+
+- Role-addressed messages and escalation routing only consider agents of the
+  sender's company. With no supervisor in the company, an escalation goes to a
+  human (`toAgentId = null`), never to another company's agent.
+- `wallet.transfer`: the recipient must be an existing agent (no wallet is
+  minted for an unknown id). A transfer to an agent of another company is
+  held for human approval whatever the amount.
+- `testing.run` URL probes go through `assertPublicUrl` in production.
+- **Documented exemption:** tools flagged `crossCompanyAgentRefs` skip the
+  agent-id check only (the four `relationship.*` tools: the social graph spans
+  the shared world). Task, plan and other keys are still checked.
+- Limits: only top-level argument keys are scanned (same as REST), and id keys
+  that do not follow the naming rules (`memoryId`, `executionId`, `testRunId`)
+  are not covered by the generic check; those tools resolve their rows
+  themselves.
+
 Agent tools declare `requiredPermission` + `risk`; anything `HIGH`/`CRITICAL`
 or on the always-approve list (`agent.create`, `wallet.withdraw`, …) is
 withheld pending a human.
