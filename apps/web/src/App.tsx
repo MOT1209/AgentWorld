@@ -103,16 +103,7 @@ function tokenIdentity(token: string | null): { name: string; email: string; rol
 }
 
 function BrandMark({ size = 32 }: { size?: number }): JSX.Element {
-  return (
-    <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true">
-      <rect width="32" height="32" rx="9" fill="#127c6e" />
-      <path d="M7 23V14.5L12.5 10L18 14.5V23Z" fill="#f5f7f3" />
-      <path d="M18 23V8.5H25V23Z" fill="#f2b544" />
-      <rect x="10.5" y="17" width="4" height="6" rx="1" fill="#127c6e" />
-      <rect x="20" y="11" width="3" height="2.4" rx="0.6" fill="#142030" opacity="0.55" />
-      <rect x="20" y="15" width="3" height="2.4" rx="0.6" fill="#142030" opacity="0.55" />
-    </svg>
-  );
+  return <img src="/brand-mark.png" width={size} height={size} alt="" aria-hidden="true" className="shrink-0" />;
 }
 
 const KIND_STYLES: Record<string, string> = {

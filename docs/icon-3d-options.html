@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="ar">
+<head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /></head>
+<body>
+<title>AgentWorld Clay Icons</title>
+<style>
+  :root { --bg:#f3f5f2; --card:#ffffff; --text:#142030; --muted:#5b6675; --line:#dbe1da; --accent:#127c6e; --on-accent:#ffffff; --tile-light:#e6ebee; --tile-dark:#2b2f36; --tab-bg:#ffffff; --tab-fg:#222222; --tile-a:#23b39e; --tile-b:#0c5e53; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#0e1620; --card:#17212e; --text:#eef2ee; --muted:#9aa7b6; --line:#2a3646; --accent:#2fa896; --on-accent:#08201c; color-scheme:dark } }
+  :root[data-theme="dark"] { --bg:#0e1620; --card:#17212e; --text:#eef2ee; --muted:#9aa7b6; --line:#2a3646; --accent:#2fa896; --on-accent:#08201c; color-scheme:dark }
+  * { box-sizing:border-box }
+  body { margin:0; padding-inline:16px; padding-block:24px 104px; background:var(--bg); color:var(--text); font-family:system-ui,"Segoe UI",Tahoma,sans-serif; }
+  .wrap { max-width:1040px; margin:0 auto }
+  h1 { font-size:22px; margin:0 0 4px; text-wrap:balance } p.sub { color:var(--muted); margin:0 0 16px; font-size:14px; max-width:70ch }
+  .bgs { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:18px; font-size:13px; color:var(--muted) }
+  .bgs button { font:inherit; padding:5px 12px; border-radius:999px; border:1px solid var(--line); background:var(--card); color:var(--text); cursor:pointer }
+  .bgs button[aria-pressed=true] { border-color:var(--accent); background:var(--accent); color:var(--on-accent) }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(290px,1fr)); gap:14px }
+  .card { background:var(--card); border:2px solid var(--line); border-radius:14px; padding:14px; cursor:pointer; text-align:start; font:inherit; color:inherit; min-width:0 }
+  .card:hover { border-color:var(--accent) } .card[aria-pressed=true] { border-color:var(--accent); box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 25%,transparent) }
+  .num { font-weight:700; font-size:13px; color:var(--accent) } .name { font-weight:600; margin:2px 0 2px } .desc { font-size:12.5px; color:var(--muted); margin-bottom:10px; min-height:36px }
+  .tile { position:relative; overflow:hidden; background:linear-gradient(150deg,var(--tile-a),var(--tile-b)); box-shadow:inset 0 1px 0 rgba(255,255,255,.35), inset 0 -2px 6px rgba(0,0,0,.25) }
+  .tile canvas { position:absolute; inset:0; width:100%; height:100% }
+  .tile.big { width:200px; height:200px; border-radius:46px; margin:6px auto 12px; box-shadow:0 10px 24px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.35), inset 0 -3px 8px rgba(0,0,0,.25) }
+  .sizes { display:flex; align-items:flex-end; justify-content:center; gap:14px; padding:10px; border-radius:10px; background:var(--tile-light) }
+  .sizes.dark { background:var(--tile-dark); margin-top:6px }
+  .sizes .tile { border-radius:26% }
+  .tab { display:flex; align-items:center; gap:6px; margin-top:6px; padding:6px 10px; border-radius:8px 8px 0 0; background:var(--tab-bg); color:var(--tab-fg); font-size:12px; direction:ltr; width:fit-content; max-width:100% }
+  .bar { position:fixed; inset-inline:0; bottom:0; padding:12px 16px calc(12px + env(safe-area-inset-bottom, 0px)); background:var(--card); border-top:1px solid var(--line); text-align:center; font-size:14px }
+  .err { padding:14px; border:1px solid #c0392b; border-radius:10px; color:#c0392b }
+</style>
+<div dir="rtl" lang="ar">
+<div class="wrap">
+  <h1>أيقونات AgentWorld ثلاثية الأبعاد</h1>
+  <p class="sub">مجسمات ثلاثية الأبعاد ثابتة بأسلوب الصلصال اللامع: أشكال ممتلئة، حواف ناعمة، وتفاصيل قليلة. اضغط على التصميم الذي يعجبك، وجرّب خلفيات مختلفة. المعاينات الصغيرة (16 / 32 / 64) تُظهر شكل الأيقونة الفعلي في تبويب المتصفح.</p>
+  <div class="bgs" id="bgs"><span>الخلفية:</span></div>
+  <div class="grid" id="grid"></div>
+</div>
+<div class="bar" id="bar">لم تختر بعد. اضغط على تصميم، ثم أخبرني برقمه.</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function () {
+  const grid = document.getElementById("grid");
+  if (!window.THREE) { grid.innerHTML = '<div class="err">تعذّر تحميل مكتبة three.js.</div>'; return; }
+  let renderer;
+  try { renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true }); }
+  catch (e) { grid.innerHTML = '<div class="err">المتصفح لا يدعم WebGL، لا يمكن عرض المجسمات.</div>'; return; }
+  const RES = 360;
+  renderer.setPixelRatio(1); renderer.setSize(RES, RES, false);
+  renderer.outputEncoding = THREE.sRGBEncoding;
+  renderer.setClearColor(0x000000, 0);
+
+  const P = { white: 0xf6f8f4, amber: 0xf5b73c, teal: 0x2fc4ad, tealD: 0x0f6b5f, ink: 0x1b2b44, inkL: 0x344a6b };
+  const mat = (c, o) => new THREE.MeshPhysicalMaterial(Object.assign({
+    color: new THREE.Color(c).convertSRGBToLinear(), roughness: 0.32, metalness: 0.0, clearcoat: 0.8, clearcoatRoughness: 0.2
+  }, o || {}));
+  const mesh = (g, m) => { const x = new THREE.Mesh(g, m); return x; };
+
+  function rbox(w, h, d, r, m, b) {
+    b = b === undefined ? Math.min(0.07, Math.min(w, h, d) / 4) : b;
+    const W = w - 2 * b, D = d - 2 * b, R = Math.max(0.001, Math.min(r, Math.min(W, D) / 2 - 0.001));
+    const s = new THREE.Shape(), x = -W / 2, y = -D / 2;
+    s.moveTo(x + R, y); s.lineTo(x + W - R, y); s.quadraticCurveTo(x + W, y, x + W, y + R);
+    s.lineTo(x + W, y + D - R); s.quadraticCurveTo(x + W, y + D, x + W - R, y + D);
+    s.lineTo(x + R, y + D); s.quadraticCurveTo(x, y + D, x, y + D - R);
+    s.lineTo(x, y + R); s.quadraticCurveTo(x, y, x + R, y);
+    const g = new THREE.ExtrudeGeometry(s, { depth: h - 2 * b, bevelEnabled: true, bevelThickness: b, bevelSize: b, bevelSegments: 4, curveSegments: 10 });
+    g.rotateX(-Math.PI / 2); g.center();
+    return mesh(g, m);
+  }
+  const sphere = (r, m) => mesh(new THREE.SphereGeometry(r, 48, 32), m);
+  function link(a, b, r, m) {
+    const d = b.clone().sub(a), len = d.length();
+    const c = mesh(new THREE.CylinderGeometry(r, r, len, 20), m);
+    c.position.copy(a).add(b).multiplyScalar(0.5);
+    c.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize());
+    return c;
+  }
+
+  const hexShape = (r) => { const s = new THREE.Shape(); for (let i = 0; i < 6; i++) { const a = Math.PI / 6 + i * Math.PI / 3; const x = Math.cos(a) * r, y = Math.sin(a) * r; i ? s.lineTo(x, y) : s.moveTo(x, y); } return s; };
+  const extruded = (shape, depth, b, m) => { const g = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: true, bevelThickness: b, bevelSize: b, bevelSegments: 6, curveSegments: 16 }); g.rotateX(-Math.PI / 2); g.center(); return mesh(g, m); };
+
+  const designs = [
+    { yaw: -0.6, name: "مدينة سميكة", desc: "ثلاثة أبراج ممتلئة بحواف ناعمة على قاعدة دائرية. شكل بسيط يُقرأ بوضوح.", build() {
+      const g = new THREE.Group();
+      const base = rbox(3.1, 0.3, 3.1, 1.55, mat(P.white), 0.1); base.position.y = -0.15; g.add(base);
+      [[-0.65, 0.25, 1.0, 1.15, P.white], [0.5, -0.2, 1.0, 2.1, P.amber], [0.1, 0.8, 0.8, 0.8, P.ink]].forEach(([x, z, w, h, c]) => {
+        const t = rbox(w, h, w, 0.26, mat(c, { roughness: 0.4 }), 0.12); t.position.set(x, 0.3 + h / 2 - 0.15, z); g.add(t);
+      });
+      return { group: g };
+    } },
+    { yaw: 0.3, name: "كرة العالم", desc: "كرة داكنة لامعة بحلقة سميكة وقمر كهرماني. تعبّر عن اسم World بأقل التفاصيل.", build() {
+      const g = new THREE.Group();
+      g.add(sphere(1, mat(P.ink, { roughness: 0.18, clearcoat: 1 })));
+      const ring = mesh(new THREE.TorusGeometry(1.45, 0.11, 24, 120), mat(P.white, { roughness: 0.3 })); ring.rotation.set(1.25, 0, 0.45); g.add(ring);
+      const sat = sphere(0.28, mat(P.amber, { clearcoat: 1 })); sat.position.set(1.2, 0.65, 0.75); g.add(sat);
+      return { group: g };
+    } },
+    { yaw: -0.35, name: "فقاعة الوكيل", desc: "فقاعة محادثة ثلاثية الأبعاد بثلاث نقاط كهرمانية. توحي بوكيل يتحدث ويعمل.", build() {
+      const g = new THREE.Group();
+      const b = rbox(2.6, 1.0, 1.9, 0.75, mat(P.white), 0.14); b.rotation.x = Math.PI / 2; g.add(b);
+      const tail = mesh(new THREE.CylinderGeometry(0.0, 0.5, 0.7, 3), mat(P.white)); tail.rotation.set(Math.PI / 2, 0, Math.PI); tail.position.set(-0.75, -1.1, 0); tail.rotation.set(0, 0, Math.PI + 0.35); g.add(tail);
+      [-0.65, 0, 0.65].forEach(x => { const d = sphere(0.2, mat(P.amber, { clearcoat: 1 })); d.position.set(x, 0, 0.5); g.add(d); });
+      return { group: g };
+    } },
+    { yaw: -0.4, name: "حرف A ناعم", desc: "حرف A ممتلئ بحواف مدورة كبيرة بأسلوب الصلصال، ولؤلؤة كهرمانية في فراغه.", build() {
+      const g = new THREE.Group();
+      const s = new THREE.Shape();
+      [[-1, -1], [-0.55, -1], [-0.4, -0.5], [0.4, -0.5], [0.55, -1], [1, -1], [0.32, 1], [-0.32, 1]].forEach(([x, y], i) => i ? s.lineTo(x, y) : s.moveTo(x, y));
+      const h = new THREE.Path(); [[-0.26, -0.15], [0.26, -0.15], [0, 0.5]].forEach(([x, y], i) => i ? h.lineTo(x, y) : h.moveTo(x, y)); s.holes.push(h);
+      const geo = new THREE.ExtrudeGeometry(s, { depth: 0.5, bevelEnabled: true, bevelThickness: 0.16, bevelSize: 0.13, bevelSegments: 8 }); geo.center();
+      g.add(mesh(geo, mat(P.white, { roughness: 0.45, clearcoat: 0.5 })));
+      const pearl = sphere(0.19, mat(P.amber, { clearcoat: 1 })); pearl.position.set(0, 0.05, 0.05); g.add(pearl);
+      return { group: g };
+    } },
+    { yaw: 0.5, name: "الجوهرة", desc: "قطعة سداسية كهرمانية بقلب أبيض بارز. رمز لنواة النظام، وهي الأبسط بين التصاميم.", build() {
+      const g = new THREE.Group();
+      const body = extruded(hexShape(1.15), 0.7, 0.14, mat(P.amber, { roughness: 0.28, clearcoat: 1 })); g.add(body);
+      const core = extruded(hexShape(0.58), 0.25, 0.1, mat(P.white, { roughness: 0.3 })); core.position.y = 0.52; g.add(core);
+      const dot = sphere(0.16, mat(P.ink, { clearcoat: 1 })); dot.position.y = 0.72; g.add(dot);
+      return { group: g };
+    } },
+    { yaw: 0.4, name: "روبوت لطيف", desc: "رأس روبوت ممتلئ بوجه داكن وعينين كهرمانيتين. الأقرب لشخصية يمكن التعرف عليها.", build() {
+      const g = new THREE.Group();
+      g.add(rbox(2.1, 1.6, 1.6, 0.6, mat(P.white), 0.2));
+      const face = rbox(1.6, 0.08, 1.05, 0.45, mat(P.ink, { roughness: 0.15, clearcoat: 1 }), 0.03); face.rotation.x = Math.PI / 2; face.position.set(0, 0.02, 0.82); g.add(face);
+      const eM = mat(P.amber, { clearcoat: 1, emissive: new THREE.Color(P.amber).convertSRGBToLinear(), emissiveIntensity: 0.5 });
+      [-0.42, 0.42].forEach(x => { const e = sphere(0.22, eM); e.scale.set(1, 1.25, 0.35); e.position.set(x, 0.1, 0.88); g.add(e); });
+      [-1, 1].forEach(sd => { const ear = mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.24, 32), mat(P.teal)); ear.rotation.z = Math.PI / 2; ear.position.set(sd * 1.17, 0, 0); g.add(ear); });
+      const stem = mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.4, 16), mat(P.white)); stem.position.set(0, 1.0, 0); g.add(stem);
+      const tip = sphere(0.17, mat(P.amber, { clearcoat: 1 })); tip.position.set(0, 1.28, 0); g.add(tip);
+      return { group: g };
+    } }
+  ];
+
+  // contact shadow texture
+  const sc = document.createElement("canvas"); sc.width = sc.height = 128;
+  const sx = sc.getContext("2d"); const gr = sx.createRadialGradient(64, 64, 0, 64, 64, 64);
+  gr.addColorStop(0, "rgba(0,0,0,.55)"); gr.addColorStop(1, "rgba(0,0,0,0)"); sx.fillStyle = gr; sx.fillRect(0, 0, 128, 128);
+  const shadowTex = new THREE.CanvasTexture(sc);
+
+  const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 50);
+  camera.position.set(0, 1.5, 4.1); camera.lookAt(0, -0.02, 0);
+
+  const mkTile = (px, big) => {
+    const t = document.createElement("div"); t.className = "tile" + (big ? " big" : "");
+    if (!big) { t.style.width = t.style.height = px + "px"; }
+    const c = document.createElement("canvas"); const r = big ? 2 : 2; c.width = c.height = (big ? 400 : px * r); t.appendChild(c);
+    return { el: t, ctx: c.getContext("2d"), size: c.width };
+  };
+
+  const items = designs.map((d, i) => {
+    const built = d.build();
+    const pivot = new THREE.Group(); pivot.add(built.group);
+    const box = new THREE.Box3().setFromObject(built.group);
+    const c = box.getCenter(new THREE.Vector3()); built.group.position.sub(c);
+    const sph = box.getBoundingSphere(new THREE.Sphere());
+    const k = 1 / sph.radius; pivot.scale.setScalar(k);
+    const scene = new THREE.Scene();
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x5a7a88, 0.85));
+    const key = new THREE.DirectionalLight(0xffffff, 1.25); key.position.set(3, 5, 4); scene.add(key);
+    const fill = new THREE.DirectionalLight(0xbfe8ff, 0.45); fill.position.set(-4, 2, -1); scene.add(fill);
+    const rim = new THREE.DirectionalLight(0xffe9c0, 0.5); rim.position.set(-1, 3, -5); scene.add(rim);
+    scene.add(pivot);
+    const sh = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 2.6), new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false, opacity: 0.55 }));
+    sh.rotation.x = -Math.PI / 2; sh.position.y = (box.min.y - c.y) * k - 0.02; scene.add(sh);
+
+    const card = document.createElement("button"); card.className = "card"; card.setAttribute("aria-pressed", "false");
+    const big = mkTile(0, true);
+    const smalls = [64, 32, 16].map(p => mkTile(p));
+    const lightRow = document.createElement("div"); lightRow.className = "sizes";
+    const darkRow = document.createElement("div"); darkRow.className = "sizes dark";
+    const darkSmalls = [64, 32, 16].map(p => mkTile(p));
+    smalls.forEach(s => lightRow.appendChild(s.el)); darkSmalls.forEach(s => darkRow.appendChild(s.el));
+    const head = document.createElement("div");
+    head.innerHTML = '<div class="num">خيار ' + (i + 1) + '</div><div class="name">' + d.name + '</div><div class="desc">' + d.desc + '</div>';
+    const tab = document.createElement("div"); tab.className = "tab";
+    const tabTile = mkTile(16); tabTile.el.style.borderRadius = "4px"; tab.appendChild(tabTile.el);
+    const tl = document.createElement("span"); tl.textContent = "AgentWorld — Operator Console"; tab.appendChild(tl);
+    [head, big.el, lightRow, darkRow, tab].forEach(n => card.appendChild(n));
+    card.onclick = () => {
+      [...grid.children].forEach(x => x.setAttribute("aria-pressed", "false")); card.setAttribute("aria-pressed", "true");
+      document.getElementById("bar").textContent = "اخترت: خيار " + (i + 1) + " — " + d.name + ". أخبرني بالرقم وأطبّقه على التطبيق.";
+    };
+    grid.appendChild(card);
+    return { built, pivot, scene, yaw: d.yaw, targets: [big, ...smalls, ...darkSmalls, tabTile] };
+  });
+
+  const bgs = document.getElementById("bgs");
+  [["أخضر", "#23b39e", "#0c5e53"], ["كحلي", "#3a5378", "#142030"], ["أبيض", "#ffffff", "#dfe5e8"], ["كهرماني", "#f7c867", "#d98d1c"]].forEach(([n, a, b], i) => {
+    const bt = document.createElement("button"); bt.textContent = n; bt.setAttribute("aria-pressed", i === 0 ? "true" : "false");
+    bt.onclick = () => { [...bgs.querySelectorAll("button")].forEach(x => x.setAttribute("aria-pressed", "false")); bt.setAttribute("aria-pressed", "true");
+      document.documentElement.style.setProperty("--tile-a", a); document.documentElement.style.setProperty("--tile-b", b); };
+    bgs.appendChild(bt);
+  });
+
+  items.forEach(it => {
+    it.pivot.rotation.y = it.yaw;
+    renderer.render(it.scene, camera);
+    it.targets.forEach(tg => { tg.ctx.clearRect(0, 0, tg.size, tg.size); tg.ctx.imageSmoothingQuality = "high"; tg.ctx.drawImage(renderer.domElement, 0, 0, tg.size, tg.size); });
+  });
+})();
+</script>
+</body>
+</html>
