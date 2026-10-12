@@ -72,7 +72,11 @@ export async function requestApproval(
   const request = await db.approvalRequest.create({
     data: {
       requesterType: input.requester.actorType,
-      requesterAgentId: input.requesterAgentId ?? input.requester.actorId ?? null,
+      // Only an AGENT actor's id may stand in for the requesting agent: a
+      // USER id falling through here violated the Agent foreign key, so every
+      // user-filed approval without an agent failed to insert.
+      requesterAgentId:
+        input.requesterAgentId ?? (input.requester.actorType === "AGENT" ? (input.requester.actorId ?? null) : null),
       requesterUserId: input.requester.actorType === "USER" ? (input.requester.actorId ?? null) : null,
       action: input.action,
       actionPayload: toJson({

@@ -343,6 +343,9 @@ model Agent {
   testRuns     TestRun[]
   trainingRuns TrainingRun[]
 
+  // External skills ecosystem.
+  skillAssignments SkillAssignment[]
+
   @@index([roleKey])
   @@index([worldId])
   @@index([currentCompanyId])
@@ -1752,4 +1755,88 @@ model OAuthState {
   createdAt     DateTime @default(now())
 
   @@index([expiresAt])
+}
+
+// =============================================================================
+// External skills ecosystem -- durable state.
+//
+// The database is the single source of truth for the skill catalog, agent
+// assignments, usage counters and agent skill requests; nothing about a skill
+// lives only in process memory, so a restart (or a second API instance) sees
+// the same state. Skill file contents are never stored -- only the normalized
+// manifest (secret requirement NAMES, never values) and integrity hashes.
+// =============================================================================
+
+/// One catalog entry per skill key. `record` is the JSON SkillCatalogRecord
+/// (manifest, security report, version history); `status`/`installed` are
+/// copied out of it so they can be filtered without parsing JSON.
+model SkillCatalogEntry {
+  key       String   @id
+  record    String
+  /// DISCOVERED | INSTALLED | ENABLED | DISABLED | BLOCKED | MODIFIED
+  status    String
+  installed Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  assignments SkillAssignment[]
+
+  @@index([status])
+}
+
+/// Skill -> agent assignment. Unique per pair, so a retried or concurrent
+/// assign can never create a duplicate. Removed with the skill or the agent.
+model SkillAssignment {
+  id        String   @id @default(cuid())
+  skillKey  String
+  agentId   String
+  createdAt DateTime @default(now())
+
+  skill SkillCatalogEntry @relation(fields: [skillKey], references: [key], onDelete: Cascade)
+  agent Agent             @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@unique([skillKey, agentId])
+  @@index([agentId])
+}
+
+/// Usage counters per skill key. Deliberately not tied to the catalog row:
+/// counters are history and survive removing (and re-installing) a skill.
+/// Every change is an atomic increment, never a read-modify-write.
+model SkillUsage {
+  skillKey          String   @id
+  installations     Int      @default(0)
+  executions        Int      @default(0)
+  success           Int      @default(0)
+  failure           Int      @default(0)
+  totalDurationMs   Int      @default(0)
+  permissionDenials Int      @default(0)
+  securityBlocks    Int      @default(0)
+  updates           Int      @default(0)
+  rollbacks         Int      @default(0)
+  updatedAt         DateTime @updatedAt
+}
+
+/// Agents that executed a skill (the usage `agents` list), one row per pair.
+model SkillUsageAgent {
+  skillKey  String
+  agentId   String
+  createdAt DateTime @default(now())
+
+  @@id([skillKey, agentId])
+}
+
+/// An agent's request for a skill. Agents may request, never approve.
+model SkillRequest {
+  id              String    @id @default(cuid())
+  skillKey        String
+  agentId         String
+  reason          String
+  /// PENDING | APPROVED | REJECTED
+  status          String    @default("PENDING")
+  decidedByUserId String?
+  decidedAt       DateTime?
+  createdAt       DateTime  @default(now())
+
+  @@index([status])
+  @@index([agentId])
 }

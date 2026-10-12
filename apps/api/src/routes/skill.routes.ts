@@ -18,7 +18,7 @@
  */
 import { Router, type NextFunction, type Request, type Response } from "express";
 import { z } from "zod";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { prisma } from "../../../../packages/database/src/index.js";
 import { authenticate, getPrincipal } from "../middleware/authenticate.js";
 import { scopeRefs } from "../middleware/company-scope.js";
@@ -29,16 +29,23 @@ import { getCorrelationId } from "../middleware/correlation.js";
 import { validate } from "../middleware/validate.js";
 import { eventBus, EVENT_TYPES, type EventType } from "../../../../packages/events/src/index.js";
 import { recordActivity } from "../../../../packages/events/src/audit.js";
-import { requestApproval } from "../../../../packages/approvals/src/index.js";
+import {
+  claimForExecution,
+  markExecutionFailed,
+  markExecutionSucceeded,
+  readApprovalPayload,
+  requestApproval,
+} from "../../../../packages/approvals/src/index.js";
 import { roleProfiles } from "../../../../packages/agents/src/role-profiles.js";
+import { forbidden, isAppError, validationError } from "../../../../packages/shared/src/index.js";
 import {
   SkillDiscoveryQuerySchema,
   SkillSourceSchema,
   analyzeExternalSkill,
+  buildInstallationRecord,
   buildLockfile,
   buildReputation,
   checkAssignmentCompatibility,
-  commitInstallation,
   decideSkillRequest,
   findRollbackTarget,
   normalizeExternalSkill,
@@ -50,18 +57,9 @@ import {
   verifyIntegrity,
   verifyLockfile,
   type SkillCatalogRecord,
-  type SkillManifest,
   type SkillSourceType,
 } from "../../../../packages/skills/src/index.js";
-import {
-  agentsForSkill,
-  recordAssignment,
-  skillAssignments,
-  skillCatalog,
-  skillProviders,
-  skillRequests,
-  skillUsage,
-} from "../services/skill-store.js";
+import { skillProviders, skillStore } from "../services/skill-store.js";
 
 export const skillRouter: Router = Router();
 skillRouter.use(authenticate);
@@ -192,7 +190,7 @@ skillRouter.get(
       });
       const items: Array<Record<string, unknown>> = [];
       // Local catalog is always searchable offline.
-      for (const hit of skillCatalog.search({
+      for (const hit of await skillStore.search({
         ...(q.search !== undefined ? { search: q.search } : {}),
         ...(q.category !== undefined ? { category: q.category } : {}),
         ...(q.author !== undefined ? { author: q.author } : {}),
@@ -204,6 +202,7 @@ skillRouter.get(
       }
       // External providers contribute when configured; failures degrade to
       // catalog-only results instead of failing discovery.
+      const installedKeys = new Set((await skillStore.list()).map((r) => r.key));
       const wanted: SkillSourceType[] =
         q.source !== undefined && skillProviders.types().includes(q.source as SkillSourceType)
           ? [q.source as SkillSourceType]
@@ -221,7 +220,7 @@ skillRouter.get(
               version: listing.version ?? null,
               source: listing.source.type,
               trust: "UNVERIFIED",
-              installed: skillCatalog.get(listing.externalId) !== undefined,
+              installed: installedKeys.has(listing.externalId),
             });
             if (items.length >= q.limit) break;
           }
@@ -255,9 +254,9 @@ skillRouter.get(
 skillRouter.get(
   "/catalog",
   requirePermission(PERMISSIONS.AGENT_READ),
-  (req: Request, res: Response, next: NextFunction): void => {
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      res.json({ data: { items: skillCatalog.list().map(toCard) }, correlationId: getCorrelationId(req) });
+      res.json({ data: { items: (await skillStore.list()).map(toCard) }, correlationId: getCorrelationId(req) });
     } catch (error) {
       next(error);
     }
@@ -280,7 +279,12 @@ skillRouter.post(
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const body = req.body as unknown as z.infer<typeof InspectSchema>;
-      const manifest = normalizeExternalSkill(body.manifest, { externalId: body.externalId, source: body.source });
+      let manifest: ReturnType<typeof normalizeExternalSkill>;
+      try {
+        manifest = normalizeExternalSkill(body.manifest, { externalId: body.externalId, source: body.source });
+      } catch (normalizeError) {
+        throw asSkillPlanError(normalizeError);
+      }
       const files = body.files ?? {};
       const report = analyzeExternalSkill(manifest, files);
       await publishSkillEvent(
@@ -295,7 +299,7 @@ skillRouter.post(
           manifest,
           securityReport: report,
           sandboxedInstructions: sandboxInstructions(manifest),
-          installationStatus: skillCatalog.get(manifest.key)?.status ?? "NOT_INSTALLED",
+          installationStatus: (await skillStore.get(manifest.key))?.status ?? "NOT_INSTALLED",
         },
         correlationId: getCorrelationId(req),
       });
@@ -317,12 +321,60 @@ const InstallSchema = z.object({
   approvalRequestId: z.string().min(1).optional(),
 });
 
-async function assertApproved(approvalRequestId: string | undefined, action: string): Promise<void> {
+/**
+ * Claims an APPROVED approval for exactly this operation. The approval must
+ * name the same action AND the same target (`matches` checks the stored
+ * payload), and it is single-use: the claim marks it executed, so an
+ * approval for one skill/agent can neither unlock another nor be replayed.
+ * Any failure means "not approved" and the caller files a fresh request.
+ */
+async function claimApproval(
+  approvalRequestId: string | undefined,
+  action: string,
+  matches: (payload: Record<string, unknown>) => boolean,
+): Promise<string> {
   if (approvalRequestId === undefined) throw new Error("APPROVAL_REQUIRED");
   const approval = await prisma.approvalRequest.findUnique({ where: { id: approvalRequestId } });
   if (approval === null || approval.action !== action || approval.status !== "APPROVED") {
     throw new Error("A valid APPROVED approval request is required before continuing.");
   }
+  // requestApproval stores `{ toolName, agentId, arguments }`; the skill
+  // route's own payload is `arguments`.
+  const payload = readApprovalPayload(approval).arguments;
+  if (!matches(payload)) throw new Error("The approval was granted for a different request.");
+  const claimed = await claimForExecution(prisma, approval.id);
+  if (claimed === null) throw new Error("The approval has already been used.");
+  return approval.id;
+}
+
+/** Runs the approved commit; releases the claim if the commit itself failed. */
+async function underApproval<T>(approvalId: string | null, commit: () => Promise<T>): Promise<T> {
+  try {
+    const result = await commit();
+    if (approvalId !== null) await markExecutionSucceeded(prisma, approvalId);
+    return result;
+  } catch (error) {
+    if (approvalId !== null) {
+      await markExecutionFailed(prisma, approvalId, error instanceof Error ? error.message : String(error)).catch(() => undefined);
+    }
+    throw error;
+  }
+}
+
+/**
+ * Planning/normalizing a skill fails for expected reasons (security block,
+ * invalid manifest, non-newer update). Those are client errors with a
+ * message worth showing, not 500s.
+ */
+function asSkillPlanError(error: unknown): Error {
+  if (isAppError(error)) return error;
+  const message = error instanceof Error ? error.message : String(error);
+  return /blocked/i.test(message) ? forbidden(message.slice(0, 1000)) : validationError(message.slice(0, 1000));
+}
+
+function manifestOf(payload: Record<string, unknown>): { key?: unknown } {
+  const manifest = payload.manifest;
+  return manifest !== null && typeof manifest === "object" ? (manifest as { key?: unknown }) : {};
 }
 
 skillRouter.post(
@@ -370,17 +422,24 @@ skillRouter.post(
             payload: { skillKey: body.externalId, reason: message.slice(0, 500) },
           });
         }
-        throw planError;
+        throw asSkillPlanError(planError);
       }
+      let approvalId: string | null = null;
       if (plan.approvalRequired) {
         try {
-          await assertApproved(body.approvalRequestId, "skill.install");
+          approvalId = await claimApproval(body.approvalRequestId, "skill.install", (payload) =>
+            // The integrity hash covers manifest + files, so an approval for
+            // one content cannot install different content under the same version.
+            payload.externalId === body.externalId &&
+            manifestOf(payload).key === plan.manifest.key &&
+            payload.integrityHash === plan.integrityHash,
+          );
         } catch {
           const approval = await requestApproval(
             prisma,
             {
               action: "skill.install",
-              actionPayload: { source: body.source, externalId: body.externalId, manifest: plan.manifest },
+              actionPayload: { source: body.source, externalId: body.externalId, manifest: plan.manifest, integrityHash: plan.integrityHash },
               reason: `Skill '${plan.manifest.key}' requires human review: ${plan.approvalReason ?? "review required"}.`,
               risk: plan.securityReport.riskLevel === "LOW" ? "MEDIUM" : plan.securityReport.riskLevel,
               requester: ctx.actor,
@@ -403,8 +462,12 @@ skillRouter.post(
           return;
         }
       }
-      const record = commitInstallation(skillCatalog, body.source, body.externalId, plan, { enable: body.enable });
-      skillUsage.recordInstallation(record.key);
+      const record = await underApproval(approvalId, async () =>
+        skillStore.saveWithUsage(
+          buildInstallationRecord(await skillStore.get(plan.manifest.key), body.source, body.externalId, plan, { enable: body.enable }),
+          { kind: "installation" },
+        ),
+      );
       await publishSkillEvent(
         req,
         EVENT_TYPES.SKILL_INSTALLED,
@@ -430,9 +493,9 @@ skillRouter.post(
 skillRouter.get(
   "/:key",
   requirePermission(PERMISSIONS.AGENT_READ),
-  (req: Request, res: Response, next: NextFunction): void => {
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const record = skillCatalog.get(req.params.key as string);
+      const record = await skillStore.get(req.params.key as string);
       if (record === undefined) {
         res.status(404).json({ message: `Unknown skill '${req.params.key as string}'`, correlationId: getCorrelationId(req) });
         return;
@@ -445,8 +508,8 @@ skillRouter.get(
           grantedPermissions: record.grantedPermissions,
           deniedPermissions: record.deniedPermissions,
           versionHistory: record.versionHistory,
-          agents: agentsForSkill(record.key),
-          usage: skillUsage.snapshot(record.key),
+          agents: await skillStore.agentsForSkill(record.key),
+          usage: await skillStore.usage(record.key),
         },
         correlationId: getCorrelationId(req),
       });
@@ -459,9 +522,9 @@ skillRouter.get(
 skillRouter.get(
   "/:key/security-report",
   requirePermission(PERMISSIONS.AGENT_READ),
-  (req: Request, res: Response, next: NextFunction): void => {
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const record = skillCatalog.get(req.params.key as string);
+      const record = await skillStore.get(req.params.key as string);
       if (record?.securityReport === undefined || record.securityReport === null) {
         res.status(404).json({ message: "No security report for this skill", correlationId: getCorrelationId(req) });
         return;
@@ -489,23 +552,34 @@ skillRouter.post(
     try {
       const key = req.params.key as string;
       const body = req.body as unknown as z.infer<typeof UpdateSchema>;
-      const record = skillCatalog.get(key);
+      const record = await skillStore.get(key);
       if (record?.manifest === null || record?.manifest === undefined) {
         res.status(404).json({ message: `Skill '${key}' is not installed`, correlationId: getCorrelationId(req) });
         return;
       }
       const ctx = actorCtx(req);
       const installed = record.manifest;
-      const planned = planUpdate(installed, body.manifest, record.source, record.externalId, body.files ?? {});
+      let planned: ReturnType<typeof planUpdate>;
+      try {
+        planned = planUpdate(installed, body.manifest, record.source, record.externalId, body.files ?? {});
+      } catch (planError) {
+        throw asSkillPlanError(planError);
+      }
+      let approvalId: string | null = null;
       if (planned.approvalRequired) {
         try {
-          await assertApproved(body.approvalRequestId, "skill.update");
+          approvalId = await claimApproval(body.approvalRequestId, "skill.update", (payload) =>
+            payload.skillKey === key &&
+            payload.from === installed.version &&
+            payload.to === planned.manifest.version &&
+            payload.integrityHash === planned.integrityHash,
+          );
         } catch {
           const approval = await requestApproval(
             prisma,
             {
               action: "skill.update",
-              actionPayload: { skillKey: key, from: installed.version, to: planned.manifest.version },
+              actionPayload: { skillKey: key, from: installed.version, to: planned.manifest.version, integrityHash: planned.integrityHash },
               reason: `Skill update '${key}' ${installed.version} -> ${planned.manifest.version} requires review: ${planned.approvalReason ?? "changes detected"}.`,
               risk: planned.securityReport.riskLevel === "LOW" ? "MEDIUM" : planned.securityReport.riskLevel,
               requester: ctx.actor,
@@ -520,8 +594,12 @@ skillRouter.post(
           return;
         }
       }
-      const updated = commitInstallation(skillCatalog, record.source, record.externalId, planned, { enable: record.enabled });
-      skillUsage.recordUpdate(key);
+      const updated = await underApproval(approvalId, () =>
+        skillStore.saveWithUsage(
+          buildInstallationRecord(record, record.source, record.externalId, planned, { enable: record.enabled }),
+          { kind: "update" },
+        ),
+      );
       await publishSkillEvent(
         req,
         EVENT_TYPES.SKILL_UPDATED,
@@ -542,17 +620,18 @@ skillRouter.post(
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const key = req.params.key as string;
-      const record = skillCatalog.get(key);
+      const record = await skillStore.get(key);
       if (record?.installedVersion === null || record?.installedVersion === undefined) {
         res.status(404).json({ message: `Skill '${key}' is not installed`, correlationId: getCorrelationId(req) });
         return;
       }
-      const history = record.versionHistory.map((h) => ({
-        version: h.version,
-        integrityHash: h.integrityHash,
-        manifest: record.manifest as SkillManifest,
-        installedAt: h.installedAt,
-      }));
+      // Only versions whose own manifest was recorded can be restored; using
+      // the current manifest under an older version number would be a lie.
+      const history = record.versionHistory.flatMap((h) =>
+        h.manifest !== undefined
+          ? [{ version: h.version, integrityHash: h.integrityHash, manifest: h.manifest, installedAt: h.installedAt }]
+          : [],
+      );
       const target = findRollbackTarget(history, record.installedVersion);
       if (target === null) {
         res.status(409).json({ message: "No previous verified version to roll back to", correlationId: getCorrelationId(req) });
@@ -563,11 +642,12 @@ skillRouter.post(
         installedVersion: target.version,
         manifest: target.manifest,
         integrityHash: target.integrityHash,
+        // Never keep a grant the restored version does not even request.
+        grantedPermissions: record.grantedPermissions.filter((p) => target.manifest.permissions.includes(p)),
         status: record.enabled ? "ENABLED" : "INSTALLED",
         lastUpdated: new Date().toISOString(),
       };
-      skillCatalog.upsert(rolled);
-      skillUsage.recordRollback(key);
+      await skillStore.saveWithUsage(rolled, { kind: "rollback" });
       await publishSkillEvent(
         req,
         EVENT_TYPES.SKILL_ROLLBACK,
@@ -589,7 +669,7 @@ skillRouter.post(
   requirePermission(PERMISSIONS.AGENT_MODIFY),
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const record = skillCatalog.get(req.params.key as string);
+      const record = await skillStore.get(req.params.key as string);
       if (record === undefined) {
         res.status(404).json({ message: "Unknown skill", correlationId: getCorrelationId(req) });
         return;
@@ -599,7 +679,7 @@ skillRouter.post(
         return;
       }
       const updated: SkillCatalogRecord = { ...record, enabled: true, status: "ENABLED", lastUpdated: new Date().toISOString() };
-      skillCatalog.upsert(updated);
+      await skillStore.save(updated);
       await publishSkillEvent(req, EVENT_TYPES.SKILL_ENABLED, { skillKey: updated.key }, updated.key, "skill.enable");
       res.json({ data: { skill: toCard(updated) }, correlationId: getCorrelationId(req) });
     } catch (error) {
@@ -616,14 +696,14 @@ skillRouter.post(
   validate("body", DisableSchema),
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const record = skillCatalog.get(req.params.key as string);
+      const record = await skillStore.get(req.params.key as string);
       if (record === undefined) {
         res.status(404).json({ message: "Unknown skill", correlationId: getCorrelationId(req) });
         return;
       }
       const body = req.body as unknown as z.infer<typeof DisableSchema>;
       const updated: SkillCatalogRecord = { ...record, enabled: false, status: "DISABLED", lastUpdated: new Date().toISOString() };
-      skillCatalog.upsert(updated);
+      await skillStore.save(updated);
       await publishSkillEvent(
         req,
         EVENT_TYPES.SKILL_DISABLED,
@@ -644,13 +724,10 @@ skillRouter.delete(
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const key = req.params.key as string;
-      const existing = skillCatalog.get(key);
-      if (existing === undefined) {
+      if (!(await skillStore.remove(key))) {
         res.status(404).json({ message: "Unknown skill", correlationId: getCorrelationId(req) });
         return;
       }
-      skillCatalog.remove(key);
-      skillAssignments.delete(key);
       await publishSkillEvent(req, EVENT_TYPES.SKILL_REMOVED, { skillKey: key }, key, "skill.remove");
       res.json({ data: { removed: key }, correlationId: getCorrelationId(req) });
     } catch (error) {
@@ -674,7 +751,7 @@ skillRouter.post(
     try {
       const key = req.params.key as string;
       const body = req.body as unknown as z.infer<typeof AssignSchema>;
-      const record = skillCatalog.get(key);
+      const record = await skillStore.get(key);
       if (record === undefined) {
         res.status(404).json({ message: "Unknown skill", correlationId: getCorrelationId(req) });
         return;
@@ -707,9 +784,12 @@ skillRouter.post(
         res.status(409).json({ message: "Skill is not compatible with this agent", reasons: verdict.reasons, correlationId: getCorrelationId(req) });
         return;
       }
+      let approvalId: string | null = null;
       if (record.risk === "HIGH" || record.risk === "CRITICAL") {
         try {
-          await assertApproved(body.approvalRequestId, "skill.assign");
+          approvalId = await claimApproval(body.approvalRequestId, "skill.assign", (payload) =>
+            payload.skillKey === key && payload.agentId === body.agentId,
+          );
         } catch {
           const ctx = actorCtx(req);
           const approval = await requestApproval(
@@ -728,10 +808,17 @@ skillRouter.post(
           return;
         }
       }
-      recordAssignment(key, body.agentId);
-      skillUsage.recordExecution(key, { success: true, durationMs: 0, agentId: body.agentId });
-      await publishSkillEvent(req, EVENT_TYPES.SKILL_ASSIGNED, { skillKey: key, agentId: body.agentId }, key, "skill.assign");
-      res.json({ data: { skillKey: key, agentId: body.agentId, agents: agentsForSkill(key) }, correlationId: getCorrelationId(req) });
+      // Assigning is not executing: usage counters are left alone (they used
+      // to record a fake successful execution here, inflating reputation).
+      // A repeated assign is idempotent and does not re-emit the event.
+      const created = await underApproval(approvalId, () => skillStore.assign(key, body.agentId));
+      if (created) {
+        await publishSkillEvent(req, EVENT_TYPES.SKILL_ASSIGNED, { skillKey: key, agentId: body.agentId }, key, "skill.assign");
+      }
+      res.json({
+        data: { skillKey: key, agentId: body.agentId, agents: await skillStore.agentsForSkill(key), alreadyAssigned: !created },
+        correlationId: getCorrelationId(req),
+      });
     } catch (error) {
       next(error);
     }
@@ -753,16 +840,7 @@ skillRouter.post(
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const body = req.body as unknown as z.infer<typeof RequestSchema>;
-      const id = randomUUID();
-      skillRequests.set(id, {
-        id,
-        skillKey: body.skillKey,
-        agentId: body.agentId,
-        reason: body.reason,
-        status: "PENDING",
-        decidedByUserId: null,
-        createdAt: new Date().toISOString(),
-      });
+      const { id } = await skillStore.createRequest({ skillKey: body.skillKey, agentId: body.agentId, reason: body.reason });
       const ctx = actorCtx(req);
       const publish = eventBus.publishAndDispatch.bind(eventBus) as (
         db: typeof prisma,
@@ -791,15 +869,24 @@ skillRouter.post(
   validate("body", DecideRequestSchema),
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const existing = skillRequests.get(req.params.id as string);
+      const existing = await skillStore.getRequest(req.params.id as string);
       if (existing === undefined) {
         res.status(404).json({ message: "Unknown skill request", correlationId: getCorrelationId(req) });
         return;
       }
       const body = req.body as unknown as z.infer<typeof DecideRequestSchema>;
       const ctx = actorCtx(req);
-      const decided = decideSkillRequest(existing, body.decision, { userId: ctx.userId, isAgent: false });
-      skillRequests.set(decided.id, decided);
+      let decided: ReturnType<typeof decideSkillRequest>;
+      try {
+        decided = decideSkillRequest(existing, body.decision, { userId: ctx.userId, isAgent: false });
+      } catch (decisionError) {
+        res.status(409).json({ message: decisionError instanceof Error ? decisionError.message : "Request already decided", correlationId: getCorrelationId(req) });
+        return;
+      }
+      if (!(await skillStore.saveDecision(decided))) {
+        res.status(409).json({ message: "Skill request was already decided", correlationId: getCorrelationId(req) });
+        return;
+      }
       await recordActivity(prisma, {
         actor: ctx.actor,
         action: "skill.request.decide",
@@ -821,18 +908,18 @@ skillRouter.post(
 skillRouter.get(
   "/:key/usage",
   requirePermission(PERMISSIONS.AGENT_READ),
-  (req: Request, res: Response, next: NextFunction): void => {
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const key = req.params.key as string;
-      const counters = skillUsage.snapshot(key);
-      const record = skillCatalog.get(key);
+      const counters = await skillStore.usage(key);
+      const record = await skillStore.get(key);
       const reputation = buildReputation({
         counters,
         verified: record?.trust === "VERIFIED" || record?.trust === "SYSTEM",
         publisher: record?.author ?? null,
         lastReviewed: record?.lastUpdated ?? null,
       });
-      res.json({ data: { counters, reputation, agents: agentsForSkill(key) }, correlationId: getCorrelationId(req) });
+      res.json({ data: { counters, reputation, agents: await skillStore.agentsForSkill(key) }, correlationId: getCorrelationId(req) });
     } catch (error) {
       next(error);
     }
@@ -842,10 +929,10 @@ skillRouter.get(
 skillRouter.get(
   "/state/lockfile",
   requirePermission(PERMISSIONS.AGENT_READ),
-  (req: Request, res: Response, next: NextFunction): void => {
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const lock = buildLockfile(
-        skillCatalog.list().filter((r) => r.installed).map((r) => ({
+        (await skillStore.list()).filter((r) => r.installed).map((r) => ({
           key: r.key,
           source: r.source.type,
           sourceIdentifier: r.source.identifier,
@@ -870,12 +957,12 @@ skillRouter.post(
   "/state/verify-lock",
   requirePermission(PERMISSIONS.AGENT_READ),
   validate("body", VerifyLockSchema),
-  (req: Request, res: Response, next: NextFunction): void => {
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const body = req.body as unknown as z.infer<typeof VerifyLockSchema>;
       const lock = parseLockfile(body.lock);
       const live = new Map<string, { version: string; integrity: string }>();
-      for (const r of skillCatalog.list()) {
+      for (const r of await skillStore.list()) {
         if (r.installed) live.set(r.key, { version: r.installedVersion ?? "", integrity: r.integrityHash ?? "" });
       }
       const drifts = verifyLockfile(lock, live);

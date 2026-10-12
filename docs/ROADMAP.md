@@ -222,6 +222,36 @@ Remaining (genuine limitations, not roadmap debt):
 - Browser QA runs commands/probes but drives no real browser session yet;
   a Playwright-backed runner is the next QA step.
 
+### Security hardening + skill persistence (follow-up audit)
+
+Verified against the tree, fixed, and covered by tests
+(`tests/skills-persistence.test.ts`, `tests/security-hardening.test.ts`):
+
+- **Skills state was process memory only.** Catalog, assignments, usage and
+  skill requests vanished on restart. They now live in five tables (migration
+  `20261011120000_skills_persistence`, additive, nothing to backfill); the
+  database is the single source of truth.
+- **Skill approvals were reusable and unbound.** Any APPROVED `skill.assign`
+  approval unlocked any skill for any agent, repeatedly. Approvals are now
+  bound to their target and single-use.
+- **Every approval-gated skill operation returned 500.** `requestApproval`
+  stored the requesting *user's* id in the Agent foreign key; fixed at the
+  source (only an AGENT actor may stand in for the requesting agent).
+- **Rollback restored the wrong manifest** (the current one under an older
+  version number). Version history now keeps each version's manifest.
+- **Assigning a skill counted as a successful execution**, inflating usage and
+  reputation. Assignment no longer touches execution counters.
+- **MCP declared `inputSchema` but never enforced it**, leaked raw error text,
+  and `tasks.create` wrote the task with Prisma directly (no `TASK_CREATED`
+  event, no activity row, unvalidated priority). See `docs/SECURITY.md`.
+- **`EXEC_SANDBOX=local` in production only warned.** It now refuses to boot
+  without `EXEC_ALLOW_UNSANDBOXED_PRODUCTION=true`.
+- **REST 500s returned the raw driver/ORM message.** Now generic + correlation id.
+
+Remaining: MCP `tasks.create` and REST task creation have no idempotency key;
+the catalog row is last-writer-wins (no optimistic version check) for two
+concurrent edits of the same skill.
+
 ## Deferred beyond Phase 10
 
 - Postgres migration (`enum`, `jsonb`, `numeric(19,4)`), BigInt money —
