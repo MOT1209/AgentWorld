@@ -9,6 +9,7 @@ file**. That keeps a deployment simple, and it also sets the limits listed at th
 export JWT_SECRET=$(openssl rand -hex 48)
 export VAULT_MASTER_KEY=$(openssl rand -base64 32)
 export SEED_OWNER_PASSWORD='choose-a-long-password'
+export EXEC_ALLOW_UNSANDBOXED_PRODUCTION=true   # explained under "Agent commands and the sandbox"
 docker compose up --build
 ```
 
@@ -20,6 +21,7 @@ Compose refuses to start while a required secret is missing.
 | `JWT_SECRET` | yes | Signs sessions. 32+ characters; the development placeholder is refused. |
 | `VAULT_MASTER_KEY` | yes | Encrypts stored credentials. Base64 of 32 bytes. **Losing it makes stored credentials unreadable.** |
 | `SEED_OWNER_PASSWORD` | yes | Password of the first owner account (10+ characters, the default is refused). |
+| `EXEC_ALLOW_UNSANDBOXED_PRODUCTION` | yes | Set to `true` to accept that agent commands run unsandboxed inside the container (see below). |
 | `SEED_OWNER_EMAIL` | no | First owner's email. |
 | `AGENTWORLD_PORT` | no | Host port, default `4000`. |
 
@@ -33,7 +35,9 @@ Everything else in the container is disposable.
 ### Agent commands and the sandbox
 
 Compose sets `EXEC_SANDBOX=local`: agent commands run **inside the AgentWorld container**, protected only by
-the command policy. That is acceptable with the offline `mock` provider or agents you fully trust, and **not**
+the command policy. In production the server refuses to start like this unless
+`EXEC_ALLOW_UNSANDBOXED_PRODUCTION=true`, so compose makes you set it yourself instead of hiding the choice.
+That is acceptable with the offline `mock` provider or agents you fully trust, and **not**
 with real AI providers and untrusted prompts. The real sandbox (one throwaway container per command) needs
 access to a Docker daemon; giving the container the host's Docker socket would hand it control of the host.
 See [SANDBOX](SANDBOX.md) for options.
@@ -42,7 +46,8 @@ See [SANDBOX](SANDBOX.md) for options.
 
 ```bash
 cp .env.example .env              # set NODE_ENV=production, JWT_SECRET, SEED_OWNER_PASSWORD, VAULT_MASTER_KEY,
-                                  # DATABASE_URL (absolute path), SERVE_WEB=true, EXEC_SANDBOX
+                                  # DATABASE_URL (absolute path), SERVE_WEB=true, EXEC_SANDBOX (docker, or local plus
+                                  # EXEC_ALLOW_UNSANDBOXED_PRODUCTION=true)
 VITE_API_BASE_URL=/api/v1 npm run build
 npx prisma migrate deploy
 npm run db:seed                   # first time only

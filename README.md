@@ -108,6 +108,7 @@ Sign in with the seeded owner:
 ```bash
 export JWT_SECRET=$(openssl rand -hex 48) VAULT_MASTER_KEY=$(openssl rand -base64 32)
 export SEED_OWNER_PASSWORD='choose-a-long-password'
+export EXEC_ALLOW_UNSANDBOXED_PRODUCTION=true   # agent commands run inside the container; see DEPLOYMENT
 docker compose up --build       # sign in as owner@agentworld.local
 ```
 

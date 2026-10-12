@@ -69,6 +69,7 @@ jobs:
             -e SEED_OWNER_EMAIL=ci@agentworld.local \
             -e SEED_OWNER_PASSWORD=ci-Password-2026 \
             -e EXEC_SANDBOX=local \
+            -e EXEC_ALLOW_UNSANDBOXED_PRODUCTION=true \
             agentworld:ci
           ready=0
           for _ in $(seq 1 60); do
