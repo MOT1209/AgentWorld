@@ -80,6 +80,38 @@ describe("workspace path guard", () => {
     }
   });
 
+  it("resolves a path under a root that does not exist yet (first workspace ever)", () => {
+    // AW-23 regression: a root directory is created lazily by createWorkspace
+    // (mkdirSync after resolveInRoot returns), so the very first call against
+    // a fresh root -- exactly what happens on a clean checkout/deployment's
+    // first workspace, or this process's first call to defaultWorkspaceRoot()
+    // -- used to always throw "Path resolves outside the workspace root",
+    // because the walk-up search for an existing ancestor passed straight
+    // through the not-yet-created root into ITS OWN parent, then compared
+    // that unrelated ancestor's realpath against the root's un-resolved
+    // literal path -- two strings that can never match by construction.
+    const root = join(tmpdir(), unique("agentworld-fresh-root"));
+    expect(existsSync(root)).toBe(false);
+    try {
+      expect(resolveInRoot(root, "first-workspace")).toBe(resolve(root, "first-workspace"));
+      expect(resolveInRoot(root, "a", "b.txt")).toBe(resolve(root, "a", "b.txt"));
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("still rejects a traversal attempt against a root that does not exist yet", () => {
+    const root = join(tmpdir(), unique("agentworld-fresh-root"));
+    expect(existsSync(root)).toBe(false);
+    try {
+      expect(() => resolveInRoot(root, "..")).toThrow(/escapes the workspace root|Parent-directory/);
+      const outside = join(tmpdir(), unique("outside"));
+      expect(() => resolveInRoot(root, outside)).toThrow(/escapes the workspace root/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("rejects an existing symlink that resolves outside the root", () => {
     const root = tempRoot();
     const outside = mkdtempSync(join(tmpdir(), "agentworld-outside-"));
