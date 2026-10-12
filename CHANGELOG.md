@@ -5,6 +5,7 @@ All notable changes. Format follows [Keep a Changelog](https://keepachangelog.co
 ## [Unreleased]
 
 ### Added
+- License: Apache-2.0 (`LICENSE`, `NOTICE`, `THIRD_PARTY_NOTICES.md`, `license` field in `package.json`).
 - Stylized cartoon 3D city: characters, buildings and street decor built by headless Blender scripts
   (`tools/blender`), exported as small GLB files, with procedural fallbacks.
 - Operator console redesign: grouped sidebar, bundled fonts, design tokens, hero city view, overview
@@ -17,6 +18,8 @@ All notable changes. Format follows [Keep a Changelog](https://keepachangelog.co
   cancellation and a production dependency audit.
 
 ### Changed
+- Software Factory wording now matches the code: it tracks, gates and audits a change from a GitHub URL to a
+  reviewed pull request, but does not clone the repository, write code or push commits (README, FACTORY.md).
 - Product-facing name is **AgentWorld**. The seeded demo world ("King World", "King City") and the
   default owner account (`king@kingworld.local`) keep their names so existing databases stay valid;
   the `@kingworld/*` package scope is unchanged.

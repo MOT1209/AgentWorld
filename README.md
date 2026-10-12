@@ -4,13 +4,14 @@
 
 **A simulated company where AI agents hold jobs, wallets, memories and reputations,
 and answer for what they do.**
-It is also a real AI platform and a Software Factory that ships code through it.
+It is also a real AI platform and a Software Factory that tracks a change from a GitHub URL to a reviewed pull request.
 
 [![verify](https://github.com/MOT1209/AgentWorld/actions/workflows/ci.yml/badge.svg)](https://github.com/MOT1209/AgentWorld/actions/workflows/ci.yml)
 ![Node](https://img.shields.io/badge/node-%E2%89%A520.11-339933?logo=node.js&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
 ![SQLite](https://img.shields.io/badge/storage-SQLite-003B57?logo=sqlite&logoColor=white)
 ![API keys](https://img.shields.io/badge/API_keys-none_required-111111)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
 [Quick start](#quick-start) ·
 [Architecture](#architecture) ·
@@ -46,7 +47,7 @@ any of 20 vendors when you want real reasoning.
 | 💰 **Real economy** | Integer money, a single ledger, payroll, treasury, no double-spend |
 | 🤖 **Tool-only agents** | 82 tools behind one enforcement point: permission → validation → approval → audit |
 | 🧠 **AI platform** | One gateway, capability/budget routing across 20 vendors, usage and cost tracking |
-| 🏭 **Software Factory** | GitHub URL in, analyzed, tested, reviewed PR out, with a human merge gate |
+| 🏭 **Software Factory** | GitHub URL in; analysis, plan, working branch, test evidence and a review gate, then a human merge gate. The code itself comes from agents or people working in a workspace ([what it does not do yet](docs/FACTORY.md#current-limits)) |
 | 🔐 **Company isolation** | Every company-linked record is scoped to the people allowed to see it |
 
 ---
@@ -281,6 +282,9 @@ URL → INTAKE → ANALYZING → PLANNING → BUILDING → TESTING ⇄ FIXING
   performance). A missing runner records an honest error, never a pass.
 - The review gate records a verdict. Merge and deploy follow the approval
   policy, and success is never claimed without evidence.
+- **Not yet:** the pipeline does not clone the repository, write code or push
+  commits. It creates the working branch and records, gates and audits what
+  agents or people do in a workspace. See [current limits](docs/FACTORY.md#current-limits).
 
 Full operator contract: [`docs/FACTORY.md`](docs/FACTORY.md).
 
@@ -382,7 +386,7 @@ sandbox tests on Linux.
 | 4 · Districts | District model, capacity, dashboard surface | ✅ Complete |
 | 5 · Daily routines | Event-driven routine engine on the tick path | ✅ Complete |
 | 6 · Social & reputation | Relationship graph, evidence-based reputation, performance center, academy, payroll | ✅ Core landed |
-| 11 · AI platform & factory | 20-vendor catalog, connectors, webhooks, MCP, testing engine, full factory lifecycle | ✅ Complete |
+| 11 · AI platform & factory | 20-vendor catalog, connectors, webhooks, MCP, testing engine, factory lifecycle (tracking and gates; no code generation yet) | ✅ Complete |
 | 3D world | Explorable city, characters, road-following movement, social bubbles | 🚧 In progress |
 
 Details: [`docs/ROADMAP.md`](docs/ROADMAP.md).
@@ -401,6 +405,13 @@ Details: [`docs/ROADMAP.md`](docs/ROADMAP.md).
 | [DEPLOYMENT](docs/DEPLOYMENT.md) | Docker Compose, backups, HTTPS, limits |
 | [SANDBOX](docs/SANDBOX.md) | Execution sandbox |
 | [CONTRIBUTING](CONTRIBUTING.md) | How to contribute |
+
+## License
+
+AgentWorld is licensed under the [Apache License 2.0](LICENSE). You may use, modify and redistribute it,
+including commercially, as long as you keep the license and notice files. The license grants no rights to
+the AgentWorld name. Bundled third-party components keep their own licenses: see
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 <div align="center">
 <sub>Internal codename: <b>King World</b>, which you will still see in package names and the seeded demo world.</sub>
