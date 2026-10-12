@@ -134,6 +134,43 @@ describe("workspace path guard", () => {
     }
   });
 
+  // AW-28: existsSync() follows links, so a DANGLING symlink looked like "does not
+  // exist yet"; the guard then approved the lexical path and writeFileSync/mkdirSync
+  // created the link's target outside the root. No race needed.
+  it("rejects a dangling symlink whose target is outside the root (write-through escape)", () => {
+    const root = tempRoot();
+    const outside = mkdtempSync(join(tmpdir(), "agentworld-outside-"));
+    try {
+      mkdirSync(join(root, "project"), { recursive: true });
+      const target = join(outside, "not-yet-created");
+      try {
+        symlinkSync(target, join(root, "project", "dangling"));
+      } catch {
+        return; // symlinks denied on this host
+      }
+      expect(() => resolveInRoot(root, "project", "dangling")).toThrow(/symlink|outside the workspace root/);
+      expect(() => resolveInRoot(root, "project", "dangling", "child.txt")).toThrow(/symlink|outside the workspace root/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  it("also refuses a dangling symlink that points inside the root (simplest safe rule)", () => {
+    const root = tempRoot();
+    try {
+      mkdirSync(join(root, "project"), { recursive: true });
+      try {
+        symlinkSync(join(root, "project", "later.txt"), join(root, "project", "inner-link"));
+      } catch {
+        return;
+      }
+      expect(() => resolveInRoot(root, "project", "inner-link")).toThrow(/Dangling symlinks/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("refuses to create a workspace directory outside the root", async () => {
     const root = tempRoot();
     try {

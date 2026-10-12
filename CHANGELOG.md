@@ -27,6 +27,7 @@ All notable changes. Format follows [Keep a Changelog](https://keepachangelog.co
 - `npm run doctor` now loads `.env`, so its checks see your configuration.
 
 ### Fixed
+- Workspace path guard refuses dangling symlinks, which allowed writes to land outside the workspace root (AW-28).
 - Agent tool calls now respect company isolation (AW-24..AW-27): role messages and escalation routing stay
   in the sender's company, `wallet.transfer` validates its recipient and holds cross-company payments for
   approval, the `testing.run` URL probe uses the outbound guard in production, and task/plan/conversation

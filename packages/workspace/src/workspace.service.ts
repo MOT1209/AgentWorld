@@ -15,7 +15,7 @@
  *  4. ARCHIVE, DON'T VANISH. Retirement sets ARCHIVED; hard delete drops the
  *     row but leaves the directory on disk and says so in the audit trail.
  */
-import { existsSync, mkdirSync, realpathSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, realpathSync } from "node:fs";
 import { dirname, normalize, resolve, sep } from "node:path";
 import {
   WorkspaceMemberRoleSchema,
@@ -88,6 +88,14 @@ function has(ctx: WorkspaceActorContext, permission: Permission): boolean {
  * does not exist yet (a write target) cannot be created through a link that
  * points outside the root.
  */
+function isSymlink(path: string): boolean {
+  try {
+    return lstatSync(path).isSymbolicLink();
+  } catch {
+    return false;
+  }
+}
+
 export function resolveInRoot(root: string, ...segments: string[]): string {
   const base = resolve(root);
   const joined = segments.join("/");
@@ -121,6 +129,9 @@ export function resolveInRoot(root: string, ...segments: string[]): string {
   // values that can never match or prefix-match each other by construction,
   // which made every first-ever call against a fresh root throw here.
   while (probe !== base && !existsSync(probe)) {
+    // existsSync follows links, so a DANGLING symlink reads as "not there yet" and
+    // a later write would create its target wherever it points. Refuse them.
+    if (isSymlink(probe)) throw validationError("Dangling symlinks are not allowed in workspace paths");
     const parent = dirname(probe);
     if (parent === probe) return candidate;
     probe = parent;

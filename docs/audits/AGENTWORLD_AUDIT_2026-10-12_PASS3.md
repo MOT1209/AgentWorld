@@ -74,3 +74,13 @@ this report does **not** claim those areas are fully verified.
 4. Review depth of recovery, shutdown and concurrency tests; add a crash/restart test for stuck tasks.
 5. Transfer velocity cap (product decision).
 6. Software Factory implementation (separate plan).
+
+## Addendum: AW-28 (path guard, dangling symlinks)
+
+| Id | Sev | Defect | Status |
+|---|---|---|---|
+| AW-28 | High | `resolveInRoot` used `existsSync`, which follows links, so a **dangling** symlink (or a path through one) looked like "does not exist yet". The guard approved the lexical path, and `fs.write` / `mkdirSync` then created the link's target wherever it pointed, e.g. outside the workspace. Deterministic, no race needed. Reachable by any code that can create a symlink in the workspace (agent commands; in Docker mode, the container). | Fixed: dangling symlinks are refused (`tests/workspace.test.ts`, failing before the fix) |
+
+Verification: `npm test` 512 passed, 13 skipped (Docker suites; no daemon here); typecheck, lint, build, `check:docs` clean.
+
+**Still open (not fixed):** the true check-then-use race (a symlink swapped in between `resolveInRoot` and the file operation) is not closed. Closing it needs per-segment `openat`/`O_NOFOLLOW` semantics that Node does not expose portably; the practical boundary remains the Docker sandbox. Treat `EXEC_SANDBOX=local` as trusted-agents-only.
