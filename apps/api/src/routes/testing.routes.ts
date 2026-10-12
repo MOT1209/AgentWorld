@@ -6,14 +6,16 @@
 import { Router, type NextFunction, type Request, type Response } from "express";
 import { z } from "zod";
 import { prisma } from "../../../../packages/database/src/index.js";
-import { authenticate } from "../middleware/authenticate.js";
+import { authenticate, getPrincipal } from "../middleware/authenticate.js";
 import { scopeParam, scopeRefs, scoped } from "../middleware/company-scope.js";
 import { requirePermission } from "../middleware/require-permission.js";
 import { validate } from "../middleware/validate.js";
 import { PERMISSIONS } from "../../../../packages/security/src/permissions.js";
+import { principalToActor } from "../../../../packages/security/src/rbac.js";
 import { getCorrelationId } from "../middleware/correlation.js";
 import { runTestSuite, listTestRuns } from "../../../../packages/factory/src/index.js";
-import { validationError } from "../../../../packages/shared/src/index.js";
+import { canWriteWorkspace, requireWorkspace } from "../../../../packages/workspace/src/index.js";
+import { forbidden, validationError } from "../../../../packages/shared/src/index.js";
 
 export const testingRouter: Router = Router();
 testingRouter.use(authenticate);
@@ -52,6 +54,21 @@ testingRouter.post(
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const body = req.body as z.infer<typeof RunSchema>;
+      if (body.workspaceId !== undefined) {
+        // Any adapter that names a workspace can run a command inside it
+        // (command/browser/mobile/security/performance all delegate to the
+        // execution queue when given one), so this needs the same ACL the
+        // direct /executions route enforces -- not just TESTING_RUN.
+        const principal = getPrincipal(req);
+        const workspace = await requireWorkspace(prisma, body.workspaceId);
+        const allowed = await canWriteWorkspace(prisma, workspace, {
+          actor: principalToActor(principal),
+          permissions: principal.permissions,
+          userId: principal.userId,
+          correlationId: getCorrelationId(req),
+        });
+        if (!allowed) throw forbidden("No execute access to this workspace", { workspaceId: workspace.id });
+      }
       const impliedAdapter = body.command !== undefined
         ? ("command" as const)
         : body.url !== undefined
