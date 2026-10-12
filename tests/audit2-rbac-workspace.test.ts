@@ -140,3 +140,35 @@ describe("workspace ACL: testing.run must not execute in a workspace the caller 
     }
   });
 });
+
+describe("workspace.create tool must not let an agent name a different owner", () => {
+  it("creates the workspace for the calling agent even when a different agentId is given", async () => {
+    const root = tempRoot();
+    try {
+      const caller = await createTestAgent({ name: unique("Create Caller") });
+      const victim = await createTestAgent({ name: unique("Create Victim") });
+
+      const executor = new ToolExecutor({ registry: createDefaultRegistry() });
+      const ctx = {
+        agentId: caller.id,
+        actor: { actorType: "AGENT" as const, actorId: caller.id },
+        correlationId: CORRELATION,
+        permissions: new Set<string>([PERMISSIONS.WORKSPACE_WRITE, PERMISSIONS.WORKSPACE_READ]),
+        db: prisma,
+        now: new Date(),
+      };
+
+      const result = await executor.invoke(
+        "workspace.create",
+        { name: unique("Spoofed"), agentId: victim.id },
+        ctx as never,
+      );
+      expect(result.status).toBe("SUCCESS");
+      const created = (result.data as { id: string }).id;
+      const row = await prisma.workspace.findUniqueOrThrow({ where: { id: created } });
+      expect(row.agentId, "an agent must not be able to create a workspace owned by a different agent").toBe(caller.id);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
