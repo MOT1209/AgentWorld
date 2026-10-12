@@ -1,8 +1,9 @@
 # AgentWorld — Software Factory
 
-The factory turns a GitHub URL into a reviewed pull request through a
-bounded, auditable pipeline. This document is the operator contract: the
-lifecycle, the bounds, and what each stage guarantees.
+The factory tracks a change from a GitHub URL to a reviewed pull request
+through a bounded, auditable pipeline. This document is the operator contract:
+the lifecycle, the bounds, and what each stage guarantees. It does not write
+code itself; see [Current limits](#current-limits).
 
 ## Lifecycle
 
@@ -103,6 +104,28 @@ FACTORY_DEPLOY_RECORDED.
 Deployments are stored on the run record plus events. A dedicated
 Deployment table is the recommended next step when deployment history
 needs SQL-level querying (see ROADMAP).
+
+## Current limits
+
+What the pipeline does **not** do today. Read this before relying on it:
+
+- **It does not fetch the repository.** Nothing clones the target repository into a workspace. ANALYZING reads
+  the tree and manifests through the GitHub API only.
+- **It does not write code.** BUILDING only creates the working branch through the GitHub API and moves on to
+  TESTING. Code changes are expected to come from executor agents or people working in a workspace.
+- **It does not push commits.** `GithubClient.commitFiles` exists but nothing calls it. Agent git tools have
+  no push by design: branches leave the machine only through human approval (see [SECURITY](SECURITY.md) and
+  [SANDBOX](SANDBOX.md); the Docker sandbox has no network, so no `git clone` or `git push` inside it).
+- **So a pull request opened at REVIEWING may have no changes.** GitHub normally refuses a pull request
+  whose branch has no commits ahead of the default branch (expected behaviour, not tested here); the run then
+  records that no PR could be opened.
+- **TESTING needs a bound workspace.** An unbound run refuses to advance rather than borrow another run's
+  result, so the code under test must already be in the run's workspace.
+
+What this makes the factory today: a bounded, audited tracker with real gates and honest evidence around work
+that happens elsewhere. Making it ship code would need a checkout step, a controlled way to turn workspace
+changes into commits, and an end-to-end test against a stub GitHub, while keeping the human approval gate.
+The `opencode` execution backend is the existing building block for running a coding CLI.
 
 ## Observability
 
