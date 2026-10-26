@@ -12,6 +12,7 @@
  *  - An invisible company answers 404, not 403, so ids cannot be probed.
  */
 import type { DbClient } from "../../database/src/index.js";
+import type { Wallet } from "../../database/src/types.js";
 import { forbidden, notFound, UserRole } from "../../shared/src/index.js";
 import type { Principal } from "./rbac.js";
 
@@ -94,4 +95,43 @@ export async function filterVisibleWallets<T>(
     if (wallet.ownerType === "AGENT") return scopeAllows(scope, agentCompany.get(wallet.ownerId) ?? null);
     return false;
   });
+}
+
+/**
+ * One wallet the principal may act on, by the rule of filterVisibleWallets.
+ * A missing and an invisible wallet answer the same 404, so ids cannot be probed.
+ */
+export async function requireVisibleWallet(
+  db: DbClient,
+  principal: Principal,
+  scope: CompanyScope,
+  walletId: string,
+): Promise<Wallet> {
+  const wallet = await db.wallet.findUnique({ where: { id: walletId } });
+  if (wallet === null) throw notFound("Wallet", walletId);
+  const visible = await filterVisibleWallets(db, principal, scope, [wallet], (row) => row);
+  if (visible.length === 0) throw notFound("Wallet", walletId);
+  return wallet;
+}
+
+/**
+ * A wallet may be opened only for an owner that exists and that the principal
+ * can see: a wallet for an id nobody controls strands whatever is paid into it.
+ */
+export async function assertWalletOwnerVisible(
+  db: DbClient,
+  principal: Principal,
+  scope: CompanyScope,
+  owner: WalletRef,
+): Promise<void> {
+  const exists =
+    owner.ownerType === "AGENT"
+      ? (await db.agent.count({ where: { id: owner.ownerId } })) > 0
+      : owner.ownerType === "COMPANY"
+        ? (await db.company.count({ where: { id: owner.ownerId } })) > 0
+        : owner.ownerType === "USER"
+          ? (await db.user.count({ where: { id: owner.ownerId } })) > 0
+          : false;
+  const visible = exists && (await filterVisibleWallets(db, principal, scope, [owner], (row) => row)).length > 0;
+  if (!visible) throw notFound(owner.ownerType.charAt(0) + owner.ownerType.slice(1).toLowerCase(), owner.ownerId);
 }

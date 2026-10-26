@@ -163,6 +163,9 @@ try {
     "City",
     "World",
     "CompanyMember",
+    // Access grants reference Company and User; OAuth states stand alone.
+    "CompanyAccess",
+    "OAuthState",
     "Department",
     "Company",
     "User",

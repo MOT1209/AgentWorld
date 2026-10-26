@@ -93,13 +93,18 @@ export async function createTask(
   }
 
   const correlationId = ctx.correlationId ?? newCorrelationId();
+  const companyId = input.companyId ?? ctx.companyId ?? null;
+  // Checked before the insert: a refused dependency must not leave the task behind.
+  for (const dependencyId of input.dependsOn ?? []) {
+    await requireDependencyFor(db, companyId, dependencyId);
+  }
   const task = await db.task.create({
     data: {
       title: input.title.trim(),
       description: input.description ?? null,
       status: input.assigneeAgentId ? "ASSIGNED" : "PENDING",
       priority: priorityOf(input),
-      companyId: input.companyId ?? ctx.companyId ?? null,
+      companyId,
       projectId: input.projectId ?? null,
       parentTaskId: input.parentTaskId ?? null,
       planId: input.planId ?? null,
@@ -322,15 +327,16 @@ export async function addDependencies(
   ctx: TaskActorContext,
 ): Promise<void> {
   const correlationId = ctx.correlationId ?? newCorrelationId();
+  const task = await requireTask(db, taskId);
 
   for (const dependencyId of dependsOnTaskIds) {
     if (dependencyId === taskId) {
       throw validationError("A task cannot depend on itself");
     }
+    await requireDependencyFor(db, task.companyId, dependencyId);
     if (await createsCycle(db, taskId, dependencyId)) {
       throw conflict("Dependency would create a cycle", { taskId, dependencyId });
     }
-    await requireTask(db, dependencyId);
     await db.taskDependency.upsert({
       where: { taskId_dependsOnTaskId: { taskId, dependsOnTaskId: dependencyId } },
       create: { taskId, dependsOnTaskId: dependencyId },
@@ -346,6 +352,18 @@ export async function addDependencies(
     correlationId,
     metadata: { dependsOnTaskIds },
   });
+}
+
+/**
+ * A dependency is shown in both tasks' detail, so it may only point at the
+ * task's own company or the shared world. A foreign task is a 404, the same
+ * answer as a missing one, so its id cannot be probed.
+ */
+async function requireDependencyFor(db: DbClient, companyId: string | null, dependencyId: string): Promise<void> {
+  const dependency = await requireTask(db, dependencyId);
+  if (dependency.companyId !== null && dependency.companyId !== companyId) {
+    throw notFound("Task", dependencyId);
+  }
 }
 
 export async function removeDependency(

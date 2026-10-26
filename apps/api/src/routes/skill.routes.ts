@@ -21,7 +21,7 @@ import { z } from "zod";
 import { createHash } from "node:crypto";
 import { prisma } from "../../../../packages/database/src/index.js";
 import { authenticate, getPrincipal } from "../middleware/authenticate.js";
-import { scopeRefs } from "../middleware/company-scope.js";
+import { scopeRefs, scoped } from "../middleware/company-scope.js";
 import { requirePermission } from "../middleware/require-permission.js";
 import { PERMISSIONS } from "../../../../packages/security/src/permissions.js";
 import { principalToActor } from "../../../../packages/security/src/rbac.js";
@@ -869,7 +869,11 @@ skillRouter.post(
   validate("body", DecideRequestSchema),
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const existing = await skillStore.getRequest(req.params.id as string);
+      const found = await skillStore.getRequest(req.params.id as string);
+      // A request for an agent of an invisible company is answered like a missing one.
+      const existing = found !== undefined && (await scoped(req, [found], (r) => ({ agentId: r.agentId }))).length > 0
+        ? found
+        : undefined;
       if (existing === undefined) {
         res.status(404).json({ message: "Unknown skill request", correlationId: getCorrelationId(req) });
         return;
@@ -911,7 +915,10 @@ skillRouter.get(
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const key = req.params.key as string;
-      const counters = await skillStore.usage(key);
+      // Agent ids of companies the caller cannot see are left out of both lists.
+      const visibleAgents = async (ids: string[]): Promise<string[]> => scoped(req, ids, (agentId) => ({ agentId }));
+      const usage = await skillStore.usage(key);
+      const counters = { ...usage, agents: await visibleAgents(usage.agents) };
       const record = await skillStore.get(key);
       const reputation = buildReputation({
         counters,
@@ -919,7 +926,7 @@ skillRouter.get(
         publisher: record?.author ?? null,
         lastReviewed: record?.lastUpdated ?? null,
       });
-      res.json({ data: { counters, reputation, agents: await skillStore.agentsForSkill(key) }, correlationId: getCorrelationId(req) });
+      res.json({ data: { counters, reputation, agents: await visibleAgents(await skillStore.agentsForSkill(key)) }, correlationId: getCorrelationId(req) });
     } catch (error) {
       next(error);
     }

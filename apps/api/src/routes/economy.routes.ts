@@ -26,6 +26,8 @@ import {
   assertPlatformWide,
   companyScope,
   filterVisibleWallets,
+  requireVisibleWallet,
+  assertWalletOwnerVisible,
 } from "../../../../packages/security/src/company-access.js";
 import { notFound } from "../../../../packages/shared/src/index.js";
 import { getCorrelationId } from "../middleware/correlation.js";
@@ -40,6 +42,16 @@ economyRouter.use(scopeRefs);
 economyRouter.param("companyId", (req: Request, _res: Response, next: NextFunction, id: string): void => {
   assertCompanyAccess(prisma, getPrincipal(req), id).then(() => next(), next);
 });
+
+/**
+ * Wallet ids are not company links, so scopeRefs cannot see them: every route
+ * that names a wallet checks it here. An invisible wallet is a 404.
+ */
+async function assertWalletsVisible(req: Request, ...walletIds: string[]): Promise<void> {
+  const principal = getPrincipal(req);
+  const scope = await companyScope(prisma, principal);
+  for (const walletId of walletIds) await requireVisibleWallet(prisma, principal, scope, walletId);
+}
 
 economyRouter.get(
   "/wallets",
@@ -139,6 +151,7 @@ economyRouter.post(
     try {
       const principal = getPrincipal(req);
       const body = req.body as z.infer<typeof AmountSchema> & { fromWalletId: string; toWalletId: string };
+      await assertWalletsVisible(req, body.fromWalletId, body.toWalletId);
       const result = await transfer(
         {
           fromWalletId: body.fromWalletId,
@@ -165,6 +178,7 @@ economyRouter.post(
     try {
       const principal = getPrincipal(req);
       const body = req.body as z.infer<typeof AmountSchema> & { toWalletId: string };
+      await assertWalletsVisible(req, body.toWalletId);
       const result = await deposit({
         toWalletId: body.toWalletId,
         amount: Money.fromMajor(body.amount, body.currency),
@@ -187,6 +201,7 @@ economyRouter.post(
     try {
       const principal = getPrincipal(req);
       const body = req.body as z.infer<typeof AmountSchema> & { fromWalletId: string };
+      await assertWalletsVisible(req, body.fromWalletId);
       const result = await withdraw({
         fromWalletId: body.fromWalletId,
         amount: Money.fromMajor(body.amount, body.currency),
@@ -208,6 +223,8 @@ economyRouter.post(
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const body = req.body as { ownerType: "AGENT" | "USER" | "COMPANY"; ownerId: string; currency: string };
+      const principal = getPrincipal(req);
+      await assertWalletOwnerVisible(prisma, principal, await companyScope(prisma, principal), body);
       const wallet = await ensureWallet(prisma, body);
       res.status(201).json({ data: wallet, correlationId: getCorrelationId(req) });
     } catch (error) {
@@ -223,6 +240,7 @@ economyRouter.post(
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const body = req.body as { frozen: boolean };
+      await assertWalletsVisible(req, req.params.id as string);
       const wallet = await setWalletFrozen(prisma, req.params.id as string, body.frozen);
       res.json({ data: wallet, correlationId: getCorrelationId(req) });
     } catch (error) {

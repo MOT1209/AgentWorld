@@ -9,6 +9,8 @@ import type { ToolDefinition, ToolExecutionContext } from "../types.js";
 import { runTestSuite, listTestRuns, settleTestRunFromExecution } from "../../../factory/src/index.js";
 import { forbidden, validationError } from "../../../shared/src/index.js";
 import type { DbClient } from "../../../database/src/index.js";
+import { filterByScope } from "../../../security/src/company-refs.js";
+import { agentCompanyScope } from "../agent-scope.js";
 import { canWriteWorkspace, requireWorkspace, type WorkspaceActorContext } from "../../../workspace/src/index.js";
 
 function actorCtx(context: ToolExecutionContext): WorkspaceActorContext {
@@ -143,10 +145,18 @@ export const testingListTool: ToolDefinition<{ taskId?: string; workspaceId?: st
   requiredPermission: PERMISSIONS.TESTING_READ,
   risk: "LOW",
   async execute(context, input) {
-    const runs = await listTestRuns(context.db, {
+    const listed = await listTestRuns(context.db, {
       ...(input.taskId !== undefined ? { taskId: input.taskId } : {}),
       ...(input.workspaceId !== undefined ? { workspaceId: input.workspaceId } : {}),
     });
+    // A run has no company of its own: it belongs to its task, workspace and agent.
+    const runs = context.agentId === undefined
+      ? listed
+      : await filterByScope(context.db, await agentCompanyScope(context.db, context.agentId), listed, (run) => ({
+        agentId: run.agentId,
+        taskId: run.taskId,
+        workspaceId: run.workspaceId,
+      }));
     return {
       data: {
         runs: runs.map((run) => ({ id: run.id, suite: run.suite, status: run.status, name: run.name, createdAt: run.createdAt })),
