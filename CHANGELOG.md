@@ -27,6 +27,12 @@ All notable changes. Format follows [Keep a Changelog](https://keepachangelog.co
 - `npm run doctor` now loads `.env`, so its checks see your configuration.
 
 ### Fixed
+- Fourth-pass audit (AW-28..AW-33): task dependencies can no longer point at another company's task (REST and
+  `task.create`; a refused `dependsOn` no longer leaves the new task behind); factory and testing tools scope
+  `factoryRunId`/`testRunId` and their lists to the agent's company; economy routes check wallet visibility and
+  `/wallets/ensure` needs a real, visible owner; skill usage and skill-request decisions respect company scope;
+  OAuth state signing refuses the public fallback key in production; the test DROP list covers every table.
+  See `docs/audits/AGENTWORLD_AUDIT_2026-10-26_PASS4.md`.
 - Agent tool calls now respect company isolation (AW-24..AW-27): role messages and escalation routing stay
   in the sender's company, `wallet.transfer` validates its recipient and holds cross-company payments for
   approval, the `testing.run` URL probe uses the outbound guard in production, and task/plan/conversation
