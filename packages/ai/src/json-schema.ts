@@ -1,14 +1,15 @@
 /**
- * Minimal Zod -> JSON Schema converter.
+ * Zod -> JSON Schema for tool definitions.
  *
  * Tools must be advertised to providers as JSON Schema but validated at
- * execution with Zod. Rather than depend on a conversion library (and pin a
- * Zod major version to it), this covers the subset the tool schemas actually
- * use: object/string/number/boolean/enum/array/optional/nullable/default/
- * literal/record/union plus `.describe()`.
+ * execution with Zod. Zod 4 converts its own schemas (`z.toJSONSchema`), so this
+ * wraps that and keeps the contract the providers and tests rely on:
  *
- * Unsupported constructs fail loudly rather than emitting a schema that would
- * silently misrepresent a tool to the model.
+ *  - no `$schema` keyword;
+ *  - every object with declared properties is closed (`additionalProperties: false`);
+ *  - record keys are not advertised (`propertyNames` is dropped);
+ *  - constructs that have no JSON Schema form fail loudly rather than emitting a
+ *    schema that would silently misrepresent a tool to the model.
  */
 import { z, type ZodTypeAny } from "zod";
 
@@ -28,98 +29,40 @@ export interface JsonSchema {
   maximum?: number;
   minLength?: number;
   maxLength?: number;
+  minItems?: number;
+  maxItems?: number;
 }
 
-function describeOf(schema: ZodTypeAny): string | undefined {
-  const description = schema.description;
-  return typeof description === "string" && description.length > 0 ? description : undefined;
-}
-
-function unsupported(path: string, schema: ZodTypeAny): never {
-  throw new Error(
-    `Cannot convert ${schema.constructor.name} at '${path || "<root>"}' to JSON Schema. ` +
-      `Simplify the tool schema; provider contracts require JSON Schema.`,
-  );
+/** Closes objects and drops the keywords providers do not need, in place. */
+function normalise(node: unknown): void {
+  if (Array.isArray(node)) {
+    for (const entry of node) normalise(entry);
+    return;
+  }
+  if (node === null || typeof node !== "object") return;
+  const schema = node as Record<string, unknown>;
+  delete schema.propertyNames;
+  if (schema.properties !== undefined && schema.additionalProperties === undefined) {
+    schema.additionalProperties = false;
+  }
+  for (const value of Object.values(schema)) normalise(value);
 }
 
 export function zodToJsonSchema(schema: ZodTypeAny, path = ""): JsonSchema {
-  const description = describeOf(schema);
-  const def = (schema as unknown as { _def: Record<string, unknown> })._def;
-  const typeName = def.typeName as string | undefined;
-
-  const withDescription = (result: JsonSchema): JsonSchema =>
-    description !== undefined ? { ...result, description } : result;
-
-  switch (typeName) {
-    case "ZodObject": {
-      const shape = (def.shape as () => Record<string, ZodTypeAny>)();
-      const properties: Record<string, JsonSchema> = {};
-      const required: string[] = [];
-      for (const [key, value] of Object.entries(shape)) {
-        properties[key] = zodToJsonSchema(value, path ? `${path}.${key}` : key);
-        if (!isOptionalZodType(value)) required.push(key);
-      }
-      const out: JsonSchema = { type: "object", properties };
-      if (required.length > 0) out.required = required;
-      const catchall = def.catchall as ZodTypeAny | undefined;
-      if (catchall && (catchall as { _def?: { typeName?: string } })._def?.typeName !== "ZodNever") {
-        out.additionalProperties = zodToJsonSchema(catchall, `${path}.*`);
-      } else {
-        out.additionalProperties = false;
-      }
-      return withDescription(out);
-    }
-    case "ZodString":
-      return withDescription({ type: "string" });
-    case "ZodNumber":
-      return withDescription({ type: "number" });
-    case "ZodBoolean":
-      return withDescription({ type: "boolean" });
-    case "ZodEnum":
-      return withDescription({ type: "string", enum: [...(def.values as string[])] });
-    case "ZodNativeEnum": {
-      const values = Object.values(def.values as Record<string, string | number>);
-      return withDescription({ type: typeof values[0] === "number" ? "number" : "string", enum: values });
-    }
-    case "ZodLiteral":
-      return withDescription({ const: def.value });
-    case "ZodArray":
-      return withDescription({
-        type: "array",
-        items: zodToJsonSchema(def.type as ZodTypeAny, `${path}[]`),
-      });
-    case "ZodOptional":
-    case "ZodNullable": {
-      const inner = zodToJsonSchema(def.innerType as ZodTypeAny, path);
-      return withDescription(description !== undefined ? { ...inner, description } : inner);
-    }
-    case "ZodDefault": {
-      const inner = zodToJsonSchema(def.innerType as ZodTypeAny, path);
-      const defaultValue = (def.defaultValue as () => unknown)();
-      return withDescription({ ...inner, default: defaultValue });
-    }
-    case "ZodEffects":
-      return zodToJsonSchema(def.schema as ZodTypeAny, path);
-    case "ZodRecord":
-      return withDescription({
-        type: "object",
-        additionalProperties: zodToJsonSchema(def.valueType as ZodTypeAny, `${path}.*`),
-      });
-    case "ZodUnion": {
-      const options = def.options as ZodTypeAny[];
-      return withDescription({ anyOf: options.map((o, i) => zodToJsonSchema(o, `${path}|${i}`)) });
-    }
-    case "ZodAny":
-    case "ZodUnknown":
-      return withDescription({});
-    default:
-      return unsupported(path, schema);
+  let converted: Record<string, unknown>;
+  try {
+    // "input": what the model must send, so a defaulted field is optional.
+    converted = z.toJSONSchema(schema, { io: "input", unrepresentable: "throw" }) as Record<string, unknown>;
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `Cannot convert ${schema.constructor.name} at '${path || "<root>"}' to JSON Schema (${reason}). ` +
+        `Simplify the tool schema; provider contracts require JSON Schema.`,
+    );
   }
-}
-
-function isOptionalZodType(schema: ZodTypeAny): boolean {
-  const typeName = (schema as unknown as { _def: { typeName?: string } })._def.typeName;
-  return typeName === "ZodOptional" || typeName === "ZodDefault";
+  delete converted.$schema;
+  normalise(converted);
+  return converted as JsonSchema;
 }
 
 /** Convenience for tool authors. */

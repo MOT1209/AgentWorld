@@ -99,6 +99,26 @@ function indirectLinks(db: DbClient): Array<{ suffix: string; load: Loader }> {
         db.executionJob.findUnique({ where: { id }, select: { agentId: true, taskId: true, workspaceId: true } }),
     },
     {
+      // Execution tools and query strings name the same job as `executionId`.
+      suffix: "executionId",
+      load: async (id) =>
+        db.executionJob.findUnique({ where: { id }, select: { agentId: true, taskId: true, workspaceId: true } }),
+    },
+    {
+      suffix: "factoryRunId",
+      load: async (id) =>
+        db.factoryRun.findUnique({ where: { id }, select: { companyId: true, taskId: true, workspaceId: true } }),
+    },
+    {
+      suffix: "testRunId",
+      load: async (id) =>
+        db.testRun.findUnique({ where: { id }, select: { agentId: true, taskId: true, workspaceId: true } }),
+    },
+    {
+      suffix: "trainingRunId",
+      load: async (id) => db.trainingRun.findUnique({ where: { id }, select: { agentId: true } }),
+    },
+    {
       suffix: "approvalRequestId",
       load: async (id) => {
         const row = await db.approvalRequest.findUnique({ where: { id }, select: { companyId: true, taskId: true, requesterAgentId: true } });

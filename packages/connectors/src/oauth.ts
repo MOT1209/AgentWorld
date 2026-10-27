@@ -13,7 +13,7 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type { DbClient } from "../../database/src/index.js";
 import { createCredential } from "../../vault/src/index.js";
 import { eventBus, EVENT_TYPES } from "../../events/src/index.js";
-import { conflict, getConfig, newCorrelationId, validationError, SYSTEM_ACTOR, type ActorRef } from "../../shared/src/index.js";
+import { conflict, forbidden, getConfig, newCorrelationId, validationError, SYSTEM_ACTOR, type ActorRef } from "../../shared/src/index.js";
 
 export interface OAuthProviderConfig {
   /** Connector slug this provider config belongs to. */
@@ -30,10 +30,20 @@ export interface OAuthProviderConfig {
 export const OAUTH_PROVIDERS = new Map<string, OAuthProviderConfig>();
 
 const STATE_TTL_MS = 10 * 60_000;
-const stateSecret = (): Buffer =>
-  createHmac("sha256", getConfig().vault.masterKey !== "" ? getConfig().vault.masterKey : "dev-oauth-state")
+/**
+ * Key that signs `state`. Development falls back to a fixed key so a fresh
+ * clone works; in production that key is public, so a forged state would pass
+ * the signature check. Production refuses, as the vault does.
+ */
+function stateSecret(): Buffer {
+  const config = getConfig();
+  if (config.vault.masterKey === "" && config.isProduction) {
+    throw forbidden("VAULT_MASTER_KEY must be set in production before an OAuth flow can be started or completed");
+  }
+  return createHmac("sha256", config.vault.masterKey !== "" ? config.vault.masterKey : "dev-oauth-state")
     .update("oauth-state-v1")
     .digest();
+}
 
 
 /**

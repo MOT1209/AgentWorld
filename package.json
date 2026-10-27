@@ -68,5 +68,8 @@
     "@prisma/engines@6.19.3": true,
     "esbuild@0.25.12": true,
     "esbuild@0.28.2": true
+  },
+  "dependencies": {
+    "zod": "^4.6.7"
   }
 }

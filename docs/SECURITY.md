@@ -55,8 +55,9 @@ Enforcement (`apps/api/src/middleware/company-scope.ts`):
   plural keys count (`currentCompanyId`, `parentTaskId`, `assigneeAgentId`,
   `participantAgentIds`); arrays are checked element by element. Ids of other
   kinds are resolved through the row they name: conversation, session,
-  execution job, approval request, project and department ids (`conversationId`,
-  `sessionId`, `jobIds`, …) must belong to visible rows. A foreign
+  execution job, approval request, project, department, factory run, test run
+  and training run ids (`conversationId`, `sessionId`, `jobIds`, `executionId`,
+  `factoryRunId`, `testRunId`, `trainingRunId`, …) must belong to visible rows. A foreign
   `conversationId` on an agent run would otherwise feed that conversation into
   the prompt and post the reply into it.
 - `:id`-style params resolve their row's links (company directly, or via its
@@ -68,6 +69,14 @@ Enforcement (`apps/api/src/middleware/company-scope.ts`):
   scope once per connection, so a grant change applies on reconnect.
 - `/economy/totals`, `/economy/verify`, and the global pending-approval
   count are platform-owner figures.
+- Wallet ids are not company links, so the economy routes check them
+  explicitly (`requireVisibleWallet`): transfer, deposit, withdraw and freeze
+  answer 404 for a wallet the caller cannot see, and `/wallets/ensure` needs an
+  owner that exists and is visible.
+- A task may only depend on a task of its own company or of the shared world
+  (`addDependencies`, enforced in the task service for REST and tools alike).
+- `/skills/:key/usage` lists only visible agents; a skill request for an
+  agent of an invisible company answers 404 to a decision.
 - API keys (MCP) act with platform-wide visibility, so they only work while
   their owner is an active platform `OWNER`.
 
@@ -82,10 +91,11 @@ Agents are held to the same boundary as REST callers
 before approval). The agent's company is read from the database
 (`Agent.currentCompanyId`), never from the call context, so a missing or
 forged context company does not widen access. Every company, agent, task, plan,
-workspace, conversation, session, job, approval, project or department id in the
-tool arguments must belong to that company or to the shared world; otherwise the
-call fails with `<kind> '<id>' not found`, with no hint that the row exists.
-Lists (`task.list`, `plan.list`) are filtered the same way.
+workspace, conversation, session, job, approval, project, department, factory
+run, test run or training run id in the tool arguments must belong to that
+company or to the shared world; otherwise the call fails with `<kind> '<id>' not
+found`, with no hint that the row exists. Lists (`task.list`, `plan.list`,
+`factory.list`, `testing.list`) are filtered the same way.
 
 - Role-addressed messages and escalation routing only consider agents of the
   sender's company. With no supervisor in the company, an escalation goes to a
@@ -98,9 +108,9 @@ Lists (`task.list`, `plan.list`) are filtered the same way.
   agent-id check only (the four `relationship.*` tools: the social graph spans
   the shared world). Task, plan and other keys are still checked.
 - Limits: only top-level argument keys are scanned (same as REST), and id keys
-  that do not follow the naming rules (`memoryId`, `executionId`, `testRunId`)
-  are not covered by the generic check; those tools resolve their rows
-  themselves.
+  that do not follow the naming rules (`memoryId`, `dependsOn`) are not covered
+  by the generic check; `memory.forget` checks ownership itself and task
+  dependencies are checked in the task service.
 
 Agent tools declare `requiredPermission` + `risk`; anything `HIGH`/`CRITICAL`
 or on the always-approve list (`agent.create`, `wallet.withdraw`, …) is
@@ -240,7 +250,9 @@ an error), so a hostile endpoint cannot make the server buffer without bound.
   60-second, stream-only ticket (`POST /events/ticket`, audience
   `kingworld-stream`) that cannot call the API.
 - OAuth `state` is stored in the `OAuthState` table (single-use, 10-minute
-  TTL), so callbacks work across instances and restarts.
+  TTL), so callbacks work across instances and restarts. It is signed with a
+  key derived from `VAULT_MASTER_KEY`; production refuses to start or complete
+  an OAuth flow without one (development uses a fixed fallback key).
 
 ## Startup checks
 

@@ -8,6 +8,7 @@
 import { z } from "zod";
 import { PERMISSIONS } from "../../../security/src/permissions.js";
 import type { ToolDefinition } from "../types.js";
+import { agentCompanyScope } from "../agent-scope.js";
 import {
   startFactoryRun,
   advanceFactoryRun,
@@ -115,7 +116,19 @@ export const factoryListTool: ToolDefinition<{ companyId?: string }> = {
   requiredPermission: PERMISSIONS.FACTORY_READ,
   risk: "LOW",
   async execute(context, input) {
-    const runs = await listFactoryRuns(context.db, input.companyId);
+    // Without a company filter an agent sees its own company's runs only (a
+    // named company was already checked by the executor). The company is read
+    // from the database: a call context that omits it must not list them all.
+    let companyId = input.companyId;
+    if (companyId === undefined && context.agentId !== undefined) {
+      const scope = await agentCompanyScope(context.db, context.agentId);
+      if (!scope.all) {
+        const [own] = [...scope.companyIds];
+        if (own === undefined) return { data: { runs: [] }, summary: "0 factory runs" };
+        companyId = own;
+      }
+    }
+    const runs = await listFactoryRuns(context.db, companyId);
     return {
       data: {
         runs: runs.map((run) => ({ id: run.id, repoUrl: run.repoUrl, stage: run.currentStage, createdAt: run.createdAt })),

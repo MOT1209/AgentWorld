@@ -401,10 +401,10 @@ function safeArgs(args: Record<string, unknown>): Record<string, unknown> {
   }
 }
 
-function formatIssues(issues: Array<{ path: (string | number)[]; message: string }>): string {
+function formatIssues(issues: ReadonlyArray<{ path: readonly PropertyKey[]; message: string }>): string {
   return issues
     .slice(0, 5)
-    .map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`)
+    .map((issue) => `${issue.path.map(String).join(".") || "(root)"}: ${issue.message}`)
     .join("; ");
 }
 
