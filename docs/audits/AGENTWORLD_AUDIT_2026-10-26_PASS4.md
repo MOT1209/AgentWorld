@@ -16,6 +16,11 @@ reproduced with a failing test before the fix (`tests/audit4-agent-scope.test.ts
 | `npm test` | 510 passed, 13 skipped (Docker sandbox and OpenCode suites: no Docker daemon in this environment) |
 | `npm run build` | clean |
 
+> **CI note.** The `npm audit --omit=dev --audit-level=high` gate went red on main after this audit's baseline, for two
+> advisories published in between: `body-parser < 1.20.9` and `zod < 4.6.6` (no patched 3.x). They are fixed in this PR by
+> bumping `body-parser` and upgrading to `zod` 4 (the tool-schema converter now uses `z.toJSONSchema`), so the gate is green
+> again; they are not findings of this audit.
+
 ## Confirmed defects
 
 | Id | Sev | Defect | Status |

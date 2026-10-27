@@ -18,6 +18,9 @@ All notable changes. Format follows [Keep a Changelog](https://keepachangelog.co
   cancellation and a production dependency audit.
 
 ### Changed
+- Dependencies: `zod` 3 -> 4.6.7 and `body-parser` 1.20.9 to clear two high-severity `npm audit` advisories that were
+  published after main last passed (the CI audit gate was red for every PR). `zod` is now declared at the root so it hoists
+  for `packages/*`; tool schemas are converted to JSON Schema with `z.toJSONSchema` (same contract: closed objects, no `$schema`).
 - Software Factory wording now matches the code: it tracks, gates and audits a change from a GitHub URL to a
   reviewed pull request, but does not clone the repository, write code or push commits (README, FACTORY.md).
 - Product-facing name is **AgentWorld**. The seeded demo world ("King World", "King City") and the
