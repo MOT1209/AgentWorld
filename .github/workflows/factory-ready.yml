@@ -1,6 +1,7 @@
 name: Send ready issue to factory
 
-# Lives in each app repo. scripts/install-trigger.mjs fills in the placeholders
+# Lives in each app repo. scripts/install-trigger.mjs in the
+# MOT1209/kingagent-factory repository (not this one) fills in the placeholders
 # and opens a pull request that adds this file.
 #
 # Only the "labeled" event is used. Creating an issue that already has the label
@@ -10,8 +11,8 @@ on:
   issues:
     types: [labeled]
 
-permissions:
-  contents: read
+# The job never uses GITHUB_TOKEN; it calls the factory with its own token.
+permissions: {}
 
 jobs:
   notify:
@@ -22,6 +23,14 @@ jobs:
       github.event.issue.state == 'open' &&
       contains(fromJSON('["MOT1209"]'), github.actor)
     runs-on: ubuntu-latest
+    # One dispatch per issue at a time. Removing and re-adding the label queues
+    # a second run instead of racing the first; the factory must still ignore
+    # an issue it is already working on. Set on the job, not the workflow, so
+    # only runs that pass the "if" above join the group: a later, unrelated
+    # label event cannot replace a queued "ready" run.
+    concurrency:
+      group: factory-ready-${{ github.event.issue.number }}
+      cancel-in-progress: false
     steps:
       - name: Start the factory
         env:
